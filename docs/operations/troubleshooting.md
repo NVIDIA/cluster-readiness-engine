@@ -142,6 +142,32 @@ kubectl get pod <node-pod> -n <namespace> \
 - The pod was rejected at admission with a message naming `SYS_CHROOT`: the SecurityContextConstraints granted to the workload's service account (OpenShift), or the namespace's Pod Security level, does not allow it. Grant an SCC whose `allowedCapabilities` lists both `IPC_LOCK` and `SYS_CHROOT`. Under Pod Security admission only the `privileged` level admits these workers: `baseline` allows `SYS_CHROOT` but not the `IPC_LOCK` they already needed, and `restricted` (like the stock `restricted-v2` SCC) allows neither.
 - The workers are `Ready` but `mpirun` still prints the ORTE banner on a current release: the worker image ships `sshd` without an `ssh` client, so the probe fell back to the listening check and could not see the refused sessions. Prebake `openssh-client` alongside `openssh-server`; the recipe in the [air-gapped FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters) does both, and on Debian and Ubuntu the server package pulls the client in on its own.
 
+## MPI workers stuck installing sshd
+
+**Symptoms:** A multi-node NCCL category or a WorkloadRun with `framework.mpi` has one or more `node` pods at `0/1` and no launcher pod. The worker log shows `apt-get update` or `apt-get install ... openssh-server`, and may show `sshd install attempt N of 3 failed or timed out`. Or the worker exits at once with `sshd is not installed and the image has no apt-get or timeout to install it`.
+
+When the workload image has no `/usr/sbin/sshd`, each worker installs `openssh-server` from the Ubuntu archive at start-up. Each `apt-get` step is bounded at 120 seconds, and the worker makes three attempts. Before each retry it attempts to recover an install a timeout interrupted, with `dpkg --configure -a`, itself bounded at 120 seconds. A hung `apt-get` therefore costs one attempt, about four minutes at most, instead of the whole `timeoutPerJob` ([#527](https://github.com/NVIDIA/cluster-readiness-engine/issues/527)). If every step of every attempt ran to its limit, the three attempts would take about 17 minutes. If all three attempts fail, the worker container exits with status 1 and its restart policy decides what happens next.
+
+**Diagnosis:**
+
+```bash
+# Find the worker that is not Ready
+kubectl get pods -n <namespace> -l nvcre.nvidia.com/job=<job-name> -o wide
+
+# See how far the install got and how many attempts failed
+kubectl logs <node-pod> -n <namespace> | grep -E "apt-get|Ign:|Err:|install attempt"
+
+# Check that the pod can reach the archive (ports.ubuntu.com on arm64)
+kubectl exec <node-pod> -n <namespace> -- \
+  bash -c 'timeout 15 bash -c "exec 3<>/dev/tcp/archive.ubuntu.com/80" && echo connect-ok'
+```
+
+**Solutions:**
+
+- A failed attempt followed by a successful one needs no action. If it happens on many workers or in every run, look at the mirror or the egress path, or prebake `sshd` as below.
+- Every attempt fails: the nodes cannot reach the Ubuntu archive, or a proxy is required. Fix the egress path, or prebake `sshd` into the workload image and set `image` on the Certification or WorkloadRun, as described in the [air-gapped FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters). A prebaked image skips the install entirely, which also removes the start-up delay.
+- The worker exits at once saying the image has no `apt-get` or `timeout`: the image is not Debian-based, or lacks coreutils, so the bootstrap cannot install `sshd` safely. Prebake `sshd` into the image.
+
 ## Workflow stuck without a Job
 
 **Symptoms:** Workflow condition is `InProgress`, but no child Job appears.

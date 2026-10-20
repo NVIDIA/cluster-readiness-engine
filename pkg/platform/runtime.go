@@ -374,17 +374,67 @@ func sshdReadinessProbe() map[string]any {
 	}
 }
 
+// sshdInstallCommand installs openssh-server on a worker whose image lacks
+// sshd. The multi-node catalog entries render the same text from
+// pkg/catalog/entries/_lib/nccl/mpi-worker-sshd-args.yaml, and
+// TestSSHDWorkerInvariants requires every worker that installs it to carry
+// this command verbatim, so the two cannot drift.
+//
+// The install is bounded and retried here (issue #527). A worker whose apt-get
+// hangs never passes its readiness probe, so the launcher is never created and
+// the Job waits out timeoutPerJob; at a few thousand workers per category a
+// hang is rare per worker but routine per run. apt's own timeouts did not end
+// the observed hang, so timeout is the bound.
+//
+// timeout runs apt-get itself, not a shell around it. timeout only escalates
+// to SIGKILL while the process it runs is alive, so with a wrapper shell that
+// dies on SIGTERM an apt-get ignoring it would survive, keep the apt lock, and
+// fail every later attempt. Run directly, apt-get is gone when timeout
+// returns. Its method helpers get SIGTERM with the rest of the process group
+// but not the later SIGKILL, which timeout sends only while apt-get lives; that
+// is acceptable because they hold no apt lock (apt's lock is an fcntl lock on
+// a close-on-exec fd) and exit when apt-get's pipe closes, and if anything is
+// still left after three failed attempts, the container's exit kills it.
+// dpkg --configure -a before a retry attempts to finish an install the
+// previous attempt's timeout interrupted, since apt refuses to run until that
+// is done; its result is ignored, because a recovery that fails leaves the
+// next apt-get to fail the attempt. The Acquire options only make apt retry a
+// failed fetch sooner.
+//
+// Worst case, with every step running to its limit: about 4 minutes for the
+// first attempt and 6.5 for each retry, 17 in all.
+//
+// The retry lives in the script rather than in restartPolicy so it holds
+// however the restart behaviour changes (issue #498). An image that needs the
+// install but lacks apt-get or timeout fails at once with a message naming the
+// fix, rather than with "not found" or an unbounded install; on Debian and
+// Ubuntu timeout is in coreutils, which every image with apt-get has.
+const sshdInstallCommand = `if ! test -x /usr/sbin/sshd; then
+  if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+    echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+    exit 1
+  fi
+  apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+  for attempt in 1 2 3; do
+    [ "$attempt" -eq 1 ] || timeout -k 10 120 dpkg --configure -a
+    timeout -k 10 120 apt-get $apt update &&
+      timeout -k 10 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+    echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+    [ "$attempt" -lt 3 ] || exit 1
+  done
+fi`
+
 // BuildMPIRuntime creates TrainingRuntime dependencies for MPI-based workloads.
 // Generates:
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
 // - Worker nodes with sshd, capabilities, an SSH readiness probe, and cfg.Env
 // - Launcher with mpirun, SSH key setup, and cfg.Env
 //
-// The worker's openssh-server install is guarded by `test -x /usr/sbin/sshd`,
-// so images that already ship sshd start without any package-manager egress
-// (issue #319: air-gapped and restricted-egress clusters). The guard tests
-// the exact path the chain execs (/usr/sbin/sshd); a PATH lookup could
-// disagree with it in either direction.
+// The worker's openssh-server install (sshdInstallCommand) is guarded by
+// `test -x /usr/sbin/sshd`, so images that already ship sshd start without any
+// package-manager egress (issue #319: air-gapped and restricted-egress
+// clusters). The guard tests the exact path the chain execs (/usr/sbin/sshd); a
+// PATH lookup could disagree with it in either direction.
 //
 // cfg.Env goes on both containers as container-level env, the same way
 // BuildTorchRuntime emits it (issue #68: it used to be dropped here, so
@@ -437,7 +487,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		keyCommand: []string{"sh", "-c"},
 		keyArgs: []string{
 			"set -x && " +
-				"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
+				sshdInstallCommand + " && " +
 				"mkdir -p /var/run/sshd && " +
 				"chmod 0755 /var/run/sshd && " +
 				"mkdir -p /root/.ssh && " +
