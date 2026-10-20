@@ -157,12 +157,17 @@ kubectl get pods -n <namespace> -l nvcre.nvidia.com/job=<job-name> -o wide
 # See how far the install got and how many attempts failed
 kubectl logs <node-pod> -n <namespace> | grep -E "apt-get|Ign:|Err:|install attempt"
 
-# Check that the pod can reach the Ubuntu archive its apt uses:
-# ports.ubuntu.com on arm64 nodes (GB200, GB300), archive.ubuntu.com on amd64.
-# Run it while the log shows install attempts: an image that gets that far has
-# bash and timeout, while one that exits at once has nothing to check here.
+# Check that the pod can reach the Ubuntu archive its apt uses. Run it while
+# the log shows install attempts: an image that gets that far has bash and
+# timeout, while one that exits at once has nothing to check here.
+
+# arm64 nodes (GB200, GB300) use ports.ubuntu.com
 kubectl exec <node-pod> -n <namespace> -- \
   bash -c 'timeout 15 bash -c "exec 3<>/dev/tcp/ports.ubuntu.com/80" && echo connect-ok'
+
+# amd64 nodes use archive.ubuntu.com
+kubectl exec <node-pod> -n <namespace> -- \
+  bash -c 'timeout 15 bash -c "exec 3<>/dev/tcp/archive.ubuntu.com/80" && echo connect-ok'
 ```
 
 **Solutions:**
