@@ -17,6 +17,11 @@ followed them.
 
 ### Fixed
 
+- Certification `spec.imagePullSecrets` reached only the two training categories;
+  the five communication categories and `diagnostics/dcgm-level4` rendered no pull
+  secret on any pod, so against a private registry those categories failed at
+  image pull. Every catalog entry now renders them on its `node` pods and, for the
+  MPI entries, on the `launcher` pod too (#534)
 - `nvcrectl setup init` reported success for a controller that was crash-looping.
   Helm's `--wait` passes on a single Ready sample, so a controller OOMKilled a few
   seconds after turning Ready passed it. Init now reports success only once every

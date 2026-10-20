@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every catalog entry on GCP H100 with a pull secret set. This is the heaviest
+# override set in the catalog: TCPXO adds the tcpxo-daemon sidecar, its init
+# container, host volumes and a plugin-matched image selection to every worker
+# pod, all through dependency patches on the runtime. A fragment that reached
+# for runtimePatches to do any of that would replace the base list and drop
+# the secrets on this platform alone, which is what this golden catches.
+#
+# nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
+# below it. H100 has no multi-node NVLink, so enableMNNVL is off. maxSteps
+# keeps the two training renders small.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gcp-h100-pull-secrets-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  imagePullSecrets:
+    - name: cert-pull-secret
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch
+    - domain: diagnostics
+      variant: dcgm-level4
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 10
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 10

@@ -37,7 +37,7 @@ jobTemplate:
                         spec:
                           imagePullSecrets:
                           {{- range .ImagePullSecrets }}
-                          - name: {{ .Name }}
+                          - name: {{ printf "%q" .Name }}
                           {{- end }}
         {{- end }}
     goodputMeasurement:

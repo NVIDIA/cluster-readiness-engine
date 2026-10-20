@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every registered entry on GB200 with a pull secret whose name YAML 1.1 reads
+# as a scalar rather than a string. "null" is a valid RFC 1123 subdomain, so
+# Kubernetes accepts it as a Secret name, and the operator who created it gets
+# no warning that it is special.
+#
+# The templates render the name into YAML that is then parsed back, so an
+# unquoted {{ .Name }} let the parser decide the type: `name: null` decoded to
+# a nil string, the field marshalled back out as `- {}`, and the pod pulled
+# with no credential at all while the Certification still showed the secret in
+# its spec. The same hole swallows true, false, yes, no, on, off, 0, 1, 123
+# and 1.5 -- every one of them a name Kubernetes permits.
+#
+# The golden must show "null" as the secret name on every pod set, exactly as
+# the ordinary-name case shows cert-pull-secret. A regression reappears here as
+# an empty name rather than as a parse error, so this case is the pin for the
+# printf "%q" quoting in every entry template.
+gpuProducts:
+- NVIDIA-GB200-NVL72
+nodesPerJob: 8
+imagePullSecrets:
+- name: "null"
