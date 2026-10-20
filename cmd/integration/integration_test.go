@@ -87,6 +87,10 @@ func TestIntegration(t *testing.T) {
 
 	parser.TestDir(t, func(tc *testutil.TestCase) error {
 		tt := tc.T.(*testing.T)
+		// The cache refuses a Pod read it cannot answer completely (ADR-102).
+		// Several callers treat a read error as "not found yet", so a refusal
+		// fails the case here rather than relying on its golden to show it.
+		refusedBefore := controller.UnscopedCacheReads()
 
 		// Install any per-test-case CRDs from input_crd_*.yaml files.
 		installTestCRDs(tt, suite.Config, tc)
@@ -199,6 +203,8 @@ func TestIntegration(t *testing.T) {
 			require.Equal(tt, 1, checkpoint.recorder.count(checkpoint.jobUID), "restart emitted another InProgress Event")
 		}
 		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), suite.Client, cfg, deadline, frozenGoodput, specImmutability)
+		require.Equal(tt, refusedBefore, controller.UnscopedCacheReads(),
+			"the cache refused a read during this case; its log names the caller (ADR-102)")
 		return nil
 	})
 }
@@ -443,11 +449,13 @@ func startManager(
 			BindAddress: "0", // Disable metrics server — tests read from the global registry directly.
 		},
 		// Use production's cache configuration so the harness exercises the same
-		// informer scoping (notably: only GPU-labelled Nodes are cached), and
-		// production's client configuration, which reads ConfigMaps and PVCs
-		// live (ADR-092).
-		Cache:  controller.CacheOptions(),
-		Client: controller.ClientOptions(),
+		// informer scoping (only GPU-labelled Nodes and job-labelled Pods are
+		// cached), production's client configuration, which reads ConfigMaps
+		// and PVCs live (ADR-092), and production's cache, which refuses a Pod
+		// read the job-scoped cache cannot answer (ADR-102).
+		Cache:    controller.CacheOptions(),
+		Client:   controller.ClientOptions(),
+		NewCache: controller.NewCache,
 		Controller: crconfig.Controller{
 			SkipNameValidation:      func() *bool { v := true; return &v }(),
 			MaxConcurrentReconciles: 5, // Prevent stale objects from blocking the reconcile queue.
