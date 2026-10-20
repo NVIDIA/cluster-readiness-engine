@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A per-category list replaces the spec-level list for that category rather
+# than merging with it, which is what the imagePullSecrets row in the API
+# reference says. nccl-all-reduce sets its own secret and must carry only that
+# one on both its node and launcher pod sets; nccl-loopback and nemotron5-8b
+# set nothing of their own and inherit the spec-level secret. nodesPerJob is
+# 8 and maxSteps keeps the training render small, as in the sibling cases.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-gb200-per-category-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  imagePullSecrets:
+    - name: cert-pull-secret
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        imagePullSecrets:
+          - name: category-pull-secret
+    - domain: communication
+      variant: nccl-loopback
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 10

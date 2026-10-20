@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every catalog entry on AWS GB200 with a pull secret set. The EFA overrides
+# replace trainer.args and trainer.env wholesale and patch the node
+# container's resources, so this is the case that pins the secrets living
+# outside anything a platform fragment restates: the list must still reach
+# the node pod of all eight entries and the launcher pod of the three MPI
+# entries after the overrides compose.
+#
+# nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
+# below it. maxSteps keeps the two training renders small.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-gb200-pull-secrets-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  imagePullSecrets:
+    - name: cert-pull-secret
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch
+    - domain: diagnostics
+      variant: dcgm-level4
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 10
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 10

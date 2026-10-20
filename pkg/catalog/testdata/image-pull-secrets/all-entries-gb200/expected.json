@@ -1,0 +1,111 @@
+{
+  "entries": [
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}
