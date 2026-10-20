@@ -218,6 +218,48 @@ func managerImage(rendered []byte) (string, error) {
 	return "", fmt.Errorf("rendered chart has no manager Deployment container")
 }
 
+// managerImagePullPolicy preserves whether the field is absent, so an empty or
+// null value cannot pass as an omitted field.
+func managerImagePullPolicy(rendered []byte) (string, bool, error) {
+	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
+	for {
+		var obj unstructured.Unstructured
+		err := dec.Decode(&obj)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false, fmt.Errorf("decode helm template output: %w", err)
+		}
+		if obj.GetKind() != deploymentKind {
+			continue
+		}
+		containers, _, err := unstructured.NestedSlice(obj.Object, "spec", "template", "spec", "containers")
+		if err != nil {
+			return "", false, fmt.Errorf("read manager Deployment containers: %w", err)
+		}
+		for _, item := range containers {
+			container, ok := item.(map[string]any)
+			if !ok {
+				return "", false, fmt.Errorf("rendered Deployment container is not a map")
+			}
+			if container["name"] != managerContainer {
+				continue
+			}
+			value, found := container["imagePullPolicy"]
+			if !found {
+				return "", false, nil
+			}
+			policy, ok := value.(string)
+			if !ok {
+				return "", true, fmt.Errorf("manager imagePullPolicy is not a string")
+			}
+			return policy, true, nil
+		}
+	}
+	return "", false, fmt.Errorf("rendered chart has no manager Deployment container")
+}
+
 // serviceMonitorView is the Helm-rendered ServiceMonitor fields that operators
 // actually configure: discovery labels and scrape knobs.
 type serviceMonitorView struct {
@@ -316,6 +358,75 @@ func TestHelmTemplatePinsImageByDigest(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("manager image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHelmTemplateRendersImagePullPolicy(t *testing.T) {
+	requireHelm(t)
+	dir := chartDir(t)
+	requireChartInputs(t, dir)
+
+	cases := []struct {
+		name string
+		set  []string
+		want string
+	}{
+		{
+			name: "default omits imagePullPolicy",
+		},
+		{
+			name: "empty value omits imagePullPolicy",
+			set:  []string{"manager.image.pullPolicy="},
+		},
+		{
+			name: "latest tag leaves pull policy to Kubernetes",
+			set:  []string{"manager.image.tag=latest"},
+		},
+		{
+			name: "explicit Always",
+			set:  []string{"manager.image.pullPolicy=Always"},
+			want: "Always",
+		},
+		{
+			name: "explicit IfNotPresent",
+			set:  []string{"manager.image.pullPolicy=IfNotPresent"},
+			want: "IfNotPresent",
+		},
+		{
+			name: "explicit Never",
+			set:  []string{"manager.image.pullPolicy=Never"},
+			want: "Never",
+		},
+		{
+			name: "explicit policy applies to a digest-pinned image",
+			set: []string{
+				"manager.image.digest=sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523",
+				"manager.image.pullPolicy=Never",
+			},
+			want: "Never",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rendered, err := helmTemplate(dir, tc.set)
+			if err != nil {
+				t.Fatalf("helm template: %v", err)
+			}
+			got, found, err := managerImagePullPolicy(rendered)
+			if err != nil {
+				t.Fatalf("read manager imagePullPolicy: %v", err)
+			}
+			if tc.want == "" {
+				if found {
+					t.Errorf("manager imagePullPolicy = %q, want field omitted", got)
+				}
+				return
+			}
+			if !found || got != tc.want {
+				t.Errorf("manager imagePullPolicy = %q (present: %t), want %q", got, found, tc.want)
 			}
 		})
 	}
