@@ -1,0 +1,47 @@
+{
+  "workflows": [
+    {
+      "workflow": "aws-gb200-per-category-ce-2cd79",
+      "category": "training/nemotron5-8b",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-gb200-per-category-ce-7b474",
+      "category": "communication/nccl-all-reduce",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "category-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "category-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-gb200-per-category-ce-d59ab",
+      "category": "communication/nccl-loopback",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}
