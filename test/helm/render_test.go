@@ -14,13 +14,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	syaml "sigs.k8s.io/yaml"
 )
@@ -162,7 +161,9 @@ func helmTemplate(chartDir string, set []string) ([]byte, error) {
 	return out, nil
 }
 
-func managerArgs(rendered []byte) ([]string, error) {
+// managerContainerFromRendered returns the unstructured manager container so
+// callers can distinguish omitted fields from explicitly empty or null values.
+func managerContainerFromRendered(rendered []byte) (map[string]any, error) {
 	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
 	for {
 		var obj unstructured.Unstructured
@@ -176,88 +177,74 @@ func managerArgs(rendered []byte) ([]string, error) {
 		if obj.GetKind() != deploymentKind {
 			continue
 		}
-
-		var dep appsv1.Deployment
-		if err := kruntime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &dep); err != nil {
-			return nil, fmt.Errorf("convert manager Deployment: %w", err)
+		containers, _, err := unstructured.NestedSlice(
+			obj.Object, "spec", "template", "spec", "containers",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("read manager Deployment containers: %w", err)
 		}
-		for i := range dep.Spec.Template.Spec.Containers {
-			if dep.Spec.Template.Spec.Containers[i].Name == managerContainer {
-				return dep.Spec.Template.Spec.Containers[i].Args, nil
+		for _, item := range containers {
+			container, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("rendered Deployment container is not a map")
 			}
+			if container["name"] != managerContainer {
+				continue
+			}
+			return container, nil
 		}
 	}
 	return nil, fmt.Errorf("rendered chart has no manager Deployment container")
 }
 
+// managerArgs returns the manager container's command-line arguments.
+func managerArgs(rendered []byte) ([]string, error) {
+	container, err := managerContainerFromRendered(rendered)
+	if err != nil {
+		return nil, err
+	}
+	if container["args"] == nil {
+		return nil, nil
+	}
+	args, _, err := unstructured.NestedStringSlice(container, "args")
+	if err != nil {
+		return nil, fmt.Errorf("read manager container args: %w", err)
+	}
+	return args, nil
+}
+
 // managerImage returns the manager container's image reference.
 func managerImage(rendered []byte) (string, error) {
-	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
-	for {
-		var obj unstructured.Unstructured
-		err := dec.Decode(&obj)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("decode helm template output: %w", err)
-		}
-		if obj.GetKind() != deploymentKind {
-			continue
-		}
-		var dep appsv1.Deployment
-		if err := kruntime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &dep); err != nil {
-			return "", fmt.Errorf("convert manager Deployment: %w", err)
-		}
-		for i := range dep.Spec.Template.Spec.Containers {
-			if dep.Spec.Template.Spec.Containers[i].Name == managerContainer {
-				return dep.Spec.Template.Spec.Containers[i].Image, nil
-			}
-		}
+	container, err := managerContainerFromRendered(rendered)
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("rendered chart has no manager Deployment container")
+	if container["image"] == nil {
+		return "", nil
+	}
+	image, _, err := unstructured.NestedString(container, "image")
+	if err != nil {
+		return "", fmt.Errorf("read manager container image: %w", err)
+	}
+	return image, nil
 }
 
 // managerImagePullPolicy preserves whether the field is absent, so an empty or
 // null value cannot pass as an omitted field.
 func managerImagePullPolicy(rendered []byte) (string, bool, error) {
-	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
-	for {
-		var obj unstructured.Unstructured
-		err := dec.Decode(&obj)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", false, fmt.Errorf("decode helm template output: %w", err)
-		}
-		if obj.GetKind() != deploymentKind {
-			continue
-		}
-		containers, _, err := unstructured.NestedSlice(obj.Object, "spec", "template", "spec", "containers")
-		if err != nil {
-			return "", false, fmt.Errorf("read manager Deployment containers: %w", err)
-		}
-		for _, item := range containers {
-			container, ok := item.(map[string]any)
-			if !ok {
-				return "", false, fmt.Errorf("rendered Deployment container is not a map")
-			}
-			if container["name"] != managerContainer {
-				continue
-			}
-			value, found := container["imagePullPolicy"]
-			if !found {
-				return "", false, nil
-			}
-			policy, ok := value.(string)
-			if !ok {
-				return "", true, fmt.Errorf("manager imagePullPolicy is not a string")
-			}
-			return policy, true, nil
-		}
+	container, err := managerContainerFromRendered(rendered)
+	if err != nil {
+		return "", false, err
 	}
-	return "", false, fmt.Errorf("rendered chart has no manager Deployment container")
+	value, found := container["imagePullPolicy"]
+	if !found {
+		return "", false, nil
+	}
+	policy, ok := value.(string)
+	if !ok {
+		return "", true, fmt.Errorf("manager imagePullPolicy is not a string")
+	}
+	return policy, true, nil
 }
 
 // serviceMonitorView is the Helm-rendered ServiceMonitor fields that operators
@@ -381,8 +368,8 @@ func TestHelmTemplateRendersImagePullPolicy(t *testing.T) {
 			set:  []string{"manager.image.pullPolicy="},
 		},
 		{
-			name: "latest tag leaves pull policy to Kubernetes",
-			set:  []string{"manager.image.tag=latest"},
+			name: "null value omits imagePullPolicy",
+			set:  []string{"manager.image.pullPolicy=null"},
 		},
 		{
 			name: "explicit Always",
@@ -427,6 +414,27 @@ func TestHelmTemplateRendersImagePullPolicy(t *testing.T) {
 			}
 			if !found || got != tc.want {
 				t.Errorf("manager imagePullPolicy = %q (present: %t), want %q", got, found, tc.want)
+			}
+		})
+	}
+}
+
+// TestHelmTemplateRejectsInvalidImagePullPolicy requires invalid values to fail
+// during chart rendering with the configured value in the error.
+func TestHelmTemplateRejectsInvalidImagePullPolicy(t *testing.T) {
+	requireHelm(t)
+	dir := chartDir(t)
+	requireChartInputs(t, dir)
+
+	for _, value := range []string{"always", "Sometimes", "false", "0"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := helmTemplate(dir, []string{"manager.image.pullPolicy=" + value})
+			if err == nil {
+				t.Fatalf("helm template succeeded with manager.image.pullPolicy=%s, want validation failure", value)
+			}
+			want := fmt.Sprintf("manager.image.pullPolicy must be empty, Always, IfNotPresent, or Never, got %q", value)
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("helm template error = %q, want it to contain %q", err, want)
 			}
 		})
 	}
