@@ -804,8 +804,9 @@ func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
 // nicResourceName, which a category's list replaces in ResolveOptions,
 // hostPath is not cleared: it changes how every container reaches the RDMA
 // devices, and dropping it silently would run a configuration nobody asked
-// for. The category fails instead, with the fix in the message. The
-// nicResourceName check is defensive, since ResolveOptions never leaves both.
+// for. The Certification fails instead (WorkflowValidationFailed), with the
+// category and the fix in the message. The nicResourceName check is
+// defensive, since ResolveOptions never leaves both.
 func CheckResolvedNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
 	if len(opts.NetworkAttachments) == 0 {
 		return nil

@@ -430,11 +430,16 @@ spec:
                             nvidia.com/mlnxnics request rather than appending to them. On platforms
                             whose catalog requests its own NIC resource without Multus (Azure,
                             TogetherAI and Forge nvidia.com/mlnxnics, the nscale rdma claim), that
-                            request stays alongside the attachments; set mlnxPerNode: 0 to drop it.
+                            request stays alongside the attachments, and an entry on that same
+                            resource adds to it (8 plus two entries requests 10, which an 8-NIC node
+                            cannot schedule). Set mlnxPerNode: 0 to drop the platform request, which
+                            a site whose Multus networks are those same NICs needs so that only the
+                            listed entries are requested.
                             A per-category networkAttachments or nicResourceName replaces whichever
                             of the two the spec level set. It cannot be combined with
                             rdmaDeviceAccess: hostPath, including across the spec level and a
-                            category. At most 16 entries.
+                            category, where the conflict fails the whole Certification
+                            (WorkflowValidationFailed) and names the category. At most 16 entries.
                           items:
                             description: |-
                               NetworkAttachment names one Multus secondary network and the extended
@@ -1273,11 +1278,16 @@ spec:
                   nvidia.com/mlnxnics request rather than appending to them. On platforms
                   whose catalog requests its own NIC resource without Multus (Azure,
                   TogetherAI and Forge nvidia.com/mlnxnics, the nscale rdma claim), that
-                  request stays alongside the attachments; set mlnxPerNode: 0 to drop it.
+                  request stays alongside the attachments, and an entry on that same
+                  resource adds to it (8 plus two entries requests 10, which an 8-NIC node
+                  cannot schedule). Set mlnxPerNode: 0 to drop the platform request, which
+                  a site whose Multus networks are those same NICs needs so that only the
+                  listed entries are requested.
                   A per-category networkAttachments or nicResourceName replaces whichever
                   of the two the spec level set. It cannot be combined with
                   rdmaDeviceAccess: hostPath, including across the spec level and a
-                  category. At most 16 entries.
+                  category, where the conflict fails the whole Certification
+                  (WorkflowValidationFailed) and names the category. At most 16 entries.
                 items:
                   description: |-
                     NetworkAttachment names one Multus secondary network and the extended

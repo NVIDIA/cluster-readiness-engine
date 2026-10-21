@@ -2042,7 +2042,10 @@ spec:
                   resourceName must be that resource. The list is mutually exclusive with
                   nicResourceName and disables NIC resource auto-detection. A platform NIC
                   request the WorkloadRun overrides render without Multus stays alongside
-                  the attachments; set mlnxPerNode: 0 to drop it. spec.overrides apply
+                  the attachments, and an entry on that same resource adds to it. Set
+                  mlnxPerNode: 0 to drop the platform request, which a site whose Multus
+                  networks are those same NICs needs so that only the listed entries are
+                  requested. spec.overrides apply
                   after the list, as they do after every other field, so an override that
                   sets the networks annotation or one of these resources on the runtime
                   replaces it. At most 16 entries.
