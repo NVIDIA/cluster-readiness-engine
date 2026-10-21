@@ -119,11 +119,15 @@ type CertificationCategoryStatus struct {
 // only bounds input size; any realistic quantity is far shorter.
 //
 // Every typed client decodes these fields with resource.ParseQuantity, and
-// one Certification that fails to decode breaks the typed List the
-// controller's informer uses, for every Certification in the namespace. So
-// the exponent must be a whole number: the controller-gen Quantity pattern
-// this replaces also allows a fractional one ("1e1.5"), which ParseQuantity
-// refuses.
+// one Certification that fails to decode breaks every typed List of
+// Certifications in its namespace: the controller's informer, and the
+// run-namespace RoleBinding cleanup in nvcrectl. So the Pattern accepts only
+// what ParseQuantity decodes to the value written, and quickly. The exponent
+// is a whole number, unlike the controller-gen Quantity pattern this replaces
+// ("1e1.5" does not parse), and at most two digits: ParseQuantity refuses an
+// exponent past int64, wraps one past int32 to a different value, and takes
+// seconds to hours on a large negative one. 1e99 is far beyond any CPU or
+// memory value.
 //
 // Schemaless drops the schema controller-gen generates for every Quantity.
 // Its signed pattern would otherwise be combined with this one in an allOf,
@@ -137,7 +141,7 @@ type CategoryResourceList struct {
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
-	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$`
+	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$`
 	CPU *resource.Quantity `json:"cpu,omitempty"`
 
 	// memory is the memory quantity (e.g., "48Gi"). Must not be negative.
@@ -145,7 +149,7 @@ type CategoryResourceList struct {
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
-	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$`
+	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$`
 	Memory *resource.Quantity `json:"memory,omitempty"`
 }
 

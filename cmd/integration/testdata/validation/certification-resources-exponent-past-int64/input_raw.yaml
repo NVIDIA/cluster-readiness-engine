@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An exponent past int64 matches a pattern with an unbounded exponent, but
+# ParseQuantity refuses it, so the object would break every typed List of
+# Certifications in its namespace. The two-digit cap rejects it at admission
+# (ADR-101). Submitted raw: the typed decode would refuse it before it reached
+# the API server.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-exponent-past-int64
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: "1e9999999999999999999"

@@ -527,13 +527,13 @@ spec:
                                   description: cpu is the CPU quantity (e.g., "6",
                                     "1500m"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
                                 memory:
                                   description: memory is the memory quantity (e.g.,
                                     "48Gi"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
                               type: object
                             requests:
@@ -544,13 +544,13 @@ spec:
                                   description: cpu is the CPU quantity (e.g., "6",
                                     "1500m"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
                                 memory:
                                   description: memory is the memory quantity (e.g.,
                                     "48Gi"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
                               type: object
                           type: object
@@ -1245,13 +1245,13 @@ spec:
                         description: cpu is the CPU quantity (e.g., "6", "1500m").
                           Must not be negative.
                         maxLength: 32
-                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
                       memory:
                         description: memory is the memory quantity (e.g., "48Gi").
                           Must not be negative.
                         maxLength: 32
-                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
                     type: object
                   requests:
@@ -1261,13 +1261,13 @@ spec:
                         description: cpu is the CPU quantity (e.g., "6", "1500m").
                           Must not be negative.
                         maxLength: 32
-                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
                       memory:
                         description: memory is the memory quantity (e.g., "48Gi").
                           Must not be negative.
                         maxLength: 32
-                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
                     type: object
                 type: object
