@@ -75,11 +75,18 @@ const stubContainer = "node"
 // failureLogInput is a Job's pods as captureFailureLog and launcherFailureLog
 // see them. A launcher pod carries the JobSet labels of the MPI launcher and,
 // as in a real run, not the nvcre.nvidia.com/job label the workers carry.
+//
+// The workload named by workloadRef exists, created at workloadCreated
+// (seconds, like a pod's created), unless workloadGone is set. Pods created
+// before it belong to a generation a checkpoint restart replaced.
 type failureLogInput struct {
-	WorkloadRef string `yaml:"workloadRef"`
-	Recorded    bool   `yaml:"recorded"`
-	Pods        []struct {
+	WorkloadRef     string `yaml:"workloadRef"`
+	WorkloadCreated int64  `yaml:"workloadCreated"`
+	WorkloadGone    bool   `yaml:"workloadGone"`
+	Recorded        bool   `yaml:"recorded"`
+	Pods            []struct {
 		Name       string `yaml:"name"`
+		Created    int64  `yaml:"created"`
 		Launcher   bool   `yaml:"launcher"`
 		Running    bool   `yaml:"running"`
 		ExitCode   int32  `yaml:"exitCode"`
@@ -105,6 +112,10 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, nil, err
 	}
+	if err := trainerv1alpha1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+	at := func(sec int64) metav1.Time { return metav1.NewTime(time.Unix(1_700_000_000+sec, 0)) }
 
 	logs := map[string]string{}
 	objs := make([]client.Object, 0, len(in.Pods))
@@ -116,7 +127,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 				replicatedJobNameLabel: workload.LauncherJobName,
 			}
 		}
-		pod := &corev1.Pod{Name: sp.Name, Namespace: "ns", Labels: labels}
+		pod := &corev1.Pod{Name: sp.Name, Namespace: "ns", Labels: labels, CreationTimestamp: at(sp.Created)}
 		pod.Spec.NodeName = "node-" + sp.Name
 		switch {
 		case sp.Running:
@@ -130,7 +141,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
 					ExitCode:   sp.ExitCode,
 					Reason:     sp.Reason,
-					FinishedAt: metav1.NewTime(time.Unix(1_700_000_000+sp.FinishedAt, 0)),
+					FinishedAt: at(sp.FinishedAt),
 				}},
 			}}
 		}
@@ -139,8 +150,14 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 	}
 
 	job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
+	job.Spec.Workload.TrainJob = &trainerv1alpha1.TrainJobSpec{}
 	if in.WorkloadRef != "" {
 		job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{Kind: testKindTrainJob, Name: in.WorkloadRef}
+		if !in.WorkloadGone {
+			objs = append(objs, &trainerv1alpha1.TrainJob{
+				Name: in.WorkloadRef, Namespace: "ns", CreationTimestamp: at(in.WorkloadCreated),
+			})
+		}
 	}
 	if in.Recorded {
 		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{PodName: "recorded-earlier"}

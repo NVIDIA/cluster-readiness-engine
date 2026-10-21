@@ -1645,6 +1645,18 @@ const (
 // the worker replicatedJob (see workerTargetJob in pkg/workload), so the
 // launcher, whose log is the diagnosis when an MPI run fails, is not among the
 // pods that label selects.
+//
+// Only pods of the current workload are returned. restartFromCheckpoint
+// deletes the workload and creates its replacement under the same name, and
+// the old pods are garbage-collected in the background, so a launcher that
+// failed before the restart can still match the labels and would otherwise be
+// reported for the replacement. The pods carry no reference to the TrainJob,
+// and the JobSet UID they do carry (jobset.sigs.k8s.io/jobset-uid) cannot be
+// checked without read access to JobSets, which the controller does not have.
+// The creation time tells the generations apart instead: every pod of the
+// current workload was created after it, and the old pods before the old
+// workload was deleted, at least the restart grace period earlier. A workload
+// that is already gone leaves nothing to compare against, so its pods are kept.
 func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job) ([]corev1.Pod, error) {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
@@ -1661,7 +1673,29 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 	}); err != nil {
 		return nil, err
 	}
-	return podList.Items, nil
+	if len(podList.Items) == 0 {
+		return nil, nil
+	}
+
+	adapter, err := workload.ForSpec(&job.Spec.Workload)
+	if err != nil {
+		return nil, err
+	}
+	current := adapter.NewObject()
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, current); err != nil {
+		if apierrors.IsNotFound(err) {
+			return podList.Items, nil
+		}
+		return nil, err
+	}
+	created := current.GetCreationTimestamp()
+	pods := podList.Items[:0]
+	for i := range podList.Items {
+		if !podList.Items[i].CreationTimestamp.Before(&created) {
+			pods = append(pods, podList.Items[i])
+		}
+	}
+	return pods, nil
 }
 
 // launcherFailureLog returns the failure record of the workload's MPI launcher
