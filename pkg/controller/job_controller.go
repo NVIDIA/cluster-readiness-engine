@@ -890,6 +890,9 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		}
 
 		log.V(1).Info("Workload is running", "kind", ref.Kind, "name", ref.Name)
+		// A failed MPI launcher is recorded now, while the workload still
+		// reports running; see launcherFailureLog.
+		launcherLog := r.launcherFailureLog(ctx, job)
 		// Persist the observation in the same status write as the condition.
 		// timeoutPerJob (Workflow controller) and the startup stall budget are
 		// measured from this timestamp, so a workload that sat suspended in an
@@ -909,6 +912,13 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 					return false
 				}
 				j.Status.WorkloadStartTime = firstObservedRunning
+				return true
+			},
+			func(j *nvcrev1alpha1.Job) bool {
+				if launcherLog == nil || j.Status.FailureLog != nil {
+					return false
+				}
+				j.Status.FailureLog = launcherLog
 				return true
 			}); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
@@ -1457,7 +1467,7 @@ func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *nvcrev1a
 	// Stay InProgress with restart reason
 	if err := r.setJobInProgress(ctx, job, "WorkloadRestarting",
 		fmt.Sprintf("Restarting workload from checkpoint (restart %d/%d)",
-			job.Status.RestartCount, maxRestarts)); err != nil {
+			job.Status.RestartCount, maxRestarts), clearFailureLog); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
 	}
 
@@ -1480,9 +1490,22 @@ func (r *JobReconciler) setJobInProgress(ctx context.Context, job *nvcrev1alpha1
 	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobInProgress, reason, message, extra...)
 }
 
-// setJobSucceeded sets the Job status to Succeeded
+// setJobSucceeded sets the Job status to Succeeded. A failure log recorded
+// from a launcher attempt that the launcher Job then retried past is dropped:
+// it describes a failure that did not decide the run.
 func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
-	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobSucceeded, reason, message)
+	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobSucceeded, reason, message, clearFailureLog)
+}
+
+// clearFailureLog drops status.failureLog. launcherFailureLog records a
+// launcher failure before the run's outcome is known, so the record goes when
+// the run succeeds anyway or restarts from a checkpoint.
+func clearFailureLog(j *nvcrev1alpha1.Job) bool {
+	if j.Status.FailureLog == nil {
+		return false
+	}
+	j.Status.FailureLog = nil
+	return true
 }
 
 // setJobFailed sets the Job status to Failed and captures failure logs.
@@ -1584,8 +1607,14 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
 	}
+	launchers, err := r.launcherPods(ctx, job)
+	if err != nil {
+		log.V(1).Info("Failed to list launcher pods for failure log capture", "error", err)
+		return
+	}
+	pods := append(podList.Items, launchers...)
 
-	failedPod, failedContainer := failedContainerOf(podList.Items)
+	failedPod, failedContainer := failedContainerOf(pods)
 	// Record why there is no log rather than leaving the field unset. A Job whose
 	// pod was reaped before the failure was recorded (backoff limit exceeded, for
 	// example) would otherwise carry no diagnostics at all, and the operator would
@@ -1593,7 +1622,7 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 	if failedPod == nil {
 		reason := "NoTerminatedContainer"
 		tail := "pods for this Job were found, but none had a container terminated with a non-zero exit code"
-		if len(podList.Items) == 0 {
+		if len(pods) == 0 {
 			reason = "PodNotFound"
 			tail = "no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"
 		}
@@ -1601,37 +1630,99 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		log.Info("No failed pod available for failure log capture", "reason", reason)
 		return
 	}
+	job.Status.FailureLog = r.readFailureLog(ctx, failedPod, failedContainer)
+}
 
+// JobSet labels every pod with the names of its JobSet and replicatedJob. The
+// JobSet is named after the workload.
+const (
+	jobSetNameLabel        = "jobset.sigs.k8s.io/jobset-name"
+	replicatedJobNameLabel = "jobset.sigs.k8s.io/replicatedjob-name"
+)
+
+// launcherPods lists the MPI launcher pods of the Job's workload. They need a
+// lookup of their own: the nvcre.nvidia.com/job label is injected only into
+// the worker replicatedJob (see workerTargetJob in pkg/workload), so the
+// launcher, whose log is the diagnosis when an MPI run fails, is not among the
+// pods that label selects.
+func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job) ([]corev1.Pod, error) {
+	ref := job.Status.WorkloadRef
+	if ref == nil {
+		return nil, nil
+	}
+	ns := ref.Namespace
+	if ns == "" {
+		ns = job.Namespace
+	}
+	podList := &corev1.PodList{}
+	if err := r.List(ctx, podList, client.InNamespace(ns), client.MatchingLabels{
+		jobSetNameLabel:        ref.Name,
+		replicatedJobNameLabel: workload.LauncherJobName,
+	}); err != nil {
+		return nil, err
+	}
+	return podList.Items, nil
+}
+
+// launcherFailureLog returns the failure record of the workload's MPI launcher
+// if a launcher pod has failed and the Job carries no record yet, else nil.
+//
+// It runs while the workload still reports running, because the record cannot
+// wait for the workload to fail. When the launcher Job fails, JobSet deletes
+// it, and its pods with it, before the TrainJob turns Failed: Mokka measured
+// the failed launcher pod gone about half a second after it failed, so the
+// capture in setJobFailed found only the workers and named none of them (issue
+// #498). The launcher pod watch in SetupWithManager brings the reconcile here
+// as soon as the pod fails.
+func (r *JobReconciler) launcherFailureLog(ctx context.Context, job *nvcrev1alpha1.Job) *nvcrev1alpha1.FailureLog {
+	if r.Clientset == nil || job.Status.FailureLog != nil {
+		return nil
+	}
+	pods, err := r.launcherPods(ctx, job)
+	if err != nil {
+		logf.FromContext(ctx).V(1).Info("Failed to list launcher pods for failure log capture", "error", err)
+		return nil
+	}
+	pod, container := failedContainerOf(pods)
+	if pod == nil {
+		return nil
+	}
+	return r.readFailureLog(ctx, pod, container)
+}
+
+// readFailureLog returns the failure record of one failed container, with the
+// tail of its log. A log that cannot be read leaves the tail empty.
+func (r *JobReconciler) readFailureLog(ctx context.Context, pod *corev1.Pod, container *corev1.ContainerStatus) *nvcrev1alpha1.FailureLog {
+	log := logf.FromContext(ctx)
 	fl := &nvcrev1alpha1.FailureLog{
-		PodName:  failedPod.Name,
-		NodeName: failedPod.Spec.NodeName,
-		ExitCode: failedContainer.State.Terminated.ExitCode,
-		Reason:   failedContainer.State.Terminated.Reason,
+		PodName:  pod.Name,
+		NodeName: pod.Spec.NodeName,
+		ExitCode: container.State.Terminated.ExitCode,
+		Reason:   container.State.Terminated.Reason,
 	}
 
 	// Fetch tail of logs from the failed container.
 	tailLines := int64(failureLogTailLines)
 	logOpts := &corev1.PodLogOptions{
-		Container: failedContainer.Name,
+		Container: container.Name,
 		TailLines: &tailLines,
 	}
-	req := r.Clientset.CoreV1().Pods(failedPod.Namespace).GetLogs(failedPod.Name, logOpts)
+	req := r.Clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, logOpts)
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
-		log.V(1).Info("Failed to stream pod logs for failure capture", "pod", failedPod.Name, "error", err)
-		job.Status.FailureLog = fl
-		return
+		log.V(1).Info("Failed to stream pod logs for failure capture", "pod", pod.Name, "error", err)
+		return fl
 	}
 	defer stream.Close() //nolint:errcheck
 
 	tail, err := readLogTail(stream, failureLogMaxBytes)
 	if err != nil {
-		log.V(1).Info("Failed to read pod logs", "pod", failedPod.Name, "error", err)
+		log.V(1).Info("Failed to read pod logs", "pod", pod.Name, "error", err)
 	}
 	fl.Tail = tail
-	job.Status.FailureLog = fl
-	log.Info("Captured failure log", "pod", failedPod.Name, "node", failedPod.Spec.NodeName,
+	log.Info("Captured failure log", "pod", pod.Name, "node", pod.Spec.NodeName,
 		"exitCode", fl.ExitCode, "bytes", len(fl.Tail))
+	return fl
 }
 
 // failedContainerOf picks the container whose failure the Job reports: an
@@ -2263,6 +2354,14 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(bandwidthMeasurementToJob),
 			builder.WithPredicates(bandwidthCompletedPredicate()),
 		).
+		// A failed MPI launcher pod is deleted with its Job within about a
+		// second, before the workload reports the failure; this watch lets
+		// launcherFailureLog read its log first.
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(r.launcherPodToJob),
+			builder.WithPredicates(launcherFailedPredicate()),
+		).
 		// Watch Nodes for health changes - maps node events to jobs via pod lookups
 		Watches(
 			&corev1.Node{},
@@ -2316,6 +2415,50 @@ func (r *JobReconciler) nodeToJobRequests(ctx context.Context, obj client.Object
 		result = append(result, req)
 	}
 	return result
+}
+
+// launcherPodToJob maps an MPI launcher pod to the Job that owns its workload.
+// The pod names its JobSet, which is named after the TrainJob, and the
+// TrainJob carries the Job's name in its nvcre.nvidia.com/job label.
+func (r *JobReconciler) launcherPodToJob(ctx context.Context, obj client.Object) []reconcile.Request {
+	name := obj.GetLabels()[jobSetNameLabel]
+	if name == "" {
+		return nil
+	}
+	trainJob := &trainerv1alpha1.TrainJob{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: name}, trainJob); err != nil {
+		logf.FromContext(ctx).V(1).Info("Failed to map launcher pod to its Job, skipping enqueue",
+			"pod", obj.GetName(), "error", err)
+		return nil
+	}
+	jobName := trainJob.Labels[labelJobKey]
+	if jobName == "" {
+		return nil
+	}
+	return []reconcile.Request{{Namespace: trainJob.Namespace, Name: jobName}}
+}
+
+// launcherFailedPredicate passes the event in which an MPI launcher pod is
+// first seen with a container that exited non-zero. Create counts too, so a
+// launcher that failed while the controller was down is still read if the pod
+// remains.
+func launcherFailedPredicate() predicate.Predicate {
+	isFailedLauncher := func(obj client.Object) bool {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok || pod.Labels[replicatedJobNameLabel] != workload.LauncherJobName {
+			return false
+		}
+		failed, _ := failedContainerOf([]corev1.Pod{*pod})
+		return failed != nil
+	}
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool { return isFailedLauncher(e.Object) },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return isFailedLauncher(e.ObjectNew) && !isFailedLauncher(e.ObjectOld)
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
 }
 
 // nodeHealthChangePredicate filters node events to only health-relevant changes

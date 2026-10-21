@@ -7,22 +7,30 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 // The stored tail was 30 lines, right for a workload whose last line is the
@@ -60,67 +68,157 @@ func TestFailureLogTail(t *testing.T) {
 	})
 }
 
+// stubContainer is the main container's name in the catalog's pod templates,
+// and the worker replicatedJob's name.
+const stubContainer = "node"
+
+// failureLogInput is a Job's pods as captureFailureLog and launcherFailureLog
+// see them. A launcher pod carries the JobSet labels of the MPI launcher and,
+// as in a real run, not the nvcre.nvidia.com/job label the workers carry.
+type failureLogInput struct {
+	WorkloadRef string `yaml:"workloadRef"`
+	Recorded    bool   `yaml:"recorded"`
+	Pods        []struct {
+		Name       string `yaml:"name"`
+		Launcher   bool   `yaml:"launcher"`
+		Running    bool   `yaml:"running"`
+		ExitCode   int32  `yaml:"exitCode"`
+		Reason     string `yaml:"reason"`
+		FinishedAt int64  `yaml:"finishedAt"`
+		Log        string `yaml:"log"`
+	} `yaml:"pods"`
+}
+
+// newFailureLogReconciler builds a reconciler over the input's pods, with a
+// Clientset whose log endpoint serves each pod's log.
+func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1alpha1.Job, error) {
+	t.Helper()
+	var in failureLogInput
+	if err := yaml.Unmarshal([]byte(raw), &in); err != nil {
+		return nil, nil, err
+	}
+
+	scheme := runtime.NewScheme()
+	if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+
+	logs := map[string]string{}
+	objs := make([]client.Object, 0, len(in.Pods))
+	for _, sp := range in.Pods {
+		labels := map[string]string{"nvcre.nvidia.com/job": "j"}
+		if sp.Launcher {
+			labels = map[string]string{
+				jobSetNameLabel:        in.WorkloadRef,
+				replicatedJobNameLabel: workload.LauncherJobName,
+			}
+		}
+		pod := &corev1.Pod{Name: sp.Name, Namespace: "ns", Labels: labels}
+		pod.Spec.NodeName = "node-" + sp.Name
+		switch {
+		case sp.Running:
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name:  stubContainer,
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}}
+		case sp.ExitCode != 0:
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name: stubContainer,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					ExitCode:   sp.ExitCode,
+					Reason:     sp.Reason,
+					FinishedAt: metav1.NewTime(time.Unix(1_700_000_000+sp.FinishedAt, 0)),
+				}},
+			}}
+		}
+		logs[sp.Name] = sp.Log
+		objs = append(objs, pod)
+	}
+
+	job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
+	if in.WorkloadRef != "" {
+		job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{Kind: testKindTrainJob, Name: in.WorkloadRef}
+	}
+	if in.Recorded {
+		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{PodName: "recorded-earlier"}
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+		WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
+			pod, ok := obj.(*corev1.Pod)
+			if !ok {
+				return nil
+			}
+			if jn, found := pod.Labels[nodemonitor.NVCREJobLabel]; found {
+				return []string{jn}
+			}
+			return nil
+		}).
+		Build()
+
+	// GET /api/v1/namespaces/ns/pods/<name>/log
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
+		if len(parts) != 7 || parts[6] != "log" {
+			http.NotFound(w, req)
+			return
+		}
+		_, _ = io.WriteString(w, logs[parts[5]])
+	}))
+	t.Cleanup(srv.Close)
+	cs, err := kubernetes.NewForConfig(&rest.Config{Host: srv.URL})
+	if err != nil {
+		return nil, nil, err
+	}
+	return &JobReconciler{Client: c, Scheme: scheme, Clientset: cs}, job, nil
+}
+
 // A Job that fails after its pod is gone must still carry a record saying so.
 // captureFailureLog used to return silently, leaving status.failureLog unset.
+// The MPI launcher is found by its JobSet labels, since it does not carry the
+// label the workers do (issue #498).
 func TestFailureLogCapture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "failure-log-capture",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var in struct {
-			Pods []struct {
-				Name    string `yaml:"name"`
-				Running bool   `yaml:"running"`
-			} `yaml:"pods"`
-		}
-		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+		r, job, err := newFailureLogReconciler(t, tc.Inputs["input.yaml"])
+		if err != nil {
 			return err
 		}
-
-		scheme := runtime.NewScheme()
-		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
-			return err
-		}
-		if err := corev1.AddToScheme(scheme); err != nil {
-			return err
-		}
-
-		objs := make([]client.Object, 0, len(in.Pods))
-		for _, sp := range in.Pods {
-			pod := &corev1.Pod{
-				Name: sp.Name, Namespace: "ns",
-				Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
-			}
-			if sp.Running {
-				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
-					Name:  "node",
-					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
-				}}
-			}
-			objs = append(objs, pod)
-		}
-
-		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
-		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
-			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
-				pod, ok := obj.(*corev1.Pod)
-				if !ok {
-					return nil
-				}
-				if jn, found := pod.Labels[nodemonitor.NVCREJobLabel]; found {
-					return []string{jn}
-				}
-				return nil
-			}).
-			Build()
-		// Clientset is only dereferenced once a failed pod is found, which is
-		// the path these cases do not take.
-		r := &JobReconciler{Client: c, Scheme: scheme, Clientset: &kubernetes.Clientset{}}
 
 		r.captureFailureLog(context.Background(), job)
 
 		b, err := json.MarshalIndent(job.Status.FailureLog, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+// launcherFailureLog records a failed MPI launcher while the workload still
+// reports running, because JobSet deletes the launcher pod about half a second
+// after it fails, before the failure reaches the Job (issue #498). It returns
+// null when there is nothing to record or the Job already carries a record.
+func TestLauncherFailureLog(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "launcher-failure-log",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		r, job, err := newFailureLogReconciler(t, tc.Inputs["input.yaml"])
+		if err != nil {
+			return err
+		}
+
+		got := r.launcherFailureLog(context.Background(), job)
+
+		b, err := json.MarshalIndent(got, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -248,4 +346,85 @@ func TestFailedContainerOf(t *testing.T) {
 			require.Equal(t, tt.wantContainer, gotContainer.Name)
 		})
 	}
+}
+
+// The launcher pod watch wakes the Job only on the event in which a launcher
+// is first seen failed. Every other pod event in the cluster passes through
+// this predicate, so it must stay this narrow.
+func TestLauncherFailedPredicate(t *testing.T) {
+	pod := func(launcher bool, exitCode int32) *corev1.Pod {
+		p := &corev1.Pod{Name: "p", Namespace: "ns", Labels: map[string]string{replicatedJobNameLabel: stubContainer}}
+		if launcher {
+			p.Labels[replicatedJobNameLabel] = workload.LauncherJobName
+		}
+		state := corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}
+		if exitCode >= 0 {
+			state = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: exitCode}}
+		}
+		p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: stubContainer, State: state}}
+		return p
+	}
+	const running = -1
+	pred := launcherFailedPredicate()
+	tests := []struct {
+		name     string
+		old, new *corev1.Pod
+		want     bool
+	}{
+		{name: "launcher turns failed", old: pod(true, running), new: pod(true, 1), want: true},
+		{name: "launcher already failed", old: pod(true, 1), new: pod(true, 1)},
+		{name: "launcher succeeds", old: pod(true, running), new: pod(true, 0)},
+		{name: "worker turns failed", old: pod(false, running), new: pod(false, 137)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, pred.Update(event.UpdateEvent{ObjectOld: tt.old, ObjectNew: tt.new}))
+		})
+	}
+	require.True(t, pred.Create(event.CreateEvent{Object: pod(true, 1)}), "a failed launcher seen at startup")
+	require.False(t, pred.Create(event.CreateEvent{Object: pod(true, running)}))
+	require.False(t, pred.Delete(event.DeleteEvent{Object: pod(true, 1)}))
+}
+
+// A launcher pod names its JobSet, which is named after the TrainJob; the
+// TrainJob names the Job in its nvcre.nvidia.com/job label.
+func TestLauncherPodToJob(t *testing.T) {
+	scheme := newWorkflowScheme(t)
+	require.NoError(t, trainerv1alpha1.AddToScheme(scheme))
+	trainJob := &trainerv1alpha1.TrainJob{Name: "j-workload", Namespace: "ns",
+		Labels: map[string]string{labelJobKey: "j"}}
+	unlabelled := &trainerv1alpha1.TrainJob{Name: "other-workload", Namespace: "ns"}
+	r := &JobReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(trainJob, unlabelled).Build()}
+	launcher := func(jobSet string) *corev1.Pod {
+		return &corev1.Pod{Name: jobSet + "-launcher-0-0", Namespace: "ns",
+			Labels: map[string]string{jobSetNameLabel: jobSet, replicatedJobNameLabel: workload.LauncherJobName}}
+	}
+	ctx := context.Background()
+
+	require.Equal(t, []reconcile.Request{{Namespace: "ns", Name: "j"}}, r.launcherPodToJob(ctx, launcher("j-workload")))
+	require.Empty(t, r.launcherPodToJob(ctx, launcher("other-workload")), "a TrainJob NVCRE did not create")
+	require.Empty(t, r.launcherPodToJob(ctx, launcher("missing")), "no TrainJob")
+	require.Empty(t, r.launcherPodToJob(ctx, &corev1.Pod{Name: "bare", Namespace: "ns"}), "not a JobSet pod")
+}
+
+// A failure log recorded from a launcher attempt is dropped when the run
+// succeeds after the launcher Job's retry, so a Succeeded Job never carries a
+// failure that did not decide the run. restartFromCheckpoint drops it with the
+// same clearFailureLog.
+func TestSucceededJobDropsLauncherFailureLog(t *testing.T) {
+	ctx := context.Background()
+	job := &nvcrev1alpha1.Job{Name: "j", Namespace: testNS, Status: nvcrev1alpha1.JobStatus{
+		FailureLog: &nvcrev1alpha1.FailureLog{PodName: "j-workload-launcher-0-0-a", ExitCode: 1},
+	}}
+	c := fake.NewClientBuilder().WithScheme(newWorkflowScheme(t)).WithObjects(job).
+		WithStatusSubresource(job).Build()
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), job))
+	r := &JobReconciler{Client: c, Recorder: events.NewFakeRecorder(10)}
+
+	require.NoError(t, r.setJobSucceeded(ctx, job, ReasonWorkloadCompleted, "done"))
+
+	persisted := &nvcrev1alpha1.Job{}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), persisted))
+	require.Nil(t, persisted.Status.FailureLog)
+	require.False(t, clearFailureLog(persisted), "nothing left to clear")
 }

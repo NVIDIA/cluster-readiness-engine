@@ -1,0 +1,11 @@
+# A running launcher has nothing to record; neither does a failed worker, which
+# is not this capture's concern.
+workloadRef: j-workload
+pods:
+  - name: j-workload-node-0-0
+    exitCode: 137
+    reason: Error
+    finishedAt: 40
+  - name: j-workload-launcher-0-0
+    launcher: true
+    running: true

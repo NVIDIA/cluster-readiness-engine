@@ -271,7 +271,8 @@ pod uses `restartPolicy: Never` and, under KAI, the launcher Job's
 fails there without a second 20-minute wait and `status.failureLog` carries
 the init container's message. Outside KAI the launcher is only created once
 every worker is Ready, and the Job waits until `spec.timeoutPerJob`; there the
-launcher Job's `backoffLimit` of 1 gives a failed launcher one replacement pod.
+launcher Job's `backoffLimit` of 1 gives a failed launcher one replacement pod,
+and `status.failureLog` carries the first attempt's log.
 
 ## With bandwidth measurement
 

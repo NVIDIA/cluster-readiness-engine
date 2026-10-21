@@ -69,7 +69,7 @@ The resulting `TrainJob` carries those three labels plus the two the controller 
 | `failedNodes` | []FailedNode | Nodes identified as failed; each entry has `name`, `reason`, and optional `message` |
 | `workloadCreationRejectedSince` | Time | When the API server first rejected the workload create (admission webhook or policy denial, ResourceQuota, validation). Cleared when the create succeeds. While set, the Job reports `InProgress` with reason `WorkloadCreationRejected`; a rejection that outlasts the workload creation deadline (default 10 minutes) fails the Job with `WorkloadCreationError`. A `Forbidden` create that a SelfSubjectAccessReview shows is an RBAC denial does not start this clock. See [#488](https://github.com/NVIDIA/cluster-readiness-engine/issues/488) |
 | `restartCount` | int32 | Number of checkpoint-based restarts |
-| `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail) |
+| `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail). For an MPI workload it is the launcher's, read as soon as the launcher pod fails, because JobSet deletes that pod before the workload reports the failure. When the launcher Job retries, the first failed attempt is recorded, and the record is dropped if the run then succeeds or restarts from a checkpoint |
 
 Each `FailedNode` entry has:
 
