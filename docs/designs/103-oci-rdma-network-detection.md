@@ -25,14 +25,12 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
 
 1. **Resolve the NAD from the cluster when no `networkAttachments` list is set.** Detection runs only on an OCI target whose resolved category options set no `networkAttachments` (ADR-101) and resolve `mlnxPerNode > 0`, which is exactly when `oci-mlnxnics-comm.yaml` renders. It lists NetworkAttachmentDefinitions in every namespace and keeps those annotated `k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics`, the resource the OCI fragment requests. The chosen `<namespace>/<name>` reaches the template through a new `BuildConfig.OCISecondaryNetwork` field. An explicit list always wins and skips detection entirely, including its RBAC. No API change.
 
-2. **Resolution rules.** They are the same for the controller and `nvcrectl certification render --dry-run`:
+2. **Resolution rules.** They are the same for the controller and `nvcrectl certification render --dry-run`. The **candidates** are the matches in the workload namespace if there are any, otherwise all matches. A NAD in the workload namespace therefore always wins over NADs elsewhere, and under Multus `namespaceIsolation` it is the only one the pod can attach.
 
-   | Matches | Result |
+   | Candidates | Result |
    |---|---|
-   | Exactly one in the workload namespace | Use it, whatever exists elsewhere. Under Multus `namespaceIsolation` it is the only one the pod can attach. |
-   | Several in the workload namespace | Apply the rows below to those candidates only. |
-   | None in the workload namespace, one elsewhere | Use it. |
-   | None in the workload namespace, several elsewhere, all equivalent | Pick the first `<ns>/<name>` in sorted order. Emit a Normal `SecondaryNetworkDetection` event naming the choice and the equivalents it skipped. |
+   | Exactly one | Use it. |
+   | Several, all equivalent | Pick the first `<ns>/<name>` in sorted order. Emit a Normal `SecondaryNetworkDetection` event naming the choice and the equivalents it skipped. |
    | Several that differ | Fail. List the candidates and the top-level config keys that differ. When one of them is `network-operator/sriov-net`, add that a copy created by hand as a workaround for issue #542 should be deleted. |
    | Zero | Fail. Say what was found (NADs carrying another `resourceName`, or none) and the ways forward: create a NAD for `nvidia.com/mlnxnics`, list the networks explicitly with `networkAttachments`, use `rdmaDeviceAccess: hostPath` on a cluster that exposes `/dev/infiniband` without a device plugin (ADR-088), or set `mlnxPerNode: 0` to certify without RDMA NICs. |
    | List error | See Decision 3. Never treated as zero matches. |
@@ -57,7 +55,7 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
 
 5. **Read-only, uncached, narrow RBAC.** The list goes through the manager's `APIReader` as an `unstructured` `k8s.cni.cncf.io/v1` `NetworkAttachmentDefinitionList`. Going uncached means no informer, so no `watch` verb and no permanent cache of every NAD in the cluster. Detection runs once per category Workflow creation, under the gate in Decision 1. `nvcre-manager-role` gains `get` and `list` on `k8s.cni.cncf.io/network-attachment-definitions`, and nothing else. This is a read, so it goes in the cluster-wide manager role, not in `nvcre-run-role` (ADR-092).
 
-6. **Document Multus `namespaceIsolation` rather than solve it.** With `namespaceIsolation: true`, Multus rejects a pod that references a NAD in another namespace unless that namespace is listed in `globalNamespaces`. `default` is allowed implicitly only while `globalNamespaces` is unset; once it is set, `default` must be listed too. Sites with isolation enabled have two options: list the platform NAD's namespace in `globalNamespaces`, or provide a NAD in the workload namespace, which detection then uses whatever exists elsewhere (Decision 2, first row). An explicit `networkAttachments` list is a third.
+6. **Document Multus `namespaceIsolation` rather than solve it.** With `namespaceIsolation: true`, Multus rejects a pod that references a NAD in another namespace unless that namespace is listed in `globalNamespaces`. `default` is allowed implicitly only while `globalNamespaces` is unset; once it is set, `default` must be listed too. Sites with isolation enabled have two options: list the platform NAD's namespace in `globalNamespaces`, or provide a NAD in the workload namespace, which detection then uses whatever exists elsewhere (Decision 2). An explicit `networkAttachments` list is a third.
 
 ### Scope
 
@@ -95,6 +93,7 @@ This change is written against ADR-101's (#510) versions of `oci-mlnxnics-comm.y
   - a single match in the workload namespace that differs from a NAD elsewhere: the local one wins
   - none: no NADs at all, NADs carrying another `resourceName`, and a NAD with the right value under the wrong key (`k8s.cni.cncf.io/resourceName`, the DRA attribute key, instead of `k8s.v1.cni.cncf.io/resourceName`)
   - several equivalent outside the workload namespace: whitespace and key order, names only
+  - several equivalent in the workload namespace, beside a NAD elsewhere that differs: the sorted pick among the local ones, with the event
   - several that differ: IPAM, CNI type, `cniVersion`, config that is not JSON, empty `spec.config`, and a hand-made `network-operator/sriov-net` beside the platform's NAD, which adds the delete hint
   - list errors: `Forbidden` and NoMatch (terminal), a 5xx and a timeout (retryable)
   - no lookup, where the reader fails the test if called: `mlnxPerNode = 0`, a non-OCI platform, and a `networkAttachments` list
