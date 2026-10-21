@@ -108,4 +108,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 098 | [`nvcrectl setup init` Takes Chart Values and Keeps Them Across Runs](098-setup-init-chart-values.md) |
 | 099 | [Relay the Failure Attribution NVCRE Already Has, and Do Not Classify Causes from Log Text](099-failed-node-attribution-relay.md) |
 | 100 | [One Fragment Owns Each Variable in a Composed NCCL Profile](100-catalog-env-fragment-ownership.md) |
-| 101 | [Detect the OCI RDMA NetworkAttachmentDefinition Instead of Assuming `network-operator/sriov-net`](101-oci-rdma-network-detection.md) |
+| 103 | [Detect the OCI RDMA NetworkAttachmentDefinition Instead of Assuming `network-operator/sriov-net`](103-oci-rdma-network-detection.md) |
