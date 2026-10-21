@@ -23,6 +23,20 @@ followed them.
   image pull. Every catalog entry now renders them on its `node` pods and, for the
   MPI entries, on the `launcher` pod too (#534)
 
+### Security
+
+- The manager image and the `nvcrectl` binaries are built with Go 1.27.3, which
+  distrusts eight intermediate CA keys in `crypto/x509` chain verification. A binary
+  built with Go 1.27.2 still accepts a certificate issued through those keys, so
+  anyone able to misuse them could impersonate a host to it. The manager is not
+  exposed: it trusts only the cluster's CA for the API server. `nvcrectl` is exposed
+  when a kubeconfig carries no `certificate-authority-data` and falls back to the
+  system roots, as a kubeconfig for a proxy with a public certificate can; a
+  certificate through one of those keys could then intercept the kubeconfig's
+  credentials. Upgrade `nvcrectl`, or pin the cluster CA in the kubeconfig. The `go`
+  directive, which every workflow builds from through `go-version-file: go.mod`, and
+  the Dockerfile builder image both move to 1.27.3
+
 ## [0.8.0] - 2026-10-19
 
 ### Deprecated
