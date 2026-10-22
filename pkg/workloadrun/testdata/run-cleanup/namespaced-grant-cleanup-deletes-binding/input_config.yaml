@@ -1,0 +1,10 @@
+# --grant-run-access binds the controller in the existing namespace. --cleanup
+# deletes that binding, but only after the WorkloadRun and its Workflow are
+# gone, since the Workflow's finalizer needs it.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+doCleanup: true
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: false

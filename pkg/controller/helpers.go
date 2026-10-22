@@ -8,6 +8,8 @@ import (
 
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
 
 // --- Shared reason constants (all tiers) ---
@@ -18,7 +20,8 @@ const (
 
 	// ReasonNICResourceDetection is shared by the Certification and WorkloadRun
 	// tiers: both emit a Normal event under it when NIC resource auto-detection
-	// ran (on-prem GB200/GB300 target with nicResourceName unset) and found
+	// ran (on-prem GB200/GB300 or x86 HGX B200/B300 target with
+	// nicResourceName unset) and found
 	// zero or multiple qualifying candidates, so nothing was injected.
 	ReasonNICResourceDetection = "NICResourceDetection"
 
@@ -27,6 +30,20 @@ const (
 	// exactly the GPU NIC networks TCPXO needs on every target node, so the
 	// catalog's default network names were rendered.
 	ReasonGKENetworkDetection = "GKENetworkDetection"
+
+	// ReasonTCPXOPluginDetection is the Certification tier's Warning event
+	// when TCPXO plugin version detection ran (GCP H100 target) and did not
+	// find one mapped plugin release on every target node, so the nearest
+	// safe profile's GCP H100 workload and tcpxo-daemon images were rendered
+	// (the latest mapped release for a newer tag, the minimum otherwise).
+	ReasonTCPXOPluginDetection = "TCPXOPluginDetection"
+
+	// ReasonGPUArchitectureDefaults is the Warning event both the Certification
+	// and WorkloadRun tiers emit when the detected GPU architecture is not
+	// listed in the catalog's gpu-defaults.yaml, so the workflow was sized
+	// with the Go-side fallback (four GPUs, no NICs) instead of a known node
+	// shape (ADR-094).
+	ReasonGPUArchitectureDefaults = "GPUArchitectureDefaults"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's
@@ -98,8 +115,9 @@ const (
 	ReasonJobValidationFailed = "JobValidationFailed"
 
 	// ReasonJobSchedulingBlocked marks a running Workflow iteration in which
-	// at least one group's Job reports WorkloadSchedulingBlocked. The message
-	// relays that Job's scheduler diagnosis (ADR-083).
+	// at least one group's Job reports WorkloadSchedulingBlocked or
+	// WorkloadCreationRejected. The message relays that Job's diagnosis
+	// (ADR-083, issue #488).
 	ReasonJobSchedulingBlocked = "JobSchedulingBlocked"
 
 	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
@@ -132,6 +150,34 @@ const (
 	// name is already taken by an object this Workflow did not create. The
 	// foreign object is neither adopted nor recorded for cleanup.
 	ReasonDependencyNameCollision = "DependencyNameCollision"
+	// ReasonNamespacePermissionsMissing marks a Workflow waiting for the
+	// controller's write access in its namespace: a SelfSubjectAccessReview
+	// was denied, or a write was forbidden and a fresh review confirmed the
+	// denial. Non-terminal until --namespace-access-timeout expires, when the
+	// Workflow fails with the same reason and the RoleBinding to apply
+	// (ADR-092).
+	ReasonNamespacePermissionsMissing = "NamespacePermissionsMissing"
+	// ReasonNamespaceAccessCheckFailed marks a Workflow whose access check
+	// could not run because a SelfSubjectAccessReview could not be created.
+	// An unanswered check is never treated as permission, so the Workflow
+	// waits under the same bound as ReasonNamespacePermissionsMissing.
+	ReasonNamespaceAccessCheckFailed = "NamespaceAccessCheckFailed"
+	// ReasonNamespaceAccessGranted is the NamespaceAccess condition's reason
+	// once a Workflow that waited has its access.
+	ReasonNamespaceAccessGranted = "NamespaceAccessGranted"
+	// ReasonNamespaceAccessDenied and ReasonNamespaceAccessReviewError are the
+	// Warning events emitted when a Workflow starts waiting. They differ from
+	// the InProgress reasons on purpose: a Warning sharing the transition's
+	// reason would aggregate with it into one row (ADR-080 decision 5), and a
+	// wait that begins mid-run makes no transition at all.
+	ReasonNamespaceAccessDenied      = "NamespaceAccessDenied"
+	ReasonNamespaceAccessReviewError = "NamespaceAccessReviewError"
+	// ReasonNodeResultsWriteRejected is the Warning event emitted when a
+	// node-result ConfigMap write is rejected although the controller has
+	// access, by an admission policy or ResourceQuota. The Workflow goes on
+	// without the record, as before ADR-092, but no longer only in the log.
+	ReasonNodeResultsWriteRejected = "NodeResultsWriteRejected"
+
 	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
 	// is invalid after overrides. This includes workload metadata that fails
 	// label validation even when no gang scheduler is configured, as well as a
@@ -167,6 +213,15 @@ const (
 	// See ADR-083.
 	ReasonWorkloadSchedulingBlocked = "WorkloadSchedulingBlocked"
 
+	// ReasonWorkloadCreationRejected indicates the API server is rejecting
+	// the workload create (admission webhook or policy denial, exhausted
+	// ResourceQuota). The Job stays InProgress and the controller keeps
+	// retrying, since some rejections clear (a TrainingRuntime that is not
+	// ready yet, quota that frees up). A rejection that outlasts the
+	// workload creation deadline fails the Job with
+	// ReasonWorkloadCreationError. See issue #488.
+	ReasonWorkloadCreationRejected = "WorkloadCreationRejected"
+
 	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
 	// BandwidthMeasurement child resource could not be created. Handling is
 	// non-fatal, so this event is the operator-visible signal; a threshold that
@@ -177,11 +232,17 @@ const (
 	ReasonHardwareFailureDetected = "HardwareFailureDetected"
 )
 
-// Framework type constants for WorkloadRun.
+// defaultNodeHealthFailureMessage is the per-node message recorded when the node
+// health detector flags a node but supplies no message of its own. A detector
+// that does supply one has it kept verbatim (ADR-099).
+const defaultNodeHealthFailureMessage = "Hardware failure detected by node health check"
+
+// Framework type constants for WorkloadRun, shared with pkg/platform so the
+// builders and ValidateWorkloadVolumes read the names this package selects by.
 const (
-	FrameworkTorch = "torch"
-	FrameworkMPI   = "mpi"
-	FrameworkExec  = "exec"
+	FrameworkTorch = platform.FrameworkTorch
+	FrameworkMPI   = platform.FrameworkMPI
+	FrameworkExec  = platform.FrameworkExec
 )
 
 // --- Shared name-collision error ---
@@ -198,6 +259,17 @@ type nameCollisionError struct {
 }
 
 func (e *nameCollisionError) Error() string { return e.Message }
+
+// jobCreateError marks a failure to create (or adopt) a group's Job, as
+// opposed to one of its job-scoped dependencies, so a rejection is reported
+// with the reason that names what was rejected.
+type jobCreateError struct {
+	err error
+}
+
+func (e *jobCreateError) Error() string { return e.err.Error() }
+
+func (e *jobCreateError) Unwrap() error { return e.err }
 
 // gangSchedulingConflictError reports that a resolved Workflow no longer
 // agrees with the gang-scheduling intent its owner persisted. It is terminal:

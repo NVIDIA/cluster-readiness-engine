@@ -98,6 +98,8 @@ func newInitCommand(version string) *cobra.Command {
 	var chartRef, trainerChartRef string
 	var autoApprove bool
 	var versionOverride string
+	var rbacScope string
+	var values ChartValues
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	configFlags.Namespace = nil
@@ -132,19 +134,35 @@ Earlier cleanup is not rolled back.
 
 The NVCRE CRDs are server-side-applied from the chart before every Helm
 upgrade, so re-running init after a version bump also updates the CRD
-schemas (Helm alone only installs CRDs on the first install).`,
+schemas (Helm alone only installs CRDs on the first install).
+
+Pass chart values for the NVCRE release with --values/-f, --set and --set-json,
+in Helm's syntax and with Helm's precedence. They do not apply to Kubeflow
+Trainer. -f - (stdin) needs --auto-approve, and URLs are not accepted.
+
+Re-running init keeps the values set on the installed release (ADR-098),
+except the controller image's repository, tag and digest, which are worked out
+on every run: from this run's values, else --image, else the CLI version.
+--reset-values drops the kept values except rbac.scope and rbac.runNamespaces.
+A value with its own flag (--image, --rbac-scope) is set by the flag or by a
+value on one run, not both. --image-pull-secret adds nvcrectl-pull-secret to
+the manager.imagePullSecrets list. Preflight prints the paths of the values the
+release will be given, without the values themselves.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunInit(version, image, imagePullSecret, skipPhases, autoApprove,
-				configFlags, versionOverride, chartRef, trainerChartRef,
-				os.Stdin, os.Stderr)
+			if err := validateRBACScope(rbacScope); err != nil {
+				return err
+			}
+			return RunInitWithValues(version, image, imagePullSecret, skipPhases, autoApprove,
+				configFlags, versionOverride, chartRef, trainerChartRef, rbacScope, values,
+				cmd.InOrStdin(), cmd.ErrOrStderr())
 		},
 	}
 
 	cmd.Flags().StringVar(&skipPhases, "skip-phases", "",
 		"Comma-separated phases to skip (e.g., deps)")
 	cmd.Flags().StringVar(&image, "image", "",
-		"Override controller image (default: "+
+		"Override controller image, as repo:tag or repo@sha256:<digest> (default: "+
 			defaultImageRegistry+"/"+defaultImageRepository+":<version>)")
 	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
 		"GitHub token — creates ghcr.io pull secret and authenticates chart pulls from GHCR (mirrors need helm registry login)")
@@ -156,6 +174,17 @@ schemas (Helm alone only installs CRDs on the first install).`,
 		"Skip interactive confirmation prompt (for CI/automation)")
 	cmd.Flags().StringVar(&versionOverride, "version", "",
 		"Helm chart version to install (required for dev builds)")
+	cmd.Flags().StringVar(&rbacScope, "rbac-scope", "",
+		"Where the controller may write: cluster or namespaced (chart value rbac.scope, ADR-092). "+
+			"Default: keep the installed release's value, or the chart default on a first install")
+	cmd.Flags().StringSliceVarP(&values.Files, "values", "f", nil,
+		"NVCRE chart values file, as with helm (can specify multiple; - reads stdin and needs --auto-approve)")
+	cmd.Flags().StringArrayVar(&values.Set, "set", nil,
+		"NVCRE chart value on the command line, as with helm --set (can specify multiple)")
+	cmd.Flags().StringArrayVar(&values.SetJSON, "set-json", nil,
+		"NVCRE chart JSON value on the command line, as with helm --set-json (can specify multiple; needs Helm 3.10+)")
+	cmd.Flags().BoolVar(&values.Reset, "reset-values", false,
+		"Do not keep the installed release's values, except rbac.scope and rbac.runNamespaces")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -163,16 +192,35 @@ schemas (Helm alone only installs CRDs on the first install).`,
 
 // RunInit executes the init phases sequentially. chartRef and trainerChartRef
 // override the chart locations the NVCRE and Kubeflow Trainer releases are
-// installed from; empty means the published GHCR charts.
+// installed from; empty means the published GHCR charts. rbacScope sets the
+// chart's rbac.scope; empty keeps the installed release's value. It passes no
+// chart values of its own; the installed release's values are kept
+// (ADR-098). Use RunInitWithValues to pass chart values.
 func RunInit(
 	version string,
 	image, imagePullSecret, skipPhases string, autoApprove bool,
 	configFlags *kubeconfig.ConfigFlags, versionOverride string,
-	chartRef, trainerChartRef string,
+	chartRef, trainerChartRef, rbacScope string,
+	in io.Reader, out io.Writer,
+) error {
+	return RunInitWithValues(version, image, imagePullSecret, skipPhases, autoApprove,
+		configFlags, versionOverride, chartRef, trainerChartRef, rbacScope, ChartValues{}, in, out)
+}
+
+// RunInitWithValues is RunInit with this run's chart values for the NVCRE
+// release: --values, --set, --set-json and --reset-values (ADR-098).
+func RunInitWithValues(
+	version string,
+	image, imagePullSecret, skipPhases string, autoApprove bool,
+	configFlags *kubeconfig.ConfigFlags, versionOverride string,
+	chartRef, trainerChartRef, rbacScope string, values ChartValues,
 	in io.Reader, out io.Writer,
 ) error {
 	skip, err := parseSkipPhases(skipPhases, initSkipPhases...)
 	if err != nil {
+		return err
+	}
+	if err := values.validate(skip[phaseHelm], autoApprove); err != nil {
 		return err
 	}
 	kubeconfigPath, kubeContext := *configFlags.KubeConfig, *configFlags.Context
@@ -198,11 +246,48 @@ func RunInit(
 		return fmt.Errorf("[preflight] %w", err)
 	}
 
-	if image == "" {
-		if versionOverride != "" {
-			image = defaultImageRegistry + "/" + defaultImageRepository + ":" + versionOverride
-		} else {
-			image = defaultImage(version)
+	defaultRef, defaultSource := defaultImage(version), sourceCLIVersion
+	if versionOverride != "" {
+		defaultRef = defaultImageRegistry + "/" + defaultImageRepository + ":" + versionOverride
+		defaultSource = sourceVersion
+	}
+	imageRef, imageSource := defaultRef, defaultSource
+	if image != "" {
+		imageRef, imageSource = image, sourceImageFlag
+	}
+	imageName, imageTag, imageDigest := parseImage(imageRef)
+	controllerImage := imageChoice{repository: imageName, tag: imageTag, digest: imageDigest, source: imageSource}
+
+	// Read the installed release's values, check this run's against them and
+	// show the result before anything changes, so a conflict leaves the
+	// cluster untouched (ADR-098 decision 6). Nothing is read when the helm
+	// phase is skipped.
+	var valuesFile string
+	if !skip[phaseHelm] {
+		helmPath, err := ensureHelm()
+		if err != nil {
+			return fmt.Errorf("[preflight] %w", err)
+		}
+		ws, err := newValuesWorkspace()
+		if err != nil {
+			return fmt.Errorf("[preflight] %w", err)
+		}
+		defer ws.cleanup()
+		valuesFile, controllerImage, err = prepareNVCREValues(helmPath, kubeconfigPath, kubeContext, ws,
+			nvcreValuesInput{
+				values: values,
+				opts: valuesOptions{
+					reset:              values.Reset,
+					imageFlag:          image,
+					defaultImage:       defaultRef,
+					defaultImageSource: defaultSource,
+					pullSecret:         imagePullSecret != "",
+					rbacScope:          rbacScope,
+				},
+				in: in,
+			}, out)
+		if err != nil {
+			return fmt.Errorf("[preflight] %w", err)
 		}
 	}
 
@@ -223,7 +308,7 @@ func RunInit(
 		_, _ = fmt.Fprintf(out, "  Context:  %s\n", ctxName)
 		_, _ = fmt.Fprintf(out, "  Server:   %s\n", serverURL)
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
-		printPhaseList(out, skip, initPhaseSummary(trainerChartRef, chartRef, image))
+		printPhaseList(out, skip, initPhaseSummary(trainerChartRef, chartRef, controllerImage))
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
 		if !promptForConfirmation(in, out) {
@@ -255,8 +340,7 @@ func RunInit(
 		return nil
 	}
 
-	pullSecret, err := setupControllerSecret(sp, imagePullSecret)
-	if err != nil {
+	if _, err := setupControllerSecret(sp, imagePullSecret); err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
 	if nvcreOutput, err := installHelmRelease(helmInstallParams{
@@ -267,9 +351,8 @@ func RunInit(
 		kubeContext:     kubeContext,
 		versionOverride: versionOverride,
 		registryToken:   imagePullSecret,
-		image:           image,
 		chartRef:        chartRef,
-		pullSecretName:  pullSecret,
+		valuesFile:      valuesFile,
 		out:             out,
 	}); err != nil {
 		// Same attempt-then-classify wrapper as the [deps] phase for
@@ -1085,10 +1168,10 @@ type phaseInfo struct {
 // summary cannot advertise a phase the command does not gate. That divergence
 // is what made `--skip-phases=helm` a silent no-op that only changed the
 // printed summary.
-func initPhaseSummary(trainerChartRef, chartRef, image string) []phaseInfo {
+func initPhaseSummary(trainerChartRef, chartRef string, image imageChoice) []phaseInfo {
 	return []phaseInfo{
 		{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s (%s)", kubeflowTrainerVersion, trainerChartRef)},
-		{phaseHelm, fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
+		{phaseHelm, fmt.Sprintf("NVCRE Helm chart (%s), image %s (%s)", chartRef, image, image.source)},
 	}
 }
 
@@ -1552,7 +1635,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, out io.W
 		ns = &corev1.Namespace{
 			Name: name,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "nvcrectl",
+				"app.kubernetes.io/managed-by": managedByNvcrectl,
 			},
 		}
 		_, _ = fmt.Fprintf(out, "[namespace] Creating namespace %s...\n", name)
@@ -1579,6 +1662,10 @@ func defaultImage(version string) string {
 // ---------------------------------------------------------------------------
 // Image pull secret helpers
 // ---------------------------------------------------------------------------
+
+// managedByNvcrectl is the app.kubernetes.io/managed-by value on objects
+// nvcrectl creates for a run: the namespace and the run RoleBinding.
+const managedByNvcrectl = "nvcrectl"
 
 const (
 	// pullSecretName is the controller image pull secret created by setup init.
@@ -1660,20 +1747,21 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 	return secretName, true, nil
 }
 
-// parseImage splits a container image reference into name and tag components.
-// Handles registry ports (localhost:5000/repo:tag), digests (@sha256:...),
-// and missing tags (defaults to "latest").
-func parseImage(image string) (name, tag string) {
+// parseImage splits a container image reference into name and either a tag or
+// a digest. Handles registry ports (localhost:5000/repo:tag), digests
+// (repo@sha256:...), which come back as the digest and no tag so the chart
+// renders repo@digest (ADR-098), and missing tags (defaults to "latest").
+func parseImage(image string) (name, tag, digest string) {
 	// Handle digest references: registry/repo@sha256:abc123
-	if i := strings.LastIndex(image, "@"); i != -1 {
-		return image[:i], image[i+1:]
+	if name, digest, found := strings.CutLast(image, "@"); found {
+		return name, "", digest
 	}
 	// Handle tag references: registry/repo:tag
 	// Must distinguish registry port (localhost:5000) from tag separator.
 	lastColon := strings.LastIndex(image, ":")
 	lastSlash := strings.LastIndex(image, "/")
 	if lastColon != -1 && lastColon > lastSlash {
-		return image[:lastColon], image[lastColon+1:]
+		return image[:lastColon], image[lastColon+1:], ""
 	}
-	return image, "latest"
+	return image, "latest", ""
 }

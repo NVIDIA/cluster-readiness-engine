@@ -12,6 +12,10 @@
   value: eth0
 - name: NCCL_IB_GID_INDEX
   value: "3"
+# NVLink SHARP, forced on rather than left to NCCL's default: ADR-070 names
+# it as one of the six transport variables this fragment was extracted to
+# carry, so the WorkloadRun MPI path gets the same RoCE environment the
+# communication entries already had.
 - name: NCCL_NVLS_ENABLE
   value: "1"
 - name: NCCL_CUMEM_ENABLE

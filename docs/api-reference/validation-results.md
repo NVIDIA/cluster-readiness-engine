@@ -594,6 +594,7 @@ Catalog variant names evolve between releases. The training entry used during th
       "nodesPerJob": 4,
       "jobs": 1,
       "mnnvl": "Enabled",
+      "transport": ["Socket"],
       "bandwidth": [
         { "size": "16 GB", "algBW": "470.68 GB/s", "busBW": "882.51 GB/s", "samples": 65 }
       ]
@@ -616,8 +617,16 @@ Top-level fields:
 | `exclusionReason` | string | Why nodes were excluded (omitted when empty) |
 | `categories` | []object | Per-category results (see below) |
 | `failedNodes` | []string | Deduped union of failed node names across all categories |
+| `failedNodeDetails` | []object | The per-node reason and message behind those names: `name`, `reason`, and optional `message` (omitted when no node failed) |
 | `result` | string | `PASSED`, `INCOMPLETE`, `FAILED`, or `RUNNING` |
-| `nodeResults` | []object | Per-node pass/fail entries: `name`, `group`, `rack` (optional), `status` (`Passed` or `Failed`) |
+| `nodeResults` | []object | Per-node pass/fail entries: `name`, `group`, `rack` (optional), `status` (`Passed` or `Failed`). Written for WorkloadRun reports only |
+
+`failedNodes` stays a list of names so existing consumers keep working;
+`failedNodeDetails` is the structured companion. `reason` is one of
+`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`, and
+`message` is the detail recorded for that node. A node appears once per distinct
+`(reason, message)`, so it can hold more than one entry when it failed different
+ways across categories.
 
 Each entry in `categories`:
 
@@ -631,10 +640,21 @@ Each entry in `categories`:
 | `nodesPerJob` | int | Nodes per job group |
 | `jobs` | int | Number of jobs run |
 | `mnnvl` | string | `Enabled`, `Disabled`, or omitted when unknown |
-| `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples` |
+| `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples`, and `provisional`/`provisionalReason` when the result is not final |
+| `transport` | []string | Distinct NCCL network names recorded on the category's BandwidthMeasurements (for example `IB`, `Socket`). Omitted when the `Using network` line never appeared |
+| `groupBandwidth` | []object | Per-group peak bandwidth, one row per group: `group`, `groupName` (display label), `nodes`, `busBW`, `transport` (optional), `belowMin` (true when BusBW fails a minimum `busBandwidthGBps` threshold such as `value >= 300`), `failed`, and `provisional`/`provisionalReason` when the result is not final |
 | `domains` | []object | Training results per topology domain: `name`, `nodeCount`, `goodput`, `tflops`, `stepTime` |
 | `failedGroups` | []object | Failed orchestration groups: `name`, `nodeCount`, `nodes`, `reason`, and `failureLog` when the Job captured one |
 | `iterations` | []object | Per-iteration results: `number`, `status`, `duration` |
+| `hint` | string | A suggested next step for a failure the run could not narrow on its own. Omitted when there is nothing useful to suggest |
+
+A category that measures bandwidth, failed, and recorded no bandwidth row for a
+group of two or more nodes carries a `hint` pointing at `testScale: diagnose`.
+That combination means the collective never moved bytes, and bisection can
+separate a node-local fault from one on the path between nodes. The hint names
+a next step; it does not assert what the fault is. Categories that do not
+measure bandwidth never carry it, since for them an absent bandwidth row is
+normal rather than a signal.
 
 Each `failedGroups[].failureLog` contains `podName`, `nodeName`, and optional
 `exitCode`, `reason`, and `tail`. `exitCode` is omitted when no nonzero container

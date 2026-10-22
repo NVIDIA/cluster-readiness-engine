@@ -1,0 +1,21 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      },
+      "resources": {
+        "limits": {
+          "memory": "8Gi"
+        }
+      }
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  manager.resources.limits.memory  (installed release)",
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+  ]
+}

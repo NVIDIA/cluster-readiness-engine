@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB300 shows the ComputeDomain channel claim and the GPU claim surviving
+# when the RDMA claim drops out at mlnxPerNode: 0.
+platform: nscale
+gpuArch: gb300

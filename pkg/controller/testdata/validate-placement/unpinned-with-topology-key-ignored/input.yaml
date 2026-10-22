@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The case this whole feature lives or dies on. The GB200/GB300 catalog
+# override injects topologyKey: nvidia.com/gpu.clique, and overrides are applied
+# before this check runs. The reviewer who asked for Unpinned is submitting a
+# Nemotron job on GB200, so rejecting a topology key would fail their exact spec
+# with a message about a field they never wrote and cannot find in their YAML.
+#
+# Accepted and ignored, with ignoredTopologyKey reporting what was dropped so
+# the behavior is visible in logs rather than silent.
+placement: Unpinned
+iterations: 1
+topology:
+  topologyKey: nvidia.com/gpu.clique

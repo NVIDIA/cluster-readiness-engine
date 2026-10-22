@@ -6,6 +6,7 @@ package workload
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -322,14 +323,15 @@ func ensurePodSpecPatch(spec *trainerv1alpha1.TrainJobSpec, replicatedJobName st
 }
 
 // EnsureLauncherTarget registers the worker and launcher replicated jobs in
-// the controller-owned RuntimePatch. SetNodeAffinity and SetTolerations derive
-// their targets from existing runtimePatches (allTargetJobs), and the Workflow
-// controller's blanket MPI toleration is gated on HasLauncherTarget — so an
-// MPI TrainJob without a launcher entry gets its launcher pod scheduled with
-// no node pinning and no tolerations. Catalog MPI entries satisfy this
-// contract with an explicit bare `- name: launcher` runtimePatch entry; MPI
-// WorkloadRuns build their TrainJob programmatically and must register the
-// launcher here. The bare entries are a no-op for the trainer's patch merge.
+// the controller-owned RuntimePatch. SetNodeAffinity, SetTolerations and
+// SetImagePullSecrets derive their targets from existing runtimePatches
+// (allTargetJobs), and the Workflow controller's blanket MPI toleration is
+// gated on HasLauncherTarget, so an MPI TrainJob without a launcher entry
+// gets its launcher pod scheduled with no node pinning, no tolerations and
+// no pull secrets. Catalog MPI entries satisfy this contract with an explicit
+// bare `- name: launcher` runtimePatch entry; MPI WorkloadRuns build their
+// TrainJob programmatically and must register the launcher here. The bare
+// entries are a no-op for the trainer's patch merge.
 func EnsureLauncherTarget(trainJobSpec *trainerv1alpha1.TrainJobSpec) {
 	if trainJobSpec == nil {
 		return
@@ -338,11 +340,26 @@ func EnsureLauncherTarget(trainJobSpec *trainerv1alpha1.TrainJobSpec) {
 	getOrCreateReplicatedJobPatch(trainJobSpec, LauncherJobName)
 }
 
-// SetImagePullSecrets applies imagePullSecrets to the worker replicated job via RuntimePatches.
+// SetImagePullSecrets applies imagePullSecrets to the node job and to every
+// other replicated job registered in RuntimePatches (allTargetJobs), the same
+// way SetNodeAffinity and SetTolerations pick their targets. The node job is
+// always included: every runtime has one, it is where the workload runs, and
+// a spec that registers only the launcher must not lose the secrets its
+// workers always had. MPI call sites must register the launcher with
+// EnsureLauncherTarget before calling this, or only the node job gets the
+// secrets. Until now only the node job ever got them, so an MPI launcher
+// pulling from a private registry failed at image pull while the workers
+// started (issue #455 follow-up on PR #483).
 func SetImagePullSecrets(trainJobSpec *trainerv1alpha1.TrainJobSpec, secrets []corev1.LocalObjectReference) {
 	if trainJobSpec == nil || len(secrets) == 0 {
 		return
 	}
-	podSpec := ensurePodSpecPatch(trainJobSpec, NodeJobName)
-	podSpec.ImagePullSecrets = secrets
+	targets := allTargetJobs(trainJobSpec.RuntimePatches)
+	if !slices.Contains(targets, NodeJobName) {
+		targets = append([]string{NodeJobName}, targets...)
+	}
+	for _, target := range targets {
+		podSpec := ensurePodSpecPatch(trainJobSpec, target)
+		podSpec.ImagePullSecrets = secrets
+	}
 }

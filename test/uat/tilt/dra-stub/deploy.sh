@@ -23,6 +23,11 @@ apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
   name: roce.networking.k8s.aws
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: rdma.nscale.com
 EOF
 
 # ─── 2. Build binary and Docker image ───

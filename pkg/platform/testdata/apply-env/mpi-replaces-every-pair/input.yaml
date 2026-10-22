@@ -1,0 +1,50 @@
+# An mpirun arg list may forward a name twice, and mpirun takes the last -x for
+# a name. Rewriting only the first occurrence would leave the later pair
+# winning: an operator setting NCCL_DEBUG=WARN would get INFO on the ranks,
+# with the render showing their value and the run ignoring it. Every pair is
+# rewritten, which is what this case pins.
+#
+# The doubled args below are written by hand. The catalog used to produce them
+# -- the OCI GB200 arms listed NCCL_DEBUG in both oci-roce-env.yaml and
+# gb200-env.yaml, and the GB300 arms did the same with NCCL_IB_GID_INDEX and
+# NCCL_IB_SPLIT_DATA_ON_QPS at conflicting values -- until ADR-100 gave each
+# variable one owning fragment. A WorkloadRun's own
+# spec.framework.mpi.mpiArgs is still hand-written and can repeat a name, so
+# the behaviour this pins outlives the catalog defect that motivated it.
+env:
+  - name: NCCL_DEBUG
+    value: WARN
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+            - -N
+            - "4"
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - NCCL_IB_GID_INDEX=3
+            - -x
+            - NCCL_DEBUG=INFO
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

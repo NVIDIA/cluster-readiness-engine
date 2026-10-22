@@ -85,6 +85,9 @@
         "currentIteration": 1,
         "detectedPlatform": "onprem",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100"
+        ],
         "excludedNodes": [
           "gpu-node-02-small"
         ],

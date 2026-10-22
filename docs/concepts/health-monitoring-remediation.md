@@ -58,7 +58,15 @@ Each failed node entry carries a `reason`:
 |--------|---------|
 | `HardwareFailureDetected` | CEL health check detected an unhealthy node **mid-run** |
 | `ThresholdViolation` | A performance threshold (bandwidth, goodput, step time) was missed |
-| `WorkloadFailed` | The workload exited non-zero or stalled |
+| `WorkloadFailed` | The workload exited non-zero, stalled, or exceeded `timeoutPerJob` |
+
+Each entry also carries a `message`. For `HardwareFailureDetected` it is the
+message the node health detector produced for that specific node, so a CEL
+expression that explains what it matched has that explanation recorded per node.
+A node whose detector supplies no message falls back to a generic one. A Job that
+exceeds `timeoutPerJob` records every node in its group with `WorkloadFailed` and
+the timeout message, which distinguishes a run that timed out from one that
+reported nothing.
 
 <Note>
 Cordoned nodes and nodes reporting fewer allocatable GPUs than the workload requests per node are filtered **before** a Job runs by default, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` with the reason in `exclusionReason` and cause the run to be marked `INCOMPLETE` rather than `Failed`. If **no** matching node can supply the requested GPU count, the run fails immediately with a message naming the requirement and the best available count instead of scheduling pods that would stay `Pending` forever. Operators can opt into targeting cordoned nodes directly by setting `target.taintSelectors` to the `node.kubernetes.io/unschedulable` taint, which also drops the hardware-failure check for the run.

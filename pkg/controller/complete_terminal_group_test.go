@@ -34,6 +34,13 @@ import (
 // while their pods drain, and without the exclusion that re-entry would
 // silently re-enable retry of timeouts.
 //
+// The reset also has to clear an unpinned group's recorded placement, which is
+// why groupNodes is in the output. The next job is one the scheduler places
+// afresh, and the backfill only writes to an empty list, so a list left behind
+// here is never corrected: the group would report having run wherever the
+// previous attempt landed, and the group-nodes annotation would attribute a
+// later failure to those same nodes.
+//
 // The Job's WorkloadRef points at a ConfigMap stand-in so "the workload was
 // deleted even while the group is held draining" is observable through the
 // fake client.
@@ -48,7 +55,12 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			GroupRetries      int    `yaml:"groupRetries"`
 			JobFailedReason   string `yaml:"jobFailedReason"`
 			JobSucceeded      bool   `yaml:"jobSucceeded"`
-			Pods              []struct {
+			Placement         string `yaml:"placement"`
+			// LiveRetries, when set, is the group's retry count on the API
+			// server: a value ahead of groupRetries means the cached view this
+			// pass acts on is behind a retry transition already written.
+			LiveRetries *int `yaml:"liveRetries"`
+			Pods        []struct {
 				Name  string `yaml:"name"`
 				Phase string `yaml:"phase"`
 			} `yaml:"pods"`
@@ -89,18 +101,19 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			Name: "wf", Namespace: ns,
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{
+					Placement: input.Placement,
 					Execution: nvcrev1alpha1.ExecutionSpec{RetryFailedGroups: input.RetryFailedGroups},
 				},
 			},
 			Status: nvcrev1alpha1.WorkflowStatus{
 				DependencyRefs: []nvcrev1alpha1.DependencyResourceRef{{
 					APIVersion: "v1", Kind: kindConfigMap, Name: "dep-cm", Namespace: ns,
-					Scope: labelJob, GroupName: "group-0", Iteration: 1,
+					Scope: labelJob, GroupName: testGroupZero, Iteration: 1,
 				}},
 				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalNodes: 1, NodesPerJob: 1, TotalGroups: 1, CurrentIteration: 1,
 					Groups: []nvcrev1alpha1.GroupStatus{{
-						Name:    "group-0",
+						Name:    testGroupZero,
 						Nodes:   []string{testNodeA},
 						Phase:   nvcrev1alpha1.GroupRunning,
 						Retries: input.GroupRetries,
@@ -122,7 +135,14 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			return err
 		}
 
+		live := workflow.DeepCopy()
+		if input.LiveRetries != nil {
+			live.Status.Orchestration.Groups[0].Retries = *input.LiveRetries
+			live.Status.Orchestration.Groups[0].Phase = nvcrev1alpha1.GroupPending
+			live.Status.Orchestration.Groups[0].JobRef = nil
+		}
 		objs := []client.Object{
+			live,
 			job.DeepCopy(),
 			&corev1.ConfigMap{Name: "dep-cm", Namespace: ns},
 			&corev1.ConfigMap{Name: "workload-cm", Namespace: ns},
@@ -146,11 +166,11 @@ func TestCompleteTerminalGroup(t *testing.T) {
 				return nil
 			}).
 			Build()
-		r := &WorkflowReconciler{Client: c, Scheme: scheme}
+		r := &WorkflowReconciler{Client: c, APIReader: c, Scheme: scheme}
 
 		g := &workflow.Status.Orchestration.Groups[0]
 		ts := getJobTerminalState(job)
-		draining, err := r.completeTerminalGroup(context.Background(), workflow, workflow.Status.Orchestration, g, job, ts)
+		outcome, err := r.completeTerminalGroup(context.Background(), workflow, workflow.Status.Orchestration, g, job, ts)
 		if err != nil {
 			return err
 		}
@@ -182,20 +202,24 @@ func TestCompleteTerminalGroup(t *testing.T) {
 
 		out := struct {
 			Draining          bool     `json:"draining"`
+			Stale             bool     `json:"stale,omitempty"`
 			GroupPhase        string   `json:"groupPhase"`
 			Retries           int      `json:"retries"`
 			HasJobRef         bool     `json:"hasJobRef"`
 			HasCompletionTime bool     `json:"hasCompletionTime"`
+			GroupNodes        []string `json:"groupNodes"`
 			DependencyRefs    []string `json:"dependencyRefs"`
 			DepExists         bool     `json:"depConfigMapExists"`
 			WorkloadExists    bool     `json:"workloadExists"`
 			JobExists         bool     `json:"jobExists"`
 		}{
-			Draining:          draining,
+			Draining:          outcome == groupStillRunning,
+			Stale:             outcome == groupViewStale,
 			GroupPhase:        string(g.Phase),
 			Retries:           g.Retries,
 			HasJobRef:         g.JobRef != nil,
 			HasCompletionTime: g.CompletionTime != nil,
+			GroupNodes:        g.Nodes,
 			DependencyRefs:    deps,
 			DepExists:         depExists,
 			WorkloadExists:    workloadExists,

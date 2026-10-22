@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An Unpinned group carries no node list, because the scheduler chooses the
+# hosts rather than the controller. Overlap detection must return false so the
+# single group launches; returning true would defer it forever, since there is
+# no later reconcile at which an empty list stops overlapping.
+#
+# The peer here is Running and holds real nodes, which is the case most likely
+# to produce a false positive if the loop were ever rewritten to treat an empty
+# candidate as "matches everything".
+candidate:
+  name: group-0
+  nodes: []
+  phase: Pending
+allGroups:
+  - name: group-0
+    nodes: []
+    phase: Pending
+  - name: pinned-peer
+    nodes: ["node-A", "node-B"]
+    phase: Running

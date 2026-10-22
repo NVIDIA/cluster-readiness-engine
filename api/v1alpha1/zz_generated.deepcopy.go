@@ -138,6 +138,11 @@ func (in *BandwidthMeasurementStatus) DeepCopyInto(out *BandwidthMeasurementStat
 		*out = make([]BandwidthResult, len(*in))
 		copy(*out, *in)
 	}
+	if in.Transport != nil {
+		in, out := &in.Transport, &out.Transport
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.StartTime != nil {
 		in, out := &in.StartTime, &out.StartTime
 		*out = (*in).DeepCopy()
@@ -314,6 +319,13 @@ func (in *CategoryOptions) DeepCopyInto(out *CategoryOptions) {
 		in, out := &in.WorkloadMetadata, &out.WorkloadMetadata
 		*out = new(WorkloadMetadata)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.Env != nil {
+		in, out := &in.Env, &out.Env
+		*out = make([]corev1.EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 }
 
@@ -1371,6 +1383,10 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 		in, out := &in.SchedulingResumedTime, &out.SchedulingResumedTime
 		*out = (*in).DeepCopy()
 	}
+	if in.WorkloadCreationRejectedSince != nil {
+		in, out := &in.WorkloadCreationRejectedSince, &out.WorkloadCreationRejectedSince
+		*out = (*in).DeepCopy()
+	}
 	if in.FailureLog != nil {
 		in, out := &in.FailureLog, &out.FailureLog
 		*out = new(FailureLog)
@@ -1445,6 +1461,11 @@ func (in *LogPatternSet) DeepCopyInto(out *LogPatternSet) {
 	}
 	if in.BandwidthResult != nil {
 		in, out := &in.BandwidthResult, &out.BandwidthResult
+		*out = new(EventPattern)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.NetworkTransport != nil {
+		in, out := &in.NetworkTransport, &out.NetworkTransport
 		*out = new(EventPattern)
 		(*in).DeepCopyInto(*out)
 	}
@@ -1628,6 +1649,16 @@ func (in *OrchestrationOverrideSpec) DeepCopyInto(out *OrchestrationOverrideSpec
 		*out = new(TopologySpec)
 		**out = **in
 	}
+	if in.Placement != nil {
+		in, out := &in.Placement, &out.Placement
+		*out = new(string)
+		**out = **in
+	}
+	if in.Diagnose != nil {
+		in, out := &in.Diagnose, &out.Diagnose
+		*out = new(DiagnoseSpec)
+		**out = **in
+	}
 	if in.Execution != nil {
 		in, out := &in.Execution, &out.Execution
 		*out = new(ExecutionSpec)
@@ -1690,6 +1721,11 @@ func (in *OrchestrationStatus) DeepCopyInto(out *OrchestrationStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.GPUProducts != nil {
+		in, out := &in.GPUProducts, &out.GPUProducts
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 	if in.ExcludedNodes != nil {
 		in, out := &in.ExcludedNodes, &out.ExcludedNodes

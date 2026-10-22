@@ -35,6 +35,8 @@ nvcrectl workloadrun run \
   --wait my-workload.yaml
 ```
 
+The `--workload-registry` flags create a pull secret and add it to the run's `spec.imagePullSecrets`. Every pod the run creates uses it; on `mpi` that includes the launcher pod as well as the workers.
+
 ## Targeting specific nodes
 
 ```yaml
@@ -43,6 +45,47 @@ spec:
     nodeSelector:
       kubernetes.io/hostname: gpu-node-01
 ```
+
+The target is carried onto every workload pod as a required node affinity, so the scheduler enforces it at bind time, not only when NVCRE picks nodes.
+
+## Running one job instead of a fleet-wide sweep
+
+By default `numNodes` is a group size. NVCRE partitions every node matching the target into groups of that size and runs one job per group, so `numNodes: 2` against 18 eligible nodes runs nine jobs concurrently.
+
+Set `placement: Unpinned` to run a single job of exactly `numNodes` nodes:
+
+```yaml
+spec:
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
+```
+
+The other target nodes go untested, which is the point. Use this when you want to exercise a workload once rather than certify a fleet, or when you do not want NVCRE choosing which machines to use: under `Unpinned` no `kubernetes.io/hostname` affinity is set, so the scheduler places the pods anywhere in the target.
+
+The requested size is honored exactly or the run fails saying why. It is never clamped to fit the fleet.
+
+### Confining an unpinned job to one topology domain
+
+`orchestration.topology.topologyKey` only drives partitioning, so under `Unpinned` it does nothing. To keep a single job inside one domain, name the domain label in the target instead, which does reach the pods:
+
+```yaml
+spec:
+  target:
+    matchExpressions:
+      - key: nvidia.com/gpu.clique
+        operator: In
+        values: ["clique-0"]
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
+```
+
+### Use a gang scheduler for multi-node unpinned jobs
+
+`Pinned` jobs name their nodes, so the group lands on the machines NVCRE chose or not at all. `Unpinned` hands placement to the scheduler, so on a contended cluster some pods can bind while the rest sit Pending indefinitely. Set [`spec.gangScheduler`](#gang-scheduling) whenever `numNodes > 1` under `Unpinned` so the gang schedules whole or not at all.
+
+NVCRE never reports a half-placed job as a complete one, so this costs you a stalled job rather than a false pass.
 
 ## Environment variables
 
@@ -58,12 +101,175 @@ spec:
       value: TRACE
 ```
 
-One caveat for MPI runs: the container env reaches `mpirun` on the launcher
-and the `sshd` process on each worker, but `mpirun` starts the ranks on
-workers through SSH, and `sshd` gives every session a fresh, sanitized
-environment — so the MPI ranks themselves may not inherit `spec.env`. A
-variable the ranks must see should be passed as `-x NAME=value` in
-`spec.framework.mpi.mpiArgs`, which forwards it through `mpirun` itself.
+For MPI runs, `mpirun` starts the ranks on workers through SSH, and `sshd`
+gives every session a fresh, sanitized environment, so the ranks do not
+inherit container env. The controller therefore also forwards the merged env
+to the ranks with `mpirun -x NAME=value`: the full set of auto-detected NCCL
+defaults plus `spec.env`, except names a platform override already forwards
+(the platform value then replaces the default). A `valueFrom` variable is
+forwarded as `-x NAME`, which `mpirun` reads from the launcher container's
+env. At the ranks, a `spec.env` value overrides both the defaults and a
+platform-forwarded value, and a `-x NAME=value` you pass in
+`spec.framework.mpi.mpiArgs` overrides `spec.env`.
+
+## Volumes, config files, and init containers
+
+`spec.volumes`, `spec.volumeMounts`, `spec.config`, and `spec.initContainers`
+apply to every framework. On `torch` and `exec` they land on the node pods,
+where the workload container runs. On MPI they land on the worker pods, where
+`mpirun` starts the ranks over SSH. The launcher pod, which only runs
+`mpirun`, gets none of your volumes, mounts, or init containers: a
+PersistentVolumeClaim, a hugepages emptyDir, or a data-staging init container
+is never attached to it. The one exception is `spec.config`, which is also
+mounted read-only at `/config` on the launcher, so a binary, rankfile,
+appfile, or MCA parameter file you ship there is visible to `mpirun` itself
+as well as to the ranks.
+
+A memory-backed `/dev/shm` volume is always provided, so you do not need to
+declare one. `spec.config` is mounted at `/config` with mode 0755, so scripts
+you ship through `config.inline` are executable as-is; with
+`config.configMapRef` the named ConfigMap is mounted the same way and nothing
+is created.
+
+The built-in volumes take the names `dshm` and `config-volume` and the paths
+`/dev/shm` and, when `spec.config` is set, `/config`. On MPI the name
+`mpi-ssh-auth` and the paths `/tmp/mpi-ssh-raw` and `/root/.ssh` are taken
+too, by the SSH key Secret Kubeflow Trainer injects and by the worker's `sshd`
+setup; on `torch` and `exec` the name `kubeflow-trainer-token` and the path
+`/var/run/secrets/kubeflow/trainer` are taken by the token Trainer's status
+plugin injects when it is enabled. Those three directories are taken together
+with every path below them, since a mount at `/root/.ssh/authorized_keys`
+hides that file as surely as one at `/root/.ssh`; `/dev/shm` and `/config`
+are taken exactly, so nothing below them is refused. In every pod the
+workload container is named `node`, so an init container cannot take that
+name, and a mount may
+name `config-volume` only when `spec.config` creates it. A WorkloadRun that
+reuses one of them fails with a `Failed` condition, reason `BuildFailed`, whose
+message names the field, before any Workflow is created, and
+`nvcrectl workloadrun render` refuses it the same way. Without that check a
+volume named `mpi-ssh-auth` or `kubeflow-trainer-token` would be silently
+replaced by Trainer's own, since Trainer upserts those volumes by name.
+
+```yaml
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: nccl-from-pvc
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /config/run_nccl.sh
+  numNodes: 4
+  config:
+    inline:
+      run_nccl.sh: |
+        #!/bin/sh
+        exec /usr/local/bin/all_reduce_perf_mpi -b 8 -e 32G -f 2 -n 100
+  volumes:
+    - name: datasets
+      persistentVolumeClaim:
+        claimName: nccl-datasets
+  volumeMounts:
+    - name: datasets
+      mountPath: /data
+  initContainers:
+    - name: list-data
+      image: nvcr.io/nvidia/pytorch:26.01-py3
+      command: ["ls", "-l", "/data"]
+      volumeMounts:
+        - name: datasets
+          mountPath: /data
+```
+
+The claim must be `ReadWriteMany` (or `ReadOnlyMany`, mounted read-only)
+whenever more than one worker pod mounts it at the same time. Under the
+default placement that is any run against more than one eligible node, since
+every job group runs concurrently with one worker per node; under
+`placement: Unpinned` it is any `numNodes` greater than one.
+
+### Host RDMA devices on MPI
+
+A cluster that exposes its RDMA devices as host device nodes instead of
+through a device plugin needs the devices mounted and the worker container
+privileged. The kubelet builds a container's device cgroup allowlist from its
+requested resources, so a `hostPath` mount of `/dev/infiniband` on its own
+leaves the devices visible but makes `open()` on them fail with `EPERM`.
+WorkloadRun has no field for that, so set it with an override on the
+generated TrainingRuntime, which is named `<workloadrun-name>-runtime`. The
+`dependencies` entry below merges into it (containers merge by name, so the
+built-in mounts stay) and sets `privileged` on the worker `node` container
+only:
+
+```yaml
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: nccl-hostpath-rdma
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      args: ["-b", "8", "-e", "32G", "-f", "2"]
+  numNodes: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  volumes:
+    - name: ib-dev
+      hostPath:
+        path: /dev/infiniband
+        type: Directory
+  volumeMounts:
+    - name: ib-dev
+      mountPath: /dev/infiniband
+  overrides:
+    - when: {}
+      dependencies:
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: nccl-hostpath-rdma-runtime
+          spec:
+            template:
+              spec:
+                replicatedJobs:
+                  - name: node
+                    template:
+                      spec:
+                        template:
+                          spec:
+                            containers:
+                              - name: node
+                                securityContext:
+                                  privileged: true
+```
+
+`privileged` also drops the runtime's default seccomp, AppArmor, and SELinux
+confinement for that container, and a CRI-O runtime may refuse a privileged
+container that requests `nvidia.com/gpu`. That is the same trade the
+catalog's `rdmaDeviceAccess: hostPath` makes for a Certification; see
+[ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md). `type: Directory`
+keeps a node without the device tree from starting the pod over an empty
+directory; such a pod stays in `ContainerCreating` with a `FailedMount` event
+until `spec.timeoutPerJob`.
+
+### Worker start-up under KAI
+
+Under a KAI gang scheduler the launcher cannot be gated on worker readiness,
+so its init container probes every worker's `sshd` itself, for up to 20
+minutes. Anything that delays a worker's start now delays that probe: a slow
+image pull, a volume that is slow to attach, a `hostPath` directory missing on
+a node, or an init container that stages data. Past the limit the init
+container exits with `not every worker answered sshd within 20 minutes` and
+points at the worker pods, whose events carry the actual cause; the pod then
+restarts the init container and waits again. Each restart counts toward the
+launcher Job's `backoffLimit`, 6 unless an override sets one, after which the
+launcher Job fails. Outside KAI the launcher is only created once every worker
+is Ready, and the Job waits until `spec.timeoutPerJob`.
 
 ## With bandwidth measurement
 

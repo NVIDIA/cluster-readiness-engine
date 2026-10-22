@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A single-node job whose one pod never got bound, terminal. Nothing recorded.
+#
+# The empty spec.nodeName is skipped rather than recorded, so the group's node
+# list never gains a "" entry. That entry would be worse than the gap it fills:
+# every downstream consumer treats a name in this list as a real machine, so a
+# blank would show up as a node in the report, in the succeeded or failed
+# accounting, and in a topology-gauge label.
+#
+# nodesPerJob is 1 and terminal is true, so neither gate is what stops the
+# write. The only thing standing between this input and a recorded placement is
+# the binding check.
+placement: Unpinned
+nodesPerJob: 1
+terminal: true
+pods:
+  - {name: w-0, nodeName: "", phase: Failed}

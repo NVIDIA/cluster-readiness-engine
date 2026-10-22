@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# node-list-clamps-numnodes-down, run unpinned. The clamp becomes a refusal.
+#
+# The clamp is right under Pinned: numNodes is a chunk size there, and naming
+# fewer nodes than it asks for can never be satisfied, so shrinking it beats
+# waiting. Unpinned promises the opposite, that the size written is the size
+# that runs or the run fails saying why. Clamping here would break that promise
+# on the command line, where the operator never sees the object that was
+# submitted and so never learns the job got smaller.
+#
+# The spec comes back exactly as it was read, with a nil target. A rejected flag
+# must not half-apply, so the check runs before the names are written: returning
+# with the target populated and numNodes untouched would leave a spec matching
+# neither what the file said nor what the flag asked for.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 4
+    framework:
+      torch:
+        script: /t.py
+    orchestration:
+      placement: Unpinned
+nodeList: node001,node002

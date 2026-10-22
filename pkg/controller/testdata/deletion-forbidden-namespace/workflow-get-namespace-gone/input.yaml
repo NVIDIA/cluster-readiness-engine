@@ -1,0 +1,4 @@
+# The namespace is already gone, so nothing in it is left to clean up.
+owner: workflow-finalizer
+forbid: get
+namespace: gone

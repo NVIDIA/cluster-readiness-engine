@@ -1,0 +1,40 @@
+[
+  {
+    "dependencies": [],
+    "dependencyRefs": [],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "jobRef": "wf-job-retry-1",
+        "name": "a",
+        "phase": "Failed",
+        "retries": 1
+      }
+    ],
+    "jobs": [
+      "wf-job-retry-1"
+    ],
+    "pass": 1
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "jobRef": "wf-job-retry-1",
+        "name": "a",
+        "phase": "Failed",
+        "retries": 1
+      }
+    ],
+    "jobs": [
+      "wf-job-retry-1"
+    ],
+    "pass": 2
+  }
+]

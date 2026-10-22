@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +39,8 @@ import (
 
 const (
 	testDomainCommunication   = "communication"
+	testDomainTraining        = "training"
+	testStatusInProgress      = "InProgress"
 	testVariantNCCLAllReduce  = "nccl-all-reduce"
 	testCategoryNCCLAllReduce = testDomainCommunication + "/" + testVariantNCCLAllReduce
 	testCategoryFlag          = "--category"
@@ -51,6 +54,7 @@ func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.W
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, rbacv1.AddToScheme(scheme))
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
 
@@ -132,7 +136,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "", "", nil)
+		workflows, err := renderCertification(cert, "", "", nil, "")
 		if err != nil {
 			return err
 		}
@@ -215,7 +219,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "", "", nil)
+			_, err = renderCertification(cert, "", "", nil, "")
 		}
 
 		type result struct {
@@ -397,8 +401,7 @@ func TestPlatformToProviderID(t *testing.T) {
 // an invalid name must fail with the full list of valid names, and every name
 // platform detection can return must be accepted. For accepted platforms the
 // case also records what detection reports for the synthetic render node,
-// which is what override matching actually sees (nscale, for example, is only
-// detected when the node carries the nscale.com/rdmashare allocatable).
+// which is what override matching actually sees.
 // --gpu-arch is validated the same way against the known architectures.
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{
@@ -557,12 +560,176 @@ func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
 
 	cert, done, err := processWatchEvents(
 		ctx, newCertificationFakeClient(t), watcher, time.Now(),
-		map[string]string{}, heartbeat, &out,
+		map[int]categoryWatchStatus{}, heartbeat.C, &out,
 	)
 
 	assert.Nil(t, cert)
 	assert.True(t, done)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	var out bytes.Buffer
+	lastStatuses := map[int]categoryWatchStatus{}
+
+	cert := &nvcrev1alpha1.Certification{
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+			},
+			Conditions: []metav1.Condition{{
+				Type: nvcrev1alpha1.CertificationSucceeded, Status: metav1.ConditionTrue,
+			}},
+		},
+	}
+	watcher.Add(cert)
+
+	result, done, err := processWatchEvents(
+		context.Background(), newCertificationFakeClient(t), watcher, time.Now(),
+		lastStatuses, heartbeat.C, &out,
+	)
+
+	require.Same(t, cert, result)
+	assert.True(t, done)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: InProgress"))
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+	assert.Equal(t, testStatusInProgress, lastStatuses[0].status)
+	assert.Equal(t, testStatusInProgress, lastStatuses[1].status)
+}
+
+func TestProcessWatchEventsPrintsOnlyDuplicateCategoryTransitions(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	out := &watchEventWriter{writes: make(chan string, 8)}
+	lastStatuses := map[int]categoryWatchStatus{}
+	cert := &nvcrev1alpha1.Certification{
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+			},
+		},
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+			},
+		},
+	}
+	type watchResult struct {
+		cert *nvcrev1alpha1.Certification
+		done bool
+		err  error
+	}
+	resultCh := make(chan watchResult, 1)
+	watcher.Add(cert)
+	go func() {
+		result, done, err := processWatchEvents(
+			ctx, newCertificationFakeClient(t), watcher, time.Now(),
+			lastStatuses, heartbeat.C, out,
+		)
+		resultCh <- watchResult{cert: result, done: done, err: err}
+	}()
+
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	changed := cert.DeepCopy()
+	changed.Status.CategoryStatuses[0].Status = "Succeeded"
+	watcher.Modify(changed)
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: Succeeded")
+
+	watcher.Modify(changed.DeepCopy())
+	terminal := changed.DeepCopy()
+	terminal.Status.Conditions = []metav1.Condition{{
+		Type: nvcrev1alpha1.CertificationSucceeded, Status: metav1.ConditionTrue,
+	}}
+	watcher.Modify(terminal)
+	assert.Contains(t, <-out.writes, "Certification succeeded.")
+
+	result := <-resultCh
+	assert.Same(t, terminal, result.cert)
+	assert.True(t, result.done)
+	assert.NoError(t, result.err)
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: Succeeded"))
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+}
+
+func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	heartbeat := make(chan time.Time, 1)
+	out := &watchEventWriter{writes: make(chan string, 8)}
+	lastStatuses := map[int]categoryWatchStatus{}
+	cert := &nvcrev1alpha1.Certification{
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainTraining, Variant: "nemotron5-8b"},
+			},
+		},
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainTraining, Variant: "nemotron5-8b", Status: testStatusInProgress},
+			},
+		},
+	}
+	type watchResult struct {
+		cert *nvcrev1alpha1.Certification
+		done bool
+		err  error
+	}
+	resultCh := make(chan watchResult, 1)
+	watchClient := newCertificationFakeClient(t)
+	watcher.Add(cert)
+	go func() {
+		result, done, err := processWatchEvents(
+			ctx, watchClient, watcher, time.Now(),
+			lastStatuses, heartbeat, out,
+		)
+		resultCh <- watchResult{cert: result, done: done, err: err}
+	}()
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	assert.Contains(t, <-out.writes, "training/nemotron5-8b: InProgress")
+	heartbeat <- time.Now()
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	assert.Contains(t, <-out.writes, "training/nemotron5-8b: InProgress")
+	cancel()
+	result := <-resultCh
+	assert.Nil(t, result.cert)
+	assert.True(t, result.done)
+	assert.ErrorIs(t, result.err, context.Canceled)
+	assert.NotContains(t, out.String(), "Waiting for status...")
+	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: InProgress"))
+	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+	assert.Equal(t, 2, strings.Count(out.String(), "training/nemotron5-8b: InProgress"))
+}
+
+type watchEventWriter struct {
+	bytes.Buffer
+	writes chan string
+}
+
+func (w *watchEventWriter) Write(p []byte) (int, error) {
+	n, err := w.Buffer.Write(p)
+	w.writes <- string(p)
+	return n, err
 }
 
 func TestFinishCertificationWaitTimeout(t *testing.T) {
@@ -593,7 +760,7 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 			},
 			Status: nvcrev1alpha1.CertificationStatus{
 				CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{{
-					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress",
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress,
 				}},
 			},
 		}

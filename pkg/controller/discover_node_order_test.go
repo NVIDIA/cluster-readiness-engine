@@ -59,7 +59,7 @@ func TestDiscoverNodeOrder(t *testing.T) {
 				}})
 		}
 
-		nodes, _, err := discoverTargetNodes(context.Background(),
+		nodes, _, _, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given}, nil,
 			&nvcrev1alpha1.TargetSpec{
 				NodeSelector: map[string]string{"nvidia.com/gpu.present": present},

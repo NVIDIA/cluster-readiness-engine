@@ -6,64 +6,92 @@ package nodemonitor
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 const (
 	// NVCREJobLabel is the label used to identify pods belonging to an NVCRE Job.
-	NVCREJobLabel = "nvcre.nvidia.com/job"
+	NVCREJobLabel = podread.JobLabel
 
 	// PodNVCREJobIndexField is the field index for pod lookups by NVCRE job label.
 	// This enables efficient cache-based queries when discovering nodes for a Job.
-	PodNVCREJobIndexField = "metadata.labels.nvcre.nvidia.com/job"
+	PodNVCREJobIndexField = podread.JobIndexField
 )
 
 // NodeDiscoverer finds nodes running pods for a given workload.
 type NodeDiscoverer struct {
 	client client.Client
+	pods   *podread.Reader
 }
 
-// NewNodeDiscoverer creates a new node discoverer.
-func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
-	return &NodeDiscoverer{client: c}
+// NewNodeDiscoverer creates a new node discoverer. c reads Nodes; pods reads
+// the Job's pods (ADR-102).
+func NewNodeDiscoverer(c client.Client, pods *podread.Reader) *NodeDiscoverer {
+	return &NodeDiscoverer{client: c, pods: pods}
 }
 
 // DiscoverNodesForJob finds all nodes running pods associated with an NVCRE Job.
 // It uses a field index on the nvcre.nvidia.com/job label for efficient cache-based lookups.
 // Only returns nodes where pods are Running or Pending (i.e., scheduled).
+//
+// Use this for questions about live health. For questions about where a job ran,
+// including after its pods terminated, use DiscoverPlacedNodesForJob.
 func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {
-	podList := &corev1.PodList{}
+	return d.discoverNodes(ctx, namespace, jobName, func(pod *corev1.Pod) bool {
+		return pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending
+	})
+}
 
-	// Use field index if available, fall back to label selector
-	listOpts := []client.ListOption{
-		client.InNamespace(namespace),
-		client.MatchingFields{PodNVCREJobIndexField: jobName},
+// DiscoverPlacedNodesForJob finds every node a Job's pods were bound to,
+// whatever phase those pods are now in.
+//
+// This is the attribution question, not the health question, and the two need
+// different filters. A job that fails fast leaves behind Failed pods, and a job
+// whose pods have already been cleaned up to Succeeded leaves those; both still
+// record the node they ran on in spec.nodeName. Filtering to Running or Pending
+// the way DiscoverNodesForJob does would report no nodes in exactly the case
+// attribution exists for, so a failed run would name no failed nodes.
+//
+// A pod that was never bound has no placement to report and is skipped.
+func (d *NodeDiscoverer) DiscoverPlacedNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {
+	return d.discoverNodes(ctx, namespace, jobName, func(*corev1.Pod) bool { return true })
+}
+
+// discoverNodes lists a Job's pods and returns the distinct nodes they are bound
+// to, in sorted order. Callers supply the phase filter; the read, the binding
+// check and the dedupe are shared.
+//
+// The result is sorted rather than returned in map order, because callers
+// persist it into status and compare it against goldens. Go randomizes map
+// iteration per run, so an unsorted result would reshuffle a status field
+// between reconciles and make golden comparisons flaky.
+func (d *NodeDiscoverer) discoverNodes(
+	ctx context.Context, namespace, jobName string, keep func(*corev1.Pod) bool,
+) ([]string, error) {
+	pods, err := d.pods.JobPods(ctx, namespace, jobName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods for Job %s: %w", jobName, err)
 	}
 
-	if err := d.client.List(ctx, podList, listOpts...); err != nil {
-		// Fall back to label selector if field index is not available
-		labelSelector := client.MatchingLabels{NVCREJobLabel: jobName}
-		if err := d.client.List(ctx, podList, client.InNamespace(namespace), labelSelector); err != nil {
-			return nil, fmt.Errorf("failed to list pods for Job %s: %w", jobName, err)
-		}
-	}
-
-	// Extract unique node names from scheduled pods
 	nodeSet := make(map[string]struct{})
-	for _, pod := range podList.Items {
-		// Only consider pods that are assigned to a node and are running or pending
-		if pod.Spec.NodeName != "" &&
-			(pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending) {
-			nodeSet[pod.Spec.NodeName] = struct{}{}
+	for i := range pods {
+		pod := &pods[i]
+		if pod.Spec.NodeName == "" || !keep(pod) {
+			continue
 		}
+		nodeSet[pod.Spec.NodeName] = struct{}{}
 	}
 
 	nodes := make([]string, 0, len(nodeSet))
 	for nodeName := range nodeSet {
 		nodes = append(nodes, nodeName)
 	}
+	sort.Strings(nodes)
 
 	return nodes, nil
 }

@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GPU and RDMA as DRA claims for Nscale NKS (ADR-085). Nscale runs no device
+# plugin or GFD DaemonSet, so both the GPU and the RDMA NIC are claimed via
+# ResourceClaimTemplates against gpu.nvidia.com/rdma.nscale.com DeviceClasses
+# instead of extended resources. The base entry's nvidia.com/gpu request is
+# nulled out here rather than moved into every platform fragment (confirmed
+# safe: mergeMaps deletes a map key on an explicit JSON null all the way
+# through the RawExtension round trip).
+#
+# Tolerations are unconditional, not gated on architecture: this fragment is
+# also rendered through pkg/platform/overrides.go's OverrideConfig for the
+# WorkloadRun path, which has no GPUArchitecture field, so an
+# architecture-conditional text/template reference here would panic.
+# Unconditional tolerations match the on-prem GB200/GB300 fragment's own
+# precedent and are harmless on the untainted B200 cluster this design was
+# validated against.
+#
+# The RDMA claim is gated on mlnxPerNode: at 0 the claim template and both
+# references to it are omitted rather than requested as count 0, which the
+# API server rejects. The GPU claim is emitted at any count. See ADR-087.
+
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaimTemplate
+  metadata:
+    name: {{ .EntryName }}-gpu
+    labels:
+      app: {{ .EntryName }}
+  spec:
+    spec:
+      devices:
+        requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.nvidia.com
+            count: {{ .GpusPerNode }}
+{{- if gt (int .MlnxPerNode) 0 }}
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaimTemplate
+  metadata:
+    name: {{ .EntryName }}-rdma
+    labels:
+      app: {{ .EntryName }}
+  spec:
+    spec:
+      devices:
+        requests:
+        - name: rdma
+          exactly:
+            deviceClassName: rdma.nscale.com
+            # One claim per RDMA NIC, sized from mlnxPerNode: 8 on b200 by
+            # default, 4 on gb300 via the nscale platformOverride, matching
+            # the rdma.nscale.com devices NKS GB300 ResourceSlices advertise.
+            count: {{ .MlnxPerNode }}
+{{- end }}
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  resourceClaims:
+                  - name: gpu
+                    resourceClaimTemplateName: {{ .EntryName }}-gpu
+{{- if gt (int .MlnxPerNode) 0 }}
+                  - name: rdma
+                    resourceClaimTemplateName: {{ .EntryName }}-rdma
+{{- end }}
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: null
+                      requests:
+                        nvidia.com/gpu: null
+                      claims:
+                      - name: gpu
+{{- if gt (int .MlnxPerNode) 0 }}
+                      - name: rdma
+{{- end }}
+                  tolerations:
+                  - key: kubernetes.io/arch
+                    operator: Equal
+                    value: arm64
+                    effect: NoSchedule
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

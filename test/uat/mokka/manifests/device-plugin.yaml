@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The real NVIDIA device plugin, pointed at nvml-mock's driver root, so
+# nvidia.com/gpu capacity comes from a real producer rather than a patched
+# node status (ADR-096). Same image and flags as Mokka's own
+# tests/e2e/go/assets/device-plugin-mock.yaml.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-mock
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-mock
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-mock
+    spec:
+      nodeSelector:
+        mokka.nvidia.com/type: sgpu
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: nvidia-device-plugin
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.18.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--nvidia-driver-root=/var/lib/nvml-mock/driver"
+            - "--driver-root-ctr-path=/var/lib/nvml-mock/driver"
+            - "--device-discovery-strategy=nvml"
+            - "--pass-device-specs=true"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: mock-root
+              mountPath: /var/lib/nvml-mock
+              readOnly: true
+            - name: device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: mock-root
+          hostPath:
+            path: /var/lib/nvml-mock
+        - name: device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins

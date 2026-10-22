@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Loopback variants configure NCCL via trainer.env (no mpirun), so the golden
+# pins the replaced env list (SHM/P2P disable only on nccl-loopback) and the
+# restored tolerate-everything toleration.
+platform: nscale
+gpuArch: b200

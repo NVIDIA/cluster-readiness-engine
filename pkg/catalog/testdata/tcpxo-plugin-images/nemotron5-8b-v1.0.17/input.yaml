@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Plugin v1.0.17: training keeps its CUDA 13 base image, pytorch:25.08-py3.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
+tcpxoPluginVersion: v1.0.17

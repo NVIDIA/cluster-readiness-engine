@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An In with an empty value list matches NO node. Emitting the term anyway
+# would deadlock scheduling on any fleet whose nodes carry no gpu.product
+# label, which is most of the existing testdata. Omit it instead.
+placement: Unpinned
+groupNodes: []
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+gpuProducts: ["", ""]

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The exact shape the Unpinned short-circuit hands this function: one group,
+# named group-0, with no nodes and no domains. The topology key is present
+# because the GB200 override injects it, and it must not cause a nil-map read
+# or a bogus DomainNodeCounts entry.
+#
+# What this pins is that the group still comes out Pending and usable rather
+# than nil, so launchPendingGroups has something to pick up.
+groups:
+  - name: group-0
+nodeInfos: []
+topology:
+  topologyKey: nvidia.com/gpu.clique

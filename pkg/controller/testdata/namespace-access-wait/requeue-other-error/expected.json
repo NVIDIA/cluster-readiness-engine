@@ -1,0 +1,8 @@
+{
+  "conditions": [],
+  "error": "connection refused",
+  "events": [],
+  "orchestrationPersisted": false,
+  "requeueAfter": "0s",
+  "reviewsAskFresh": null
+}

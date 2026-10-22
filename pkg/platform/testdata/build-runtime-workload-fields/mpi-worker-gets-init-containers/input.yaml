@@ -1,0 +1,20 @@
+# spec.initContainers on the mpi framework. The user's init container runs on
+# the worker pod, where the ranks run, ahead of the sshd container; the
+# launcher keeps only its own fix-ssh-permissions init container. The expected
+# file lists prepare as the first entry of the node pod with init: true, the
+# scratch volume after dshm, and the scratch mount after the built-ins on the
+# node container.
+frameworkType: mpi
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /scratch
+initContainers:
+  - name: prepare
+    image: busybox:1.36
+    command: ["sh", "-c", "true"]
+    volumeMounts:
+      - name: scratch
+        mountPath: /scratch

@@ -83,6 +83,13 @@
                                             "gpu-node-01",
                                             "gpu-node-02"
                                           ]
+                                        },
+                                        {
+                                          "key": "nvidia.com/gpu.product",
+                                          "operator": "In",
+                                          "values": [
+                                            "NVIDIA-H100-80GB-HBM3"
+                                          ]
                                         }
                                       ]
                                     }
@@ -164,14 +171,6 @@
                             {
                               "name": "NCCL_DEBUG",
                               "value": "INFO"
-                            },
-                            {
-                              "name": "NCCL_DEBUG_SUBSYS",
-                              "value": "NET,INIT"
-                            },
-                            {
-                              "name": "NCCL_NVLS_ENABLE",
-                              "value": "1"
                             },
                             {
                               "name": "NCCL_CUMEM_ENABLE",
@@ -371,14 +370,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
-                                  },
-                                  {
-                                    "name": "NCCL_NVLS_ENABLE",
-                                    "value": "1"
                                   },
                                   {
                                     "name": "NCCL_CUMEM_ENABLE",
@@ -1234,10 +1225,6 @@
                         "value": "=mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1,mlx5_12:1,mlx5_5:1,mlx5_6:1,mlx5_2:1,mlx5_3:1,mlx5_0:1,mlx5_1:1"
                       },
                       {
-                        "name": "NCCL_NVLS_ENABLE",
-                        "value": "1"
-                      },
-                      {
                         "name": "NCCL_CUMEM_ENABLE",
                         "value": "1"
                       }
@@ -1454,10 +1441,6 @@
                                         "value": "INFO"
                                       },
                                       {
-                                        "name": "NCCL_NVLS_ENABLE",
-                                        "value": "1"
-                                      },
-                                      {
                                         "name": "NCCL_CUMEM_ENABLE",
                                         "value": "1"
                                       },
@@ -1538,10 +1521,6 @@
                         "value": "INFO"
                       },
                       {
-                        "name": "NCCL_NVLS_ENABLE",
-                        "value": "1"
-                      },
-                      {
                         "name": "NCCL_CUMEM_ENABLE",
                         "value": "1"
                       },
@@ -1575,6 +1554,54 @@
               }
             }
           }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "b300"
+              ]
+            },
+            "platform": {
+              "equals": "onprem"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "wr-runai-explicit-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Exists"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         },
         {
           "when": {
@@ -1653,6 +1680,249 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "akamai"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "NCCL_DEBUG",
+                        "value": "INFO"
+                      },
+                      {
+                        "name": "NCCL_IB_DISABLE",
+                        "value": "1"
+                      },
+                      {
+                        "name": "NCCL_NET_PLUGIN",
+                        "value": "none"
+                      },
+                      {
+                        "name": "NCCL_SOCKET_IFNAME",
+                        "value": "eth0"
+                      },
+                      {
+                        "name": "NCCL_P2P_DISABLE",
+                        "value": "1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "wr-runai-explicit"
+                },
+                "name": "wr-runai-explicit-gpu"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 8,
+                          "deviceClassName": "gpu.nvidia.com"
+                        },
+                        "name": "gpu"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "wr-runai-explicit"
+                },
+                "name": "wr-runai-explicit-rdma"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 8,
+                          "deviceClassName": "rdma.nscale.com"
+                        },
+                        "name": "rdma"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "wr-runai-explicit-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "claims": [
+                                        {
+                                          "name": "gpu"
+                                        },
+                                        {
+                                          "name": "rdma"
+                                        }
+                                      ],
+                                      "limits": {
+                                        "nvidia.com/gpu": null
+                                      },
+                                      "requests": {
+                                        "nvidia.com/gpu": null
+                                      }
+                                    }
+                                  }
+                                ],
+                                "resourceClaims": [
+                                  {
+                                    "name": "gpu",
+                                    "resourceClaimTemplateName": "wr-runai-explicit-gpu"
+                                  },
+                                  {
+                                    "name": "rdma",
+                                    "resourceClaimTemplateName": "wr-runai-explicit-rdma"
+                                  }
+                                ],
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "kubernetes.io/arch",
+                                    "operator": "Equal",
+                                    "value": "arm64"
+                                  },
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Equal",
+                                    "value": "present"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "NCCL_SOCKET_IFNAME",
+                        "value": "eth0"
+                      },
+                      {
+                        "name": "NCCL_DEBUG",
+                        "value": "INFO"
+                      },
+                      {
+                        "name": "NCCL_NVLS_ENABLE",
+                        "value": "1"
+                      },
+                      {
+                        "name": "NCCL_CUMEM_ENABLE",
+                        "value": "1"
+                      },
+                      {
+                        "name": "NCCL_P2P_NET_CHUNKSIZE",
+                        "value": "2097152"
+                      },
+                      {
+                        "name": "NCCL_MNNVL_ENABLE",
+                        "value": "0"
+                      },
+                      {
+                        "name": "NCCL_IB_PCI_RELAXED_ORDERING",
+                        "value": "1"
+                      },
+                      {
+                        "name": "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING",
+                        "value": "1"
+                      },
+                      {
+                        "name": "OMPI_MCA_btl_openib_warn_default_gid_prefix",
+                        "value": "0"
+                      },
+                      {
+                        "name": "PMIX_MCA_gds",
+                        "value": "^ds12"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       ],
       "gangScheduler": {
@@ -1706,6 +1976,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "appliedOverrides": [
           {
             "index": 8,

@@ -12,8 +12,8 @@
 # that follows completeTerminalGroup does not add a second row: the !ts.terminal
 # guard means the write happens once, so the condition never flips again.
 #
-# The Job deliberately keeps InProgress=True beside Failed=True. That
-# exclusivity gap predates this design and is left alone (ADR-080 defers it).
+# The timeout write is exclusive (ADR-086 decision B): InProgress and Succeeded
+# go False / NotApplicable beside Failed=True, all with observedGeneration.
 steps:
   - waitFor:
       kind: Job
@@ -54,6 +54,12 @@ collect:
   - kind: Job
     name: test-workflow-job-timeout-job
     namespace: default
+# Issue #401: the timed-out Job must read failed on nvcre_job_status, not the
+# in_progress the gauge last saw from the Job tier (ADR-086 decision A).
+collectJobMetrics:
+  namespace: default
+  job: test-workflow-job-timeout-job
+  workflow: test-workflow-job-timeout
 events:
   - involvedKind: Job
     involvedName: test-workflow-job-timeout-job

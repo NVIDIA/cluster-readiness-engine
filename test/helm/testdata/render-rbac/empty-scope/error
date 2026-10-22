@@ -1,0 +1,1 @@
+rbac.scope is not set: "rbac: null" or an empty value removes the chart's default. Set rbac.scope to "cluster" or "namespaced".

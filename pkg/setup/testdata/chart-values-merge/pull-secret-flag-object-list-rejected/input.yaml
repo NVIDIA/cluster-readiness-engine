@@ -1,0 +1,8 @@
+# A single {name: …} object instead of a list is rejected with
+# --image-pull-secret too.
+operator:
+  manager:
+    imagePullSecrets:
+      name: mirror-pull-secret
+options:
+  pullSecret: true

@@ -35,14 +35,16 @@ func gpuNode(name string, count int64) corev1.Node {
 }
 
 func TestNodeGPUCount(t *testing.T) {
-	assert.Equal(t, int32(8), nodeGPUCount(gpuNode("a", 8)))
-	assert.Equal(t, int32(1), nodeGPUCount(gpuNode("b", 1)))
-	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("c", 0)))
+	assert.Equal(t, int32(8), nodeGPUCount(gpuNode("a", 8), nil))
+	assert.Equal(t, int32(1), nodeGPUCount(gpuNode("b", 1), nil))
+	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("c", 0), nil))
 	// Resource absent: the device plugin has not advertised it.
-	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("d", -1)))
+	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("d", -1), nil))
+	// Resource absent on a DRA-only node: its ResourceSlices supply the count.
+	assert.Equal(t, int32(4), nodeGPUCount(gpuNode("d", -1), map[string]int32{"d": 4}))
 	// Too large for int32. Without the guard this wraps to a negative count,
 	// which then becomes the reported minimum across every node.
-	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("e", math.MaxInt32+1)))
+	assert.Equal(t, int32(0), nodeGPUCount(gpuNode("e", math.MaxInt32+1), nil))
 }
 
 func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
@@ -55,6 +57,8 @@ func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
 			Nodes []struct {
 				Name  string `yaml:"name"`
 				Count int64  `yaml:"count"`
+				// DRACount, when set, is the node's gpu.nvidia.com DRA GPU count.
+				DRACount *int32 `yaml:"draCount"`
 			} `yaml:"nodes"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
@@ -62,14 +66,18 @@ func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
 		}
 
 		nodes := make([]corev1.Node, 0, len(in.Nodes))
+		draGPUs := map[string]int32{}
 		for _, n := range in.Nodes {
 			nodes = append(nodes, gpuNode(n.Name, n.Count))
+			if n.DRACount != nil {
+				draGPUs[n.Name] = *n.DRACount
+			}
 		}
 
 		// The catalog default for a100 is 8. These nodes have 1 each.
 		const catalogDefault = int32(8)
 
-		info := buildClusterInfo(nodes, "onprem", "a100", "NVIDIA-A100-PCIE-40GB",
+		info := buildClusterInfo(nodes, draGPUs, "onprem", "a100", "NVIDIA-A100-PCIE-40GB",
 			catalogDefault, "")
 
 		gotPerNode := make([]int32, 0, len(info.Nodes))
@@ -100,7 +108,7 @@ func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
 
 // No nodes must not panic or report a stale count.
 func TestBuildClusterInfoNoNodes(t *testing.T) {
-	info := buildClusterInfo(nil, "onprem", "a100", "", 8, "")
+	info := buildClusterInfo(nil, nil, "onprem", "a100", "", 8, "")
 	assert.Equal(t, int32(0), info.GpusPerNode)
 	assert.Equal(t, 0, info.TotalGPUs)
 	assert.Equal(t, 0, info.TotalNodes)

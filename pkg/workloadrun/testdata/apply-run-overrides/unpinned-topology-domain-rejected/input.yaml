@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# topology-domain-without-key-uses-auto, run unpinned. The flag is refused.
+#
+# --topology-domain does not clamp numNodes, it replaces it: the discovery-time
+# half of this flag sets numNodes to the number of nodes the domain turned out
+# to contain, whatever the file asked for. That is the whole point of the flag
+# under Pinned, and it is the opposite of what Unpinned promises.
+#
+# The refusal names the alternative, because the flag's other half is still
+# wanted. A user asking for an unpinned job confined to one rack gets that with
+# target.matchExpressions on the topology label, which constrains placement
+# without touching the count.
+#
+# Refused before the match expression is written, so the target comes back nil.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 2
+    framework:
+      torch:
+        script: /t.py
+    orchestration:
+      placement: Unpinned
+topologyDomain: rack-7

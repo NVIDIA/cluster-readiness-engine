@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The ordinary Pinned shape, kept alongside the Unpinned one so the empty-group
+# case reads as a variation rather than the only thing covered. group-1 spans
+# two cliques, which is the only condition under which DomainNodeCounts is
+# populated at all.
+groups:
+  - name: group-0
+    nodes: ["node-a", "node-b"]
+    domains: ["clique-1"]
+  - name: group-1
+    nodes: ["node-c", "node-d"]
+    domains: ["clique-1", "clique-2"]
+nodeInfos:
+  - name: node-a
+    labels:
+      nvidia.com/gpu.clique: clique-1
+  - name: node-b
+    labels:
+      nvidia.com/gpu.clique: clique-1
+  - name: node-c
+    labels:
+      nvidia.com/gpu.clique: clique-1
+  - name: node-d
+    labels:
+      nvidia.com/gpu.clique: clique-2
+topology:
+  topologyKey: nvidia.com/gpu.clique

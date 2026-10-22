@@ -1,6 +1,6 @@
 # ADR-086: Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

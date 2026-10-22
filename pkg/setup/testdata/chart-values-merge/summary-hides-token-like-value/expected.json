@@ -1,0 +1,46 @@
+{
+  "values": {
+    "extra": {
+      "apiToken": "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"
+    },
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      },
+      "imagePullSecrets": [
+        {
+          "name": "mirror-pull-secret"
+        },
+        {
+          "name": "nvcrectl-pull-secret"
+        }
+      ],
+      "resources": {
+        "limits": {
+          "memory": "8Gi"
+        },
+        "requests": {
+          "memory": "4Gi"
+        }
+      }
+    },
+    "rbac": {
+      "runNamespaces": [
+        "team-a"
+      ],
+      "scope": "namespaced"
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  extra.apiToken                     (installed release)",
+    "  manager.resources.limits.memory    (installed release)",
+    "  manager.resources.requests.memory  (this run)",
+    "  rbac.runNamespaces                 (installed release)",
+    "[preflight] rbac.scope: namespaced (installed release)",
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)",
+    "[preflight] Image pull secrets: [mirror-pull-secret, nvcrectl-pull-secret] (installed release, --image-pull-secret)"
+  ]
+}

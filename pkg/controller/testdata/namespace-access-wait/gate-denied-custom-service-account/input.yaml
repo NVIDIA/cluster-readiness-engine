@@ -1,0 +1,7 @@
+# A release installed under another name runs as another ServiceAccount.
+# The suggested command must name it, or applying it would grant the default
+# nvcre/nvcre-manager account and the Workflow would keep waiting.
+call: gate
+serviceAccount: platform/readiness-nvcre-manager
+denied:
+- {resource: configmaps, verb: create}

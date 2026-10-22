@@ -1,0 +1,5 @@
+{
+  "ok": false,
+  "products": null,
+  "message": "orchestration.placement: Unpinned cannot constrain this job to a GPU architecture. 2 of the target nodes carry no nvidia.com/gpu.product label and their architecture was read from gpu.nvidia.com ResourceSlices instead (dra-node-01, dra-node-02), so a node affinity built from it would match nothing on the API server. Discovery also excluded 1 node(s) for running a different architecture (b200-node-01), so without the constraint the job could land on them. Narrow target.nodeSelector or target.matchExpressions to a label the nodes actually carry, or use the default Pinned placement"
+}

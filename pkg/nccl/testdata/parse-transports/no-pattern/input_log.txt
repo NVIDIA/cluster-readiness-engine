@@ -1,0 +1,1 @@
+rank0:530:530 [0] NCCL INFO Using network Socket

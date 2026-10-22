@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The whole cross product: every registered catalog entry, at every platform
+# and every GPU architecture the catalog knows. The three lists are left empty
+# so they resolve from catalog.List(), platform.Names() and
+# catalog.KnownGPUArchs() at run time, which means a new platform, a new
+# architecture or a new entry is swept on the day it is registered rather than
+# when someone remembers to add it here.
+#
+# gpusPerNode is swept rather than pinned because it is the only template
+# input that decides whether a NAME renders at all:
+# entries/_lib/nccl/gcp-rtxpro6000-tcp-env.yaml selects NCCL_P2P_LEVEL from
+# {{ if eq .GpusPerNode 8 }} / {{ else if 2 or 4 }} and emits nothing outside
+# that set. 0 means "take the architecture default", so the four values walk
+# both branches, neither branch, and whatever each board normally gets.
+platforms: []
+gpuArchs: []
+entries: []
+nodesPerJob: 8
+gpusPerNode: [0, 2, 4, 8]
+enableMNNVL: true

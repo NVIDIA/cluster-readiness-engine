@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The training counterpart of gcp-h100-nccl-image-patch-comm.yaml (issue #439).
+# Training on GCP H100 loads GKE's host-installed TCPXO plugin through the
+# same runtime patch, so its image's CUDA major must match the plugin too:
+# pytorch:25.06-py3 (CUDA 12) for plugin v1.0.16 and earlier, the entries'
+# pytorch:25.08-py3 base image (CUDA 13) for v1.0.17. Undetected, it renders
+# the CUDA 12 image. This pins the worker and its megatron-clone init, which
+# copies Megatron-LM out of the image when the image ships it, so both run the
+# same image; the override sets trainer.image to match. Training runs under
+# torchrun with no launcher, so only the node replicated job is pinned. To
+# override the image, set categories[].options.image on the training
+# categories, as in the comm fragment's comment, not the spec-level image.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  initContainers:
+                  - name: megatron-clone
+                    image: {{ .GCPH100TrainingImage }}
+                  containers:
+                  - name: node
+                    image: {{ .GCPH100TrainingImage }}

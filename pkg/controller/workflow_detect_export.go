@@ -11,7 +11,25 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
+
+// Exported field hints for GPUArchFallbackMessage, one per CLI surface.
+const (
+	GPUArchFieldHintCertification = gpuArchFieldHintCertification
+	GPUArchFieldHintWorkloadRun   = gpuArchFieldHintWorkloadRun
+	GPUArchFieldHintClusterInfo   = "gpusPerNode and mlnxPerNode on the Certification or WorkloadRun"
+)
+
+// GPUArchFallbackMessage is the exported version of gpuArchFallbackMessage
+// for the CLI render and cluster-info paths, so every surface that sizes a
+// workflow on an architecture missing from gpu-defaults.yaml prints the same
+// text the controllers emit as the GPUArchitectureDefaults event (ADR-094).
+// gpusPerNode and mlnxPerNode are the caller's resolved counts (field or
+// catalog default). It returns "" for an empty, unknown, or listed architecture.
+func GPUArchFallbackMessage(gpuArch string, gpusPerNode, mlnxPerNode int32, fieldHint string) string {
+	return gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, fieldHint)
+}
 
 // DetectPlatform is the exported version of detectPlatform for use by CLI tools.
 func DetectPlatform(nodes []corev1.Node) string {
@@ -31,7 +49,7 @@ func DetectGPUArchitecture(nodes []corev1.Node) string {
 // for use by the CLI dry-run paths, so "certification render --dry-run" and
 // "workloadrun render --dry-run" resolve the NIC resource exactly as a
 // reconcile of the same target would: field wins, detection only for on-prem
-// GB200/GB300, and only a single candidate allocatable at the resolved
+// GB200/GB300 and x86 HGX B200/B300, and only a single candidate allocatable at the resolved
 // mlnxPerNode count on every node is used. mlnxPerNode must be the caller's
 // fully resolved value (field or catalog default).
 //
@@ -68,6 +86,29 @@ func ResolveGKETCPXONetworks(
 	return d.Names, refusalMessage, d.Ran
 }
 
+// ResolveTCPXOPluginVersion is the exported version of
+// resolveTCPXOPluginVersion for use by the CLI dry-run path, so
+// "certification render --dry-run" renders the same GCP H100 images a
+// reconcile of the same target would: detection only for GCP H100, and only
+// one plugin release tag on every node is used. reader must be able to list
+// kube-system pods.
+//
+// version is the release every target node runs, mapped or not, for
+// catalog.BuildConfig.TCPXOPluginVersion; empty when detection did not run or
+// found none. fallbackMessage is non-empty exactly when detection ran and
+// found no mapped release, so a fallback profile renders; it is the same text
+// the controller emits as the TCPXOPluginDetection event, for the CLI to
+// print to stderr.
+func ResolveTCPXOPluginVersion(
+	ctx context.Context, reader client.Reader, platformName, gpuArch string, nodes []corev1.Node,
+) (version, fallbackMessage string, detectionRan bool) {
+	d := resolveTCPXOPluginVersion(ctx, podread.New(reader, reader), platformName, gpuArch, nodes)
+	if d.Ran && !d.Exact {
+		fallbackMessage = tcpxoPluginDetectionMessage(d)
+	}
+	return d.Version, fallbackMessage, d.Ran
+}
+
 // BuildOverrideContext is the exported version of buildOverrideContext for use by CLI tools.
 func BuildOverrideContext(spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
 	return buildOverrideContext(spec, orch, nodes)
@@ -96,6 +137,20 @@ func ApplyWRPreTemplateOverrides(spec *nvcrev1alpha1.WorkloadRunSpec, overrides 
 // reader also serves the ResourceSlice fallback List, which is safe because CLI
 // clients are uncached client.New clients.
 func DiscoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, error) {
-	nodes, _, err := discoverTargetNodes(ctx, reader, reader, target)
+	nodes, _, _, err := discoverTargetNodes(ctx, reader, reader, target)
 	return nodes, err
+}
+
+// DiscoverTargetNodesWithSynthesized is DiscoverTargetNodes plus the names of
+// the nodes whose nvidia.com/gpu.product label was synthesized from
+// ResourceSlice attributes rather than read off the stored Node.
+//
+// render needs the distinction for the same reason the reconciler does: a
+// synthesized label exists only on the returned copies, so an affinity term
+// built from it matches nothing on a real API server.
+func DiscoverTargetNodesWithSynthesized(
+	ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec,
+) (nodes []corev1.Node, synthesizedProducts []string, err error) {
+	nodes, _, synthesizedProducts, err = discoverTargetNodes(ctx, reader, reader, target)
+	return nodes, synthesizedProducts, err
 }

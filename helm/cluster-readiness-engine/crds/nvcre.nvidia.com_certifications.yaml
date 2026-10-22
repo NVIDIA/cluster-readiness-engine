@@ -61,6 +61,23 @@ spec:
                         options provides per-category configuration overrides.
                         Fields set here take precedence over their CertificationSpec counterparts.
                       properties:
+                        dcgmHost:
+                          description: |-
+                            dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
+                            category passes to `dcgmi diag --host`, as host[:port] where host is a
+                            DNS name or an IPv4 address and port is 1-65535 (for example
+                            "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
+                            to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
+                            nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
+                            address on every platform. Each diag runs on one node and must reach
+                            the hostengine on that same node: the dcgm pod runs on the host
+                            network, so use a Service with internalTrafficPolicy: Local, as the GPU
+                            Operator's is, or localhost:5555 when the hostengine itself listens on
+                            the node's network. A Service that load-balances across nodes would run
+                            the diagnostics on another node's GPUs. Other categories ignore it.
+                          maxLength: 259
+                          pattern: ^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$
+                          type: string
                         enableCheckpoint:
                           description: |-
                             enableCheckpoint enables checkpointing for training workloads.
@@ -77,6 +94,203 @@ spec:
                             (e.g., GB300 NVL72). Can be overridden per-category via
                             categories[].options.enableMNNVL.
                           type: boolean
+                        env:
+                          description: |-
+                            env sets environment variables on this category's workload, applied
+                            after the catalog entry and the platform overrides resolve, so a name
+                            set here wins over both. Use it for a site-specific value a release has
+                            not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+                            known NVLink SHARP defect. Prefer a catalog entry when the setting
+                            follows from the hardware rather than from one site.
+
+                            Because CertificationSpec inlines CategoryOptions, this field is read
+                            both globally at spec.env and per category at
+                            spec.categories[].options.env. Like workloadMetadata and unlike the
+                            slices beside it, the two levels merge per name rather than replacing
+                            wholesale: a category can change or add a variable but cannot remove a
+                            global one. Set variables per category instead of globally when
+                            categories need genuinely different sets.
+
+                            Where a variable lands depends on the entry. The communication/nccl-*
+                            variants run under mpirun, whose ranks start under sshd with a fresh
+                            environment and never read container env, so their variables become
+                            "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+                            env var, which Kubeflow upserts by name onto the workload container.
+                            diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+                            field has no effect there.
+
+                            A certification that sets this is tuned: the variable names (not their
+                            values) appear on the category's report entry, so a reader of a passing
+                            result can see what the run was configured with.
+
+                            valueFrom is rejected: a variable reaches MPI ranks by value on a
+                            command line, which cannot carry a reference. Use a WorkloadRun for
+                            secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+                            OMPI_MCA_* launcher settings) are rejected because a user value there
+                            breaks the launch rather than overriding a default.
+                          items:
+                            description: EnvVar represents an environment variable
+                              present in a Container.
+                            properties:
+                              name:
+                                description: |-
+                                  Name of the environment variable.
+                                  May consist of any printable ASCII characters except '='.
+                                type: string
+                              value:
+                                description: |-
+                                  Variable references $(VAR_NAME) are expanded
+                                  using the previously defined environment variables in the container and
+                                  any service environment variables. If a variable cannot be resolved,
+                                  the reference in the input string will be unchanged. Double $$ are reduced
+                                  to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                                  "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                                  Escaped references will never be expanded, regardless of whether the variable
+                                  exists or not.
+                                  Defaults to "".
+                                type: string
+                              valueFrom:
+                                description: Source for the environment variable's
+                                  value. Cannot be used if value is not empty.
+                                properties:
+                                  configMapKeyRef:
+                                    description: Selects a key of a ConfigMap.
+                                    properties:
+                                      key:
+                                        description: The key to select.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the ConfigMap
+                                          or its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fieldRef:
+                                    description: |-
+                                      Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                      spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                    properties:
+                                      apiVersion:
+                                        description: Version of the schema the FieldPath
+                                          is written in terms of, defaults to "v1".
+                                        type: string
+                                      fieldPath:
+                                        description: Path of the field to select in
+                                          the specified API version.
+                                        type: string
+                                    required:
+                                    - fieldPath
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    description: |-
+                                      FileKeyRef selects a key of the env file.
+                                      Requires the EnvFiles feature gate to be enabled.
+                                    properties:
+                                      key:
+                                        description: |-
+                                          The key within the env file. An invalid key will prevent the pod from starting.
+                                          The keys defined within a source may consist of any printable ASCII characters except '='.
+                                          During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                        type: string
+                                      optional:
+                                        default: false
+                                        description: |-
+                                          Specify whether the file or its key must be defined. If the file or key
+                                          does not exist, then the env var is not published.
+                                          If optional is set to true and the specified key does not exist,
+                                          the environment variable will not be set in the Pod's containers.
+
+                                          If optional is set to false and the specified key does not exist,
+                                          an error will be returned during Pod creation.
+                                        type: boolean
+                                      path:
+                                        description: |-
+                                          The path within the volume from which to select the file.
+                                          Must be relative and may not contain the '..' path or start with '..'.
+                                        type: string
+                                      volumeName:
+                                        description: The name of the volume mount
+                                          containing the env file.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  resourceFieldRef:
+                                    description: |-
+                                      Selects a resource of the container: only resources limits and requests
+                                      (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                    properties:
+                                      containerName:
+                                        description: 'Container name: required for
+                                          volumes, optional for env vars'
+                                        type: string
+                                      divisor:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: Specifies the output format of
+                                          the exposed resources, defaults to "1"
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                      resource:
+                                        description: 'Required: resource to select'
+                                        type: string
+                                    required:
+                                    - resource
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  secretKeyRef:
+                                    description: Selects a key of a secret in the
+                                      pod's namespace
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                type: object
+                            required:
+                            - name
+                            type: object
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-validations:
+                          - message: env entries must not use valueFrom and must not
+                              name a variable Kubeflow Trainer owns (PET_* or the
+                              OMPI_MCA_* launcher settings)
+                            rule: self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_')
+                              && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))
                         exitDurationMins:
                           description: |-
                             exitDurationMins sets the training duration in minutes. Maps to
@@ -109,7 +323,14 @@ spec:
                             platform overrides land the workers on an nccl-tests image that ships
                             the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
                             the operator then owns the EFA OFI plugin being present in the
-                            replacement.
+                            replacement. On GCP H100 the platform overrides pick the NCCL and
+                            training images from the TCPXO NCCL plugin version detected on the
+                            target nodes, because the plugin loads the CUDA runtime from the
+                            workload image; a replacement must have the same CUDA major as the
+                            plugin. Set at the top level, image applies to every category in the
+                            Certification, so on a Certification that mixes workload kinds (for
+                            example NCCL tests with diagnostics/dcgm-level4) set it per category
+                            under categories[].options instead.
                           maxLength: 512
                           minLength: 1
                           type: string
@@ -195,11 +416,11 @@ spec:
                         nicResourceName:
                           description: |-
                             nicResourceName sets the Kubernetes extended resource name of the RDMA
-                            NIC devices requested on workload containers for on-prem GB200/GB300
-                            targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-                            the RDMA device plugin the site runs, and the per-container count
-                            comes from mlnxPerNode. When unset, the controller auto-detects the
-                            name on on-prem GB200/GB300 targets: a single candidate resource
+                            NIC devices requested on workload containers for on-prem GB200/GB300 and
+                            x86 HGX B200/B300 targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the
+                            name depends on the RDMA device plugin the site runs, and the
+                            per-container count comes from mlnxPerNode. When unset, the controller
+                            auto-detects the name on those targets: a single candidate resource
                             (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
                             mlnxPerNode count on every target node is requested; zero or several
                             qualifying candidates inject nothing and emit a NICResourceDetection
@@ -221,10 +442,18 @@ spec:
                         nodesPerJob:
                           description: |-
                             nodesPerJob is the number of nodes per job for multi-node workloads.
-                            When nil at both global and per-category level, the controller auto-selects:
+
+                            It is a per-job group size, not a total: a Certification always covers
+                            every node its target matches, so N matching nodes produce
+                            ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+                            per-category level, the controller auto-selects:
                               - Entries with per-node-count configs (training): largest config <= matching nodes.
                               - All other entries: all matching nodes.
                             When set, clamped to min(nodesPerJob, matchingNodes).
+
+                            To run one job of a chosen size against part of a fleet, use a WorkloadRun
+                            with orchestration.placement: Unpinned. Certification has no such mode by
+                            design: a certification verdict covers everything it targeted. See ADR-089.
                           format: int32
                           minimum: 1
                           type: integer
@@ -243,6 +472,33 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        rdmaDeviceAccess:
+                          description: |-
+                            rdmaDeviceAccess selects how workload containers reach the host's RDMA
+                            devices. Leave it unset unless the cluster has no RDMA device plugin.
+
+                            "devicePlugin" (the default when unset) requests NIC devices as a
+                            Kubernetes extended resource, which is what grants the container its
+                            device cgroup entries; see mlnxPerNode and nicResourceName.
+
+                            "hostPath" mounts the host's /dev/infiniband into the workload
+                            container and runs that container privileged. Both are required
+                            together: kubelet builds the device cgroup allowlist from the
+                            container's requested resources, so a hostPath mount alone makes the
+                            device nodes visible but open() on them still fails with EPERM, and no
+                            capability changes that. Use this on clusters that expose RDMA through
+                            host device nodes rather than through a device plugin. The pod will be
+                            rejected on clusters that enforce a restricted or baseline Pod Security
+                            Standard. A privileged container also runs without the runtime's default
+                            seccomp filter and without AppArmor or SELinux confinement, so a
+                            pod-level seccompProfile no longer constrains it even though the pod spec
+                            still shows it. Some CRI-O runtimes reject a privileged container whose
+                            GPUs come from the NVIDIA device plugin; where that applies, the pods
+                            fail to start.
+                          enum:
+                          - hostPath
+                          - devicePlugin
+                          type: string
                         repeatCount:
                           description: |-
                             repeatCount sets the number of orchestration iterations for the Workflow.
@@ -512,6 +768,23 @@ spec:
                 maxItems: 64
                 minItems: 1
                 type: array
+              dcgmHost:
+                description: |-
+                  dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
+                  category passes to `dcgmi diag --host`, as host[:port] where host is a
+                  DNS name or an IPv4 address and port is 1-65535 (for example
+                  "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
+                  to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
+                  nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
+                  address on every platform. Each diag runs on one node and must reach
+                  the hostengine on that same node: the dcgm pod runs on the host
+                  network, so use a Service with internalTrafficPolicy: Local, as the GPU
+                  Operator's is, or localhost:5555 when the hostengine itself listens on
+                  the node's network. A Service that load-balances across nodes would run
+                  the diagnostics on another node's GPUs. Other categories ignore it.
+                maxLength: 259
+                pattern: ^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$
+                type: string
               enableCheckpoint:
                 description: |-
                   enableCheckpoint enables checkpointing for training workloads.
@@ -528,6 +801,202 @@ spec:
                   (e.g., GB300 NVL72). Can be overridden per-category via
                   categories[].options.enableMNNVL.
                 type: boolean
+              env:
+                description: |-
+                  env sets environment variables on this category's workload, applied
+                  after the catalog entry and the platform overrides resolve, so a name
+                  set here wins over both. Use it for a site-specific value a release has
+                  not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+                  known NVLink SHARP defect. Prefer a catalog entry when the setting
+                  follows from the hardware rather than from one site.
+
+                  Because CertificationSpec inlines CategoryOptions, this field is read
+                  both globally at spec.env and per category at
+                  spec.categories[].options.env. Like workloadMetadata and unlike the
+                  slices beside it, the two levels merge per name rather than replacing
+                  wholesale: a category can change or add a variable but cannot remove a
+                  global one. Set variables per category instead of globally when
+                  categories need genuinely different sets.
+
+                  Where a variable lands depends on the entry. The communication/nccl-*
+                  variants run under mpirun, whose ranks start under sshd with a fresh
+                  environment and never read container env, so their variables become
+                  "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+                  env var, which Kubeflow upserts by name onto the workload container.
+                  diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+                  field has no effect there.
+
+                  A certification that sets this is tuned: the variable names (not their
+                  values) appear on the category's report entry, so a reader of a passing
+                  result can see what the run was configured with.
+
+                  valueFrom is rejected: a variable reaches MPI ranks by value on a
+                  command line, which cannot carry a reference. Use a WorkloadRun for
+                  secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+                  OMPI_MCA_* launcher settings) are rejected because a user value there
+                  breaks the launch rather than overriding a default.
+                items:
+                  description: EnvVar represents an environment variable present in
+                    a Container.
+                  properties:
+                    name:
+                      description: |-
+                        Name of the environment variable.
+                        May consist of any printable ASCII characters except '='.
+                      type: string
+                    value:
+                      description: |-
+                        Variable references $(VAR_NAME) are expanded
+                        using the previously defined environment variables in the container and
+                        any service environment variables. If a variable cannot be resolved,
+                        the reference in the input string will be unchanged. Double $$ are reduced
+                        to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                        "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                        Escaped references will never be expanded, regardless of whether the variable
+                        exists or not.
+                        Defaults to "".
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fieldRef:
+                          description: |-
+                            Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                            spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified
+                                API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fileKeyRef:
+                          description: |-
+                            FileKeyRef selects a key of the env file.
+                            Requires the EnvFiles feature gate to be enabled.
+                          properties:
+                            key:
+                              description: |-
+                                The key within the env file. An invalid key will prevent the pod from starting.
+                                The keys defined within a source may consist of any printable ASCII characters except '='.
+                                During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                              type: string
+                            optional:
+                              default: false
+                              description: |-
+                                Specify whether the file or its key must be defined. If the file or key
+                                does not exist, then the env var is not published.
+                                If optional is set to true and the specified key does not exist,
+                                the environment variable will not be set in the Pod's containers.
+
+                                If optional is set to false and the specified key does not exist,
+                                an error will be returned during Pod creation.
+                              type: boolean
+                            path:
+                              description: |-
+                                The path within the volume from which to select the file.
+                                Must be relative and may not contain the '..' path or start with '..'.
+                              type: string
+                            volumeName:
+                              description: The name of the volume mount containing
+                                the env file.
+                              type: string
+                          required:
+                          - key
+                          - path
+                          - volumeName
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        resourceFieldRef:
+                          description: |-
+                            Selects a resource of the container: only resources limits and requests
+                            (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
+                              type: string
+                            divisor:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                  required:
+                  - name
+                  type: object
+                maxItems: 32
+                type: array
+                x-kubernetes-validations:
+                - message: env entries must not use valueFrom and must not name a
+                    variable Kubeflow Trainer owns (PET_* or the OMPI_MCA_* launcher
+                    settings)
+                  rule: self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_')
+                    && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))
               exitDurationMins:
                 description: |-
                   exitDurationMins sets the training duration in minutes. Maps to
@@ -610,7 +1079,14 @@ spec:
                   platform overrides land the workers on an nccl-tests image that ships
                   the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
                   the operator then owns the EFA OFI plugin being present in the
-                  replacement.
+                  replacement. On GCP H100 the platform overrides pick the NCCL and
+                  training images from the TCPXO NCCL plugin version detected on the
+                  target nodes, because the plugin loads the CUDA runtime from the
+                  workload image; a replacement must have the same CUDA major as the
+                  plugin. Set at the top level, image applies to every category in the
+                  Certification, so on a Certification that mixes workload kinds (for
+                  example NCCL tests with diagnostics/dcgm-level4) set it per category
+                  under categories[].options instead.
                 maxLength: 512
                 minLength: 1
                 type: string
@@ -696,11 +1172,11 @@ spec:
               nicResourceName:
                 description: |-
                   nicResourceName sets the Kubernetes extended resource name of the RDMA
-                  NIC devices requested on workload containers for on-prem GB200/GB300
-                  targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-                  the RDMA device plugin the site runs, and the per-container count
-                  comes from mlnxPerNode. When unset, the controller auto-detects the
-                  name on on-prem GB200/GB300 targets: a single candidate resource
+                  NIC devices requested on workload containers for on-prem GB200/GB300 and
+                  x86 HGX B200/B300 targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the
+                  name depends on the RDMA device plugin the site runs, and the
+                  per-container count comes from mlnxPerNode. When unset, the controller
+                  auto-detects the name on those targets: a single candidate resource
                   (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
                   mlnxPerNode count on every target node is requested; zero or several
                   qualifying candidates inject nothing and emit a NICResourceDetection
@@ -722,10 +1198,18 @@ spec:
               nodesPerJob:
                 description: |-
                   nodesPerJob is the number of nodes per job for multi-node workloads.
-                  When nil at both global and per-category level, the controller auto-selects:
+
+                  It is a per-job group size, not a total: a Certification always covers
+                  every node its target matches, so N matching nodes produce
+                  ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+                  per-category level, the controller auto-selects:
                     - Entries with per-node-count configs (training): largest config <= matching nodes.
                     - All other entries: all matching nodes.
                   When set, clamped to min(nodesPerJob, matchingNodes).
+
+                  To run one job of a chosen size against part of a fleet, use a WorkloadRun
+                  with orchestration.placement: Unpinned. Certification has no such mode by
+                  design: a certification verdict covers everything it targeted. See ADR-089.
                 format: int32
                 minimum: 1
                 type: integer
@@ -744,6 +1228,33 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              rdmaDeviceAccess:
+                description: |-
+                  rdmaDeviceAccess selects how workload containers reach the host's RDMA
+                  devices. Leave it unset unless the cluster has no RDMA device plugin.
+
+                  "devicePlugin" (the default when unset) requests NIC devices as a
+                  Kubernetes extended resource, which is what grants the container its
+                  device cgroup entries; see mlnxPerNode and nicResourceName.
+
+                  "hostPath" mounts the host's /dev/infiniband into the workload
+                  container and runs that container privileged. Both are required
+                  together: kubelet builds the device cgroup allowlist from the
+                  container's requested resources, so a hostPath mount alone makes the
+                  device nodes visible but open() on them still fails with EPERM, and no
+                  capability changes that. Use this on clusters that expose RDMA through
+                  host device nodes rather than through a device plugin. The pod will be
+                  rejected on clusters that enforce a restricted or baseline Pod Security
+                  Standard. A privileged container also runs without the runtime's default
+                  seccomp filter and without AppArmor or SELinux confinement, so a
+                  pod-level seccompProfile no longer constrains it even though the pod spec
+                  still shows it. Some CRI-O runtimes reject a privileged container whose
+                  GPUs come from the NVIDIA device plugin; where that applies, the pods
+                  fail to start.
+                enum:
+                - hostPath
+                - devicePlugin
+                type: string
               repeatCount:
                 description: |-
                   repeatCount sets the number of orchestration iterations for the Workflow.

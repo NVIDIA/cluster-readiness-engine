@@ -38,26 +38,17 @@ spec:
 
 Tune scrape cadence with `metrics.serviceMonitor.interval` and `metrics.serviceMonitor.scrapeTimeout` (empty uses the Prometheus defaults). kube-prometheus-stack users should set `metrics.serviceMonitor.labels.release` to their Prometheus Helm release name (default `prometheus`). See `helm/cluster-readiness-engine/values.yaml` for the full set of knobs.
 
-## Job status metrics
+## Lifecycle status metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `nvcre_job_status` | Gauge | `namespace`, `job`, `workflow`, `status` | Current status of burn-in Jobs. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed`. |
-
-The gauge is set for all three status values on each update, ensuring that a transition from `in_progress` to `succeeded` also zeroes out the `in_progress` series. Metrics are cleaned up when a Job is deleted.
-
-## Certification and Workflow status metrics
-
-Certification and Workflow conditions are the operator-facing source of truth (`kubectl get certifications,workflows`). These gauges mirror `nvcre_job_status` so a status panel can show the verdict of a run even when Job series are missing, stale, or wrong.
+Certification, Workflow and Job conditions are the operator-facing source of truth (`kubectl get certifications,workflows,jobs.nvcre.nvidia.com`). These gauges export them so a status panel or alert can show the verdict of a run.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `nvcre_certification_status` | Gauge | `namespace`, `certification`, `status` | Current status of Certifications. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed` (mapped from the InProgress / Succeeded / Failed condition types). |
 | `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the value of the Workflow's `nvcre.nvidia.com/certification` label, or empty when that label is absent. |
+| `nvcre_job_status` | Gauge | `namespace`, `job`, `workflow`, `status` | Current status of burn-in Jobs. Value is `1` for the current status, `0` for others. Same status values as Certification. `workflow` is the value of the Job's `nvcre.nvidia.com/workflow` label, or empty when that label is absent. |
 
-These series are built at scrape time from the elected leader's informer cache. Each scrape lists Certifications and Workflows and emits `1` for the true InProgress / Succeeded / Failed condition and `0` for the peers. An object with no phase condition `True` is omitted. Series disappear on the next scrape after the object leaves the cache; a changed `nvcre.nvidia.com/certification` label reports the new value and does not leave old series. Standby replicas emit nothing. Reason strings are not exported as labels.
-
-These gauges do not change how or when `nvcre_job_status` is updated.
+These series are built at scrape time from the elected leader's informer cache. Each scrape lists Certifications, Workflows and Jobs and emits `1` for the true InProgress / Succeeded / Failed condition and `0` for the peers, so a status written by any reconciler, including a Workflow's `timeoutPerJob` write on its Job, shows on the next scrape, and the series are correct again after a controller restart. If more than one phase condition is `True`, `failed` wins, then `succeeded`, then `in_progress`. An object with no phase condition `True` is omitted. An object being deleted keeps its series until it leaves the cache, and they disappear on the next scrape after that; a changed parent label reports the new value and does not leave old series. Standby replicas emit nothing. Reason strings are not exported as labels.
 
 ## Hardware failure metrics
 
@@ -80,6 +71,15 @@ These gauges do not change how or when `nvcre_job_status` is updated.
 |--------|------|--------|-------------|
 | `nvcre_reconcile_total` | Counter | `namespace`, `job`, `workflow`, `result` | Total number of reconciliation attempts. `result` values: `success`, `error`, `requeue`. |
 | `nvcre_reconcile_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of reconciliation operations in seconds. Buckets: 10ms to ~20s (exponential). |
+
+## Pod read metrics
+
+The controller caches only Pods that carry the `nvcre.nvidia.com/job` label and reads other Pods, such as MPI launchers, from the API server ([ADR-102](../designs/102-scoped-pod-cache.md)).
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `nvcre_pod_reads_total` | Counter | `read`, `source`, `result` | Pod reads by the controller. `read` names the read (`JobPods`, `ActiveJobPods`, `JobPodsOnNode`, `WorkloadPods`, `NamespacePods`); `source` is `cache` or `live` (the API server); `result` is `found`, `empty` or `error`. |
+| `nvcre_unscoped_cache_reads_total` | Counter | `kind`, `op` | Cache reads the controller refused because the job-scoped cache could not answer them completely. `op` is `list`, `get` or `informer`. Any increase is a controller bug; the controller log names the calling code. |
 
 ## Workload metrics
 

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: nscale-g3-n5-training-nem-ebd7a
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: nscale-g3-n5
+    namespace: default
+  - kind: Workflow
+    name: nscale-g3-n5-training-nem-ebd7a
+    namespace: default

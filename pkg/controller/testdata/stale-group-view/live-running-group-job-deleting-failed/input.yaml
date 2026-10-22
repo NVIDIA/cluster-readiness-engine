@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control for the deleting branch: live and cached views agree, no workload
+# pods remain, the drain barrier passes, and the group fails as before.
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job}
+    live: {phase: Running, jobRef: g0-job}
+    job: deleting

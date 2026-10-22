@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: gcp-tcpxo17-communication-de7d0
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: gcp-tcpxo17
+    namespace: default
+  - kind: Workflow
+    name: gcp-tcpxo17-communication-de7d0
+    namespace: default
+events:
+  # Only the Normal WorkflowCreated event: both nodes run plugin v1.0.17,
+  # so there is no TCPXOPluginDetection Warning (and the GKE networks resolve).
+  - involvedKind: Certification
+    involvedName: gcp-tcpxo17
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}

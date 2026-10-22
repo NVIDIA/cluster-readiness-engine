@@ -68,6 +68,13 @@
                                               "values": [
                                                 "gpu-node-01"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
                                             }
                                           ]
                                         }

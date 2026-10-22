@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job object is gone and the group is about to be marked Failed for that
+# reason. Its pods are still there, so the placement is still readable.
+#
+# updateStatusFromJobs has two branches that reach this state, a confirmed
+# deletion and a DeletionTimestamp, and both used to take the group straight to
+# GroupFailed without the backfill, so an Unpinned job that was deleted mid-run
+# failed with nodes: [] no matter where its pods had been. The DeletionTimestamp
+# branch now records placement before its pod-drain wait, while the pods are
+# still readable, and both branches run the backfill again as a backstop before
+# failing the group. That is why backfillGroupNodes takes a namespace and name
+# rather than the Job: the confirmed-deletion branch has only the JobRef left.
+#
+# terminal is true because these are the last reconciles that visit the group.
+# The partial-placement gate has to be off for the same reason it is off for a
+# terminal failure. The ordering against the drain is pinned by the reconcile
+# fixture workflow-unpinned-deleted-job-attributed, not here.
+placement: Unpinned
+nodesPerJob: 2
+terminal: true
+noJob: true
+pods:
+  - {name: w-0, nodeName: node-a, phase: Running}
+  - {name: w-1, nodeName: node-b, phase: Running}

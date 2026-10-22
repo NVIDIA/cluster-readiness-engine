@@ -1,0 +1,18 @@
+# Other DRA drivers publish their own device types; only gpu.nvidia.com
+# devices are GPUs.
+resourceSlices:
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, gpu]
+  - nodeName: node-a
+    driver: compute-domain.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu]
+  - nodeName: node-b
+    driver: roce.networking.k8s.aws
+    pool: node-b
+    generation: 1
+    devices: [gpu]

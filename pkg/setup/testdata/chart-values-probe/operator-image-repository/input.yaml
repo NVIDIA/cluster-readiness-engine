@@ -1,0 +1,9 @@
+# Setting only the repository is enough for a mirror: the chart fills the tag
+# from its appVersion, and the kept tag is not kept.
+release:
+  manager:
+    image:
+      repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+      tag: v0.6.0
+set:
+  - manager.image.repository=registry.example.com/mirror/manager

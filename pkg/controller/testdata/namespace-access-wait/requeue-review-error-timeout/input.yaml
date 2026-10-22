@@ -1,0 +1,6 @@
+# A Forbidden write whose review cannot run, eleven minutes into the wait: past
+# the ten-minute namespace access timeout, so the Workflow fails.
+call: requeue
+reviewError: "connection refused"
+waiting: "11m"
+waitingReason: NamespaceAccessCheckFailed

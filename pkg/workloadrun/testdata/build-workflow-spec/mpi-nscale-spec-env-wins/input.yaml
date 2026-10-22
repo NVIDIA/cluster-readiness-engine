@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI run rendered for Nscale B200, where the platform forwards its IB env
+# with -x. MPI ranks see only what mpirun forwards, so trainer.args must carry
+# spec.env over both the platform pairs and the NCCL defaults:
+#
+#   NCCL_IB_PCI_RELAXED_ORDERING=0  replaces the platform's
+#                                   NCCL_IB_PCI_RELAXED_ORDERING=1
+#   NCCL_SHM_DISABLE=0              replaces the default NCCL_SHM_DISABLE=1
+#
+# Defaults the platform does not forward (NCCL_NET_GDR_*) are forwarded too.
+# Names both set, such as NCCL_DEBUG and NCCL_MNNVL_ENABLE, appear once, as
+# the platform pair.
+run:
+  metadata:
+    name: wr-mpi-nscale
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    numNodes: 2
+    env:
+      - name: NCCL_IB_PCI_RELAXED_ORDERING
+        value: "0"
+      - name: NCCL_SHM_DISABLE
+        value: "0"
+    framework:
+      mpi:
+        binary: /usr/local/bin/all_reduce_perf_mpi
+        mpirunPath: /usr/local/mpi/bin/mpirun
+platform: nscale
+gpuArch: b200
+gpusPerNode: 8
+mlnxPerNode: 8
+enableMNNVL: false
+frameworkType: mpi

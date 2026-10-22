@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A run that reached a terminal state with no placement ever recorded. On an
+# unpinned run that means the job failed before a single pod bound to a node:
+# the scheduler had nothing to give it, or the pod spec was rejected outright.
+#
+# Nothing was exercised, so the line must not claim otherwise. Falling back to
+# Jobs times Nodes/Job would print "2 of 18 target nodes exercised" for a run
+# that touched zero hardware, which is the one place in this report where a
+# plausible number is worse than none. Printing "0 of 18" would be accurate but
+# reads as a measurement; dropping both numbers claims nothing, which is the
+# honest answer when the record is absent rather than zero.
+domain: training
+variant: nemotron5-8b
+status: Failed
+runtime: 0m 5s
+nodesPerJob: 2
+jobs: 1
+placement: Unpinned
+targetNodes: 18

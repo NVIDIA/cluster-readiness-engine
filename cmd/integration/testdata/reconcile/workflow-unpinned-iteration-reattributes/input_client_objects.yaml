@@ -1,0 +1,164 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The iteration counterpart of workflow-unpinned-retry-reattributes: two
+# iterations of one Unpinned group, each landing on a different pair of nodes.
+#
+# handleIterationComplete resets every group before the next iteration, and
+# under Unpinned that reset has to clear the recorded node list too, for the
+# same reason the retry path does: backfillGroupNodes only writes into an empty
+# list, so without the reset iteration 2 would report iteration 1's placement.
+#
+# Each iteration's Job has its own name (<workflow>-group-0-iter-N), so both
+# pod pairs can carry their real labels from the start and no relabelling is
+# needed: iteration 1's lookup cannot see iteration 2's pods and vice versa.
+# Iteration 1's pods stay behind after it completes, which is what envtest
+# does without a GC; they are labelled for a Job that no longer exists and
+# nothing reads them again.
+#
+# Node names are iterattr-node-NN rather than gpu-node-NN. Nodes are
+# cluster-scoped, and these names cannot collide with the gpu-node-NN fleet
+# other cases create under the generic names.
+apiVersion: v1
+kind: Node
+metadata:
+  name: iterattr-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: iterattr-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0c01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: iterattr-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: iterattr-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0c02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: iterattr-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: iterattr-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0c03"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: iterattr-node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: iterattr-node-04
+spec:
+  providerID: "aws://us-east-1a/i-0c04"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-iterattr
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 2
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+---
+# Iteration 1, bound to nodes 01 and 02.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-iterattr-iter1-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-iterattr-group-0-iter-1
+spec:
+  nodeName: iterattr-node-01
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-iterattr-iter1-worker-1
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-iterattr-group-0-iter-1
+spec:
+  nodeName: iterattr-node-02
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+# Iteration 2, bound to nodes 03 and 04.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-iterattr-iter2-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-iterattr-group-0-iter-2
+spec:
+  nodeName: iterattr-node-03
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-iterattr-iter2-worker-1
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-iterattr-group-0-iter-2
+spec:
+  nodeName: iterattr-node-04
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running

@@ -1,0 +1,8 @@
+[
+  "fix-ssh-permissions=nvcr.io/nvidia/pytorch:26.01-py3",
+  "node=nvcr.io/nvidia/pytorch:26.01-py3",
+  "node=nvcr.io/nvidia/pytorch:26.01-py3",
+  "tcpxo-daemon-entrypoint=/fts/entrypoint_rxdm_container.sh --num_hops=2",
+  "tcpxo-daemon=us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.23",
+  "trainer=nvcr.io/nvidia/pytorch:26.01-py3"
+]

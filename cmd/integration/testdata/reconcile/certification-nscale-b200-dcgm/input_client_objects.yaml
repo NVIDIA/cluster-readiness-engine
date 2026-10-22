@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale NKS B200 running diagnostics/dcgm-level4 (ADR-085): the entry is
+# hostNetwork + privileged and gets the GPU-only DRA claim (nscale-gpu.yaml),
+# so the golden must show the gpu claim, no rdma claim, nvidia.com/gpu absent
+# from the merged TrainingRuntime, the base tolerate-everything toleration
+# intact, and no topology key (B200 has no arch-only clique block).
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-b200-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: nscale-b200-node-01
+    kubernetes.io/arch: amd64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000001"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-b200-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-b200-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-b200-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-B200
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-b2-dcgm
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4

@@ -1,0 +1,34 @@
+{
+  "metrics": [
+    {
+      "name": "nvcre_job_status",
+      "labels": {
+        "job": "train-nccl-job",
+        "namespace": "default",
+        "status": "failed",
+        "workflow": "train-nccl"
+      },
+      "value": 1
+    },
+    {
+      "name": "nvcre_job_status",
+      "labels": {
+        "job": "train-nccl-job",
+        "namespace": "default",
+        "status": "in_progress",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_job_status",
+      "labels": {
+        "job": "train-nccl-job",
+        "namespace": "default",
+        "status": "succeeded",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    }
+  ]
+}

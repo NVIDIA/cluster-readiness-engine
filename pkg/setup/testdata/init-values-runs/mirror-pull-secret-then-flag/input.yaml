@@ -1,0 +1,15 @@
+# A mirror pull secret bound through the chart is kept; --image-pull-secret
+# adds nvcrectl-pull-secret after it instead of replacing index 0. The image
+# repository is not kept, so a mirror sets it on every run.
+runs:
+  - args:
+      - --set
+      - manager.image.repository=registry.example.com/mirror/manager
+      - --set
+      - manager.imagePullSecrets[0].name=mirror-pull-secret
+  - args:
+      - --set
+      - manager.image.repository=registry.example.com/mirror/manager
+      - --image-pull-secret
+      - test-token
+  - args: [--set, manager.image.repository=registry.example.com/mirror/manager]

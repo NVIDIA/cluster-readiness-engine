@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A spec whose controller-owned patch registers only the launcher. allTargetJobs
+# then names no node job, but the node job exists in every runtime and is where
+# the workload runs, so the secrets must still land there as they always did;
+# the launcher gets them as well. Pinned after review of PR #483.
+imagePullSecrets:
+  - name: a
+spec:
+  trainJob:
+    runtimePatches:
+      - manager: nvcre.nvidia.com/controller
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: launcher

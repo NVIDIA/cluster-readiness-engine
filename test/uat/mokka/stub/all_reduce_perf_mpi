@@ -1,0 +1,46 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Stands in for nccl-tests' all_reduce_perf_mpi. The real mpirun, ssh and orted
+# launched this rank; there is no CUDA, so rank 0 replays a recorded log
+# instead of running NCCL. Other ranks only report that they started.
+set -euo pipefail
+
+# shellcheck source=/dev/null
+. /opt/stub/mode
+log=/opt/stub/allreduce.log
+rank="${OMPI_COMM_WORLD_RANK:-0}"
+echo "[stub] mode=${STUB_MODE} rank=${rank} host=$(hostname) args=$*" >&2
+
+if [[ "${rank}" != "0" ]]; then
+  exit 0
+fi
+
+case "${STUB_MODE}" in
+  pass)
+    sleep 5
+    cat "${log}"
+    ;;
+  fail)
+    sleep 5
+    # Everything up to the result table, as if the run died mid-measurement.
+    sed -n '1,/^#  *size/p' "${log}"
+    echo "[stub] simulated failure" >&2
+    exit 1
+    ;;
+  empty)
+    sleep 5
+    # Result rows are the only lines that start with whitespace and a digit.
+    # The average line is dropped too, so nothing reports a bandwidth.
+    grep -vE '^[[:space:]]+[0-9]|^# Avg bus bandwidth' "${log}"
+    ;;
+  slow)
+    sleep "${STUB_SLOW_SECONDS}"
+    cat "${log}"
+    ;;
+  *)
+    echo "[stub] unknown STUB_MODE ${STUB_MODE}" >&2
+    exit 2
+    ;;
+esac

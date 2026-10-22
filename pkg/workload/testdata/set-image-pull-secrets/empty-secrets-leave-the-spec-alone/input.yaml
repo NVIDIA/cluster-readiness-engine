@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No secrets means no patch content: SetImagePullSecrets returns early and the
+# bare node and launcher registrations are all that remain.
+imagePullSecrets: []
+registerLauncher: true
+spec:
+  trainJob: {}

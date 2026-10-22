@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The fallback that must not fire. numNodes carries no Minimum marker, so zero
+# is a value the API server accepts, NodesRequired returns it without error, and
+# the Workflow controller has always read `nodesPerJob < 1` as "use every node"
+# and run one job across the whole discovered fleet. That is the fleet-spanning
+# behavior Unpinned exists to escape, and it would otherwise survive the feature
+# untouched: a 3-node job on a 3-node fleet is a perfectly valid size and
+# nothing downstream would object.
+#
+# Zero rather than an omitted field on purpose. Omitting numNodes fails earlier
+# in NodesRequired with a generic adapter error, which is pre-existing behavior
+# shared with Pinned and never reaches the fallback. Zero is the only input that
+# gets there.
+#
+# So the absence of a size is a terminal error rather than an invitation to pick
+# one. The opt-out contract is that the size the operator wrote is the size that
+# runs, and there is no size written here.
+#
+# This is the Workflow-tier backstop. A WorkloadRun always carries a numNodes
+# (Required, Minimum=1) and a Certification has no Unpinned mode at all, so in
+# practice this guards hand-written Workflows.
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-nosize-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: unpin-nosize-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0e01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-nosize-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: unpin-nosize-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0e02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-nosize-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: unpin-nosize-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0e03"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-nosize
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            # The "no size declared" input. See the header.
+            numNodes: 0
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

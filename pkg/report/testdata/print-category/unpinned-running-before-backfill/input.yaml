@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The window between job creation and the first backfill reconcile, which every
+# unpinned run passes through. The Workflow controller has not yet read the pods
+# back, so exercisedNodes is still zero even though the job is running.
+#
+# Here the requested size is the right thing to print. The run is live, the
+# operator is watching it, and the alternative is a bare "Placement: Unpinned"
+# with no numbers at all during the one stretch where the numbers are being
+# asked for. It self-corrects on the next reconcile.
+domain: training
+variant: nemotron5-8b
+status: Running
+runtime: 0m 30s
+nodesPerJob: 2
+jobs: 1
+placement: Unpinned
+targetNodes: 18

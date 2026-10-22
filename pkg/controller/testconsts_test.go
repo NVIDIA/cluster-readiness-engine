@@ -21,14 +21,12 @@ const (
 	testDomainCommunication = "communication"
 	// testNodeA is a node name used by fixtures.
 	testNodeA = "node-a"
+	// testNodeB is a second node name used by fixtures.
+	testNodeB = "node-b"
+	// testAbsent is the fixture value for an object that does not exist.
+	testAbsent = "absent"
 	// testMetricGoodputRatio is the goodput ratio metric/result key.
 	testMetricGoodputRatio = "goodputRatio"
-	// testMetricStatusInProgress is the nvcre_*_status gauge value for InProgress.
-	testMetricStatusInProgress = "in_progress"
-	// testMetricStatusSucceeded is the nvcre_*_status gauge value for Succeeded.
-	testMetricStatusSucceeded = "succeeded"
-	// testMetricStatusFailed is the nvcre_*_status gauge value for Failed.
-	testMetricStatusFailed = "failed"
 	// testVariantNCCLAllReduce is a CertificateCategory variant used by fixtures.
 	testVariantNCCLAllReduce = "nccl-all-reduce"
 	// testNS is the namespace used by fixtures.

@@ -1,0 +1,12 @@
+{
+  "deferred": true,
+  "groups": [
+    {
+      "name": "group-0",
+      "livePhaseAfter": "Pending",
+      "liveJobRefAfter": "",
+      "liveRetriesAfter": 1,
+      "liveHasCompletionTime": false
+    }
+  ]
+}

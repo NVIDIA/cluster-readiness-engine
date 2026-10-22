@@ -34,14 +34,14 @@ Failed nodes are recorded in the Certification status with a reason (`HardwareFa
 
 ### Can MPI workloads run in air-gapped or restricted-egress clusters?
 
-Only when the workload image already contains `/usr/sbin/sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` unless `/usr/sbin/sshd` is already present (`test -x /usr/sbin/sshd || (apt-get update && apt-get install ...)`). When the image ships `sshd`, the install is a no-op and the workers start with zero package-manager egress. The loopback NCCL entries run single-node and have no sshd bootstrap.
+Only when the workload image already contains `/usr/sbin/sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` unless `/usr/sbin/sshd` is already present (`if ! test -x /usr/sbin/sshd; then ... apt-get update && apt-get install ...; fi`). Each `apt-get` and `dpkg` step is bounded at 120 seconds, and the command makes three attempts before the worker exits with an error (see [MPI workers stuck installing sshd](troubleshooting.md#mpi-workers-stuck-installing-sshd)). When the image ships `sshd`, the install is skipped and the workers start with zero package-manager egress. The loopback NCCL entries run single-node and have no sshd bootstrap.
 
-Prebake `sshd` into the workload image:
+Prebake `sshd` into the workload image. The worker's readiness probe opens a loopback SSH session, so the image needs the `ssh` client as well; on Debian and Ubuntu `openssh-server` depends on `openssh-client`, and naming it keeps that true on any base:
 
 ```dockerfile
 FROM <workload base image>
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends openssh-server && \
+    apt-get install -y --no-install-recommends openssh-server openssh-client && \
     rm -rf /var/lib/apt/lists/*
 ```
 

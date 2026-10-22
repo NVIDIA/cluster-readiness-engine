@@ -1,0 +1,106 @@
+[
+  {
+    "args": [
+      "--set",
+      "manager.image.repository=registry.example.com/mirror/manager",
+      "--set",
+      "manager.imagePullSecrets[0].name=mirror-pull-secret"
+    ],
+    "summary": [
+      "[preflight] Controller image: registry.example.com/mirror/manager:<chart appVersion> (this run)",
+      "[preflight] Image pull secrets: [mirror-pull-secret] (this run)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set manager.image.repository=registry.example.com/mirror/manager --set manager.imagePullSecrets[0].name=mirror-pull-secret",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "registry.example.com/mirror/manager"
+        },
+        "imagePullSecrets": [
+          {
+            "name": "mirror-pull-secret"
+          }
+        ]
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  },
+  {
+    "args": [
+      "--set",
+      "manager.image.repository=registry.example.com/mirror/manager",
+      "--image-pull-secret",
+      "test-token"
+    ],
+    "summary": [
+      "[preflight] Controller image: registry.example.com/mirror/manager:<chart appVersion> (this run)",
+      "[preflight] Image pull secrets: [mirror-pull-secret, nvcrectl-pull-secret] (installed release, --image-pull-secret)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set manager.image.repository=registry.example.com/mirror/manager",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json --set manager.image.repository=registry.example.com/mirror/manager",
+      "registry login ghcr.io --username token --password-stdin",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>",
+      "registry logout ghcr.io"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "registry.example.com/mirror/manager"
+        },
+        "imagePullSecrets": [
+          {
+            "name": "mirror-pull-secret"
+          },
+          {
+            "name": "nvcrectl-pull-secret"
+          }
+        ]
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": true
+  },
+  {
+    "args": [
+      "--set",
+      "manager.image.repository=registry.example.com/mirror/manager"
+    ],
+    "summary": [
+      "[preflight] Controller image: registry.example.com/mirror/manager:<chart appVersion> (this run)",
+      "[preflight] Image pull secrets: [mirror-pull-secret, nvcrectl-pull-secret] (installed release)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set manager.image.repository=registry.example.com/mirror/manager",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json --set manager.image.repository=registry.example.com/mirror/manager",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "registry.example.com/mirror/manager"
+        },
+        "imagePullSecrets": [
+          {
+            "name": "mirror-pull-secret"
+          },
+          {
+            "name": "nvcrectl-pull-secret"
+          }
+        ]
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": true
+  }
+]

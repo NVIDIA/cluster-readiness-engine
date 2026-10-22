@@ -1,0 +1,4 @@
+{
+  "error": "orchestration.placement: Unpinned is incompatible with orchestration.topology.strictDomain: strictDomain runs one job per topology domain, Unpinned runs exactly one job; to confine a single unpinned job to one domain, name the domain label in target.matchExpressions instead",
+  "ignoredTopologyKey": "nvidia.com/gpu.clique"
+}

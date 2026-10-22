@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every value this function can return is a claim about coverage, and Unpinned
+# is an explicit opt-out of coverage. "" is the documented no-scale answer; the
+# report's Placement line carries the real information.
+placement: Unpinned
+nodesPerJob: 8

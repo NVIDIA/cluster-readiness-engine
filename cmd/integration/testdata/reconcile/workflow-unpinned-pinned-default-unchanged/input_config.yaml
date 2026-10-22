@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Collecting group-0's Job is what makes the control meaningful. The Workflow's
+# totalGroups shows three groups were planned; the Job shows one of them still
+# carries a required kubernetes.io/hostname affinity naming its two nodes, which
+# is the pin Unpinned removes.
+#
+# The name carries group-0-iter-1 rather than collapsing to <workflow>-job,
+# because getGroupJobName only shortens when there is a single group.
+waitFor:
+  kind: Workflow
+  name: pinned-default
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: pinned-default
+    namespace: default
+  - kind: Job
+    name: pinned-default-group-0-iter-1
+    namespace: default

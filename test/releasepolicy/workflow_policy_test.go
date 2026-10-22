@@ -323,12 +323,11 @@ func TestActionsAreSHAPinned(t *testing.T) {
 			if strings.HasPrefix(uses, "./") {
 				continue
 			}
-			at := strings.LastIndex(uses, "@")
-			if at < 0 {
+			_, ref, found := strings.CutLast(uses, "@")
+			if !found {
 				t.Errorf("%s: uses %q has no ref; pin to a 40-character commit SHA", relGithub(path), uses)
 				continue
 			}
-			ref := uses[at+1:]
 			if !shaRef.MatchString(ref) {
 				t.Errorf("%s: uses %q is not pinned to a 40-character commit SHA", relGithub(path), uses)
 			}

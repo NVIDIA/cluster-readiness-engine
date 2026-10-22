@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An explicit timeoutPerJob was silently discarded on the training entries
+# (issue #403 reproduces with 7m). It now reaches the Workflow exactly as set.
+category:
+  domain: training
+  variant: nemotron5-8b
+nodesPerJob: 4
+timeoutPerJob: 7m

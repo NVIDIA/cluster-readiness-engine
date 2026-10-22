@@ -79,13 +79,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code, including build-tagged test suites.
 	go vet ./...
 	go vet -tags=uat ./test/uat/...
+	go vet -tags=uat_mokka ./test/uat/mokka/...
 
 .PHONY: test
 test: setup-envtest ## Run unit and integration tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test ./cmd/integration/ -v -timeout 300s -count=1
+	go test ./cmd/integration/ -v -timeout 600s -count=1
 
 .PHONY: test-ci
 test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML and coverage reports for CI.
@@ -96,14 +97,14 @@ test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML a
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	"$(GOTESTSUM)" --junitfile integration-report.xml -- \
 		-coverprofile=cover-integration.out -covermode=atomic \
-		./cmd/integration/ -timeout 300s -count=1
+		./cmd/integration/ -timeout 600s -count=1
 	go tool cover -func=cover-unit.out
 	"$(GOCOVER_COBERTURA)" < cover-unit.out > coverage.xml
 
 .PHONY: test-integration
 test-integration: fmt vet setup-envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test ./cmd/integration/ -v -timeout 300s -count=1
+	go test ./cmd/integration/ -v -timeout 600s -count=1
 
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
@@ -150,6 +151,45 @@ test-uat-setup: ## Run destructive setup lifecycle UAT in its own disposable Kin
 .PHONY: cleanup-test-uat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
 	@$(KIND) delete cluster --name $(KIND_CLUSTER_UAT)
+
+##@ Mokka (simulated GPUs on Kind, ADR-096)
+
+# PROFILE is one of the files in test/uat/mokka/values/nvml-mock/.
+PROFILE ?= h100
+MOKKA_CLUSTER ?= nvcre-mokka
+MOKKA_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):mokka-test
+MOKKA_ENV = PROFILE=$(PROFILE) MOKKA_CLUSTER=$(MOKKA_CLUSTER) IMG=$(MOKKA_IMG) KIND_NODE_IMAGE=$(KIND_NODE_IMAGE)
+# Tilt's default port is 10350, which tilt-uat uses; this lets both run at once.
+MOKKA_TILT_PORT ?= 10351
+
+.PHONY: mokka-up
+mokka-up: ## Create a Kind cluster with Mokka-simulated GPUs and NVCRE from the working tree (PROFILE=h100|b200|gb200|gb300).
+	$(MOKKA_ENV) test/uat/mokka/setup.sh up
+
+.PHONY: mokka-down
+mokka-down: ## Delete the Mokka Kind cluster.
+	$(MOKKA_ENV) test/uat/mokka/setup.sh down
+
+.PHONY: tilt-mokka
+tilt-mokka: ## Like mokka-up, with Tilt rebuilding and reloading the controller on source changes.
+	$(MOKKA_ENV) test/uat/mokka/setup.sh cluster infra stub
+	cd test/uat/mokka && $(MOKKA_ENV) tilt up --port $(MOKKA_TILT_PORT)
+
+.PHONY: setup-test-uat-mokka
+setup-test-uat-mokka: ## Bring up the UAT runtime lane cluster for PROFILE (CI; same recipe as mokka-up).
+	$(MOKKA_ENV) test/uat/mokka/setup.sh cluster infra stub nvcre
+
+# The package timeout must exceed the sum of the per-test budgets for the
+# heaviest profile (h100: about 36 minutes of poll budgets, plus namespace
+# cleanup waits), or a slow but healthy run panics the test binary and skips
+# the remaining tests and their cleanup.
+.PHONY: test-uat-mokka-run
+test-uat-mokka-run: ## Run the UAT runtime lane against the existing Mokka cluster; cases for other profiles skip.
+	MOKKA_CLUSTER=$(MOKKA_CLUSTER) NVCRECTL=$(LOCALBIN)/nvcrectl \
+		go test -tags=uat_mokka ./test/uat/mokka/ -v -timeout 3600s -count=1
+
+.PHONY: cleanup-test-uat-mokka
+cleanup-test-uat-mokka: mokka-down ## Delete the UAT runtime lane cluster.
 
 .PHONY: check-agents-sync
 check-agents-sync: ## Verify AGENTS.md is an exact copy of CLAUDE.md.
@@ -372,7 +412,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v2.14.0
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.

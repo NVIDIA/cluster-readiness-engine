@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two groups. group-0's Job has failed and this pass retries it, which deletes
+# the Job and resets the group in memory. group-1 is the stale case: already
+# reset on the API server, still Running on a deleting Job in the cached view.
+#
+# Two things have to hold at once. group-0's reset must reach the API server
+# even though group-1 was deferred, because its Job is already gone and a reset
+# that is not written leaves a Running group on a deleted Job. And the write
+# must not carry group-1's cached state along with it, or group-1 goes back to
+# Running on a Job that no longer exists and the next pass fails it. The tail
+# write merges only the groups this pass changed.
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job}
+    live: {phase: Running, jobRef: g0-job}
+    job: failed
+  - name: group-1
+    cached: {phase: Running, jobRef: g1-job}
+    live: {phase: Pending, jobRef: "", retries: 1}
+    job: deleting

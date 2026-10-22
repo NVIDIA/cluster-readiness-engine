@@ -1,0 +1,65 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      },
+      "imagePullSecrets": [
+        {
+          "name": "x"
+        },
+        {
+          "name": "b"
+        },
+        {
+          "name": "c"
+        },
+        {
+          "name": "nvcrectl-pull-secret"
+        }
+      ]
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)",
+    "[preflight] Image pull secrets: [x, b, c, nvcrectl-pull-secret] (installed release, this run, --image-pull-secret)"
+  ],
+  "rendered": {
+    "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+    "imagePullSecrets": [
+      {
+        "name": "x"
+      },
+      {
+        "name": "b"
+      },
+      {
+        "name": "c"
+      },
+      {
+        "name": "nvcrectl-pull-secret"
+      }
+    ],
+    "replicas": 1,
+    "resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "1Gi"
+      },
+      "requests": {
+        "cpu": "10m",
+        "memory": "1Gi"
+      }
+    },
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ],
+    "runRoleBindings": [
+      "ClusterRoleBinding/nvcre-run-rolebinding"
+    ]
+  }
+}

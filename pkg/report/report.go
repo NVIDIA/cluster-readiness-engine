@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"golang.org/x/text/width"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 )
 
 const (
@@ -59,12 +62,19 @@ type CertReport struct {
 	// ExcludedNodes lists nodes that matched the target but were left
 	// untested, with ExclusionReason saying why. A run reports PASSED even
 	// when it excludes nodes, so these keep that from being invisible.
-	ExcludedNodes   []string           `json:"excludedNodes,omitempty"`
-	ExclusionReason string             `json:"exclusionReason,omitempty"`
-	Categories      []CategoryReport   `json:"categories"`
-	FailedNodes     []string           `json:"failedNodes"`
-	Result          string             `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
-	NodeResults     []NodeResultReport `json:"nodeResults,omitempty"`
+	ExcludedNodes   []string         `json:"excludedNodes,omitempty"`
+	ExclusionReason string           `json:"exclusionReason,omitempty"`
+	Categories      []CategoryReport `json:"categories"`
+	FailedNodes     []string         `json:"failedNodes"`
+	// FailedNodeDetails carries the per-node reason and message behind the names
+	// in FailedNodes. FailedNodes keeps its []string shape because promoting it
+	// would break existing consumers of results.json (ADR-071); this is the
+	// additive sibling that ADR left open, landed by ADR-099. A node appears once
+	// per distinct (reason, message), so it can hold more than one entry when it
+	// failed different ways across categories.
+	FailedNodeDetails []nvcrev1alpha1.FailedNode `json:"failedNodeDetails,omitempty"`
+	Result            string                     `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	NodeResults       []NodeResultReport         `json:"nodeResults,omitempty"`
 }
 
 // NodeResultReport holds per-node pass/fail status for programmatic consumers.
@@ -81,12 +91,34 @@ type CategoryReport struct {
 	Variant       string `json:"variant"`
 	Status        string `json:"status"`
 	FailureReason string `json:"failureReason,omitempty"` // populated from Workflow Failed condition message
-	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing, e.g. scheduling blocked (ADR-083)
+	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing: scheduling blocked (ADR-083) or waiting for namespace access (ADR-092)
 	Runtime       string `json:"runtime,omitempty"`       // total runtime across all iterations
 	TestScale     string `json:"testScale,omitempty"`
 	NodesPerJob   int    `json:"nodesPerJob,omitempty"`
 	Jobs          int    `json:"jobs,omitempty"`
-	MNNVL         string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
+	// Placement is the resolved placement mode, recorded only when it is not the
+	// default. Under Pinned the reader can reconcile the other counts themselves,
+	// since Jobs times Nodes/Job equals the target node count. Unpinned breaks
+	// that identity: one job of Nodes/Job runs and the rest of the target is
+	// deliberately untouched, which no other line in the box says.
+	Placement string `json:"placement,omitempty"`
+	// TargetNodes is the number of nodes the target matched, carried alongside
+	// Placement so the scope line can state both numbers rather than leaving the
+	// reader to find the fleet size elsewhere in the report.
+	TargetNodes int `json:"targetNodes,omitempty"`
+	// ExercisedNodes is how many nodes the groups actually landed on, summed
+	// from recorded group placement. Zero until the Workflow controller backfills
+	// it, and zero for a job whose pods never bound, which is why the scope line
+	// falls back to the requested size rather than printing nothing.
+	ExercisedNodes int    `json:"exercisedNodes,omitempty"`
+	MNNVL          string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
+	// Env lists the names of the environment variables the category resolved
+	// from spec.env and its own options.env, in resolution order. Names only:
+	// a value can carry a path or a hostname, and a report is a document
+	// people forward. It is here because a variable can change what the run
+	// exercises — the case this field was added for disables NVLink SHARP —
+	// so a reader of a passing result has to be able to see that it was tuned.
+	Env []string `json:"env,omitempty"`
 	// FailedGroups lists groups that failed with their reason.
 	FailedGroups []FailedGroupReport `json:"failedGroups,omitempty"`
 	// Cliques lists topology domains with node counts and validation status.
@@ -95,12 +127,19 @@ type CategoryReport struct {
 	Domains []DomainReport `json:"domains,omitempty"`
 	// Communication bandwidth results (single-group: one row per size).
 	Bandwidth []BandwidthRow `json:"bandwidth,omitempty"`
+	// Transport is the distinct set of NCCL network names recorded on the
+	// category's BandwidthMeasurements (for example "IB" or "Socket").
+	// Omitted when the "Using network" line never appeared.
+	Transport []string `json:"transport,omitempty"`
 	// Per-group bandwidth results (multi-group: one row per group).
 	GroupBandwidth []GroupBandwidthRow `json:"groupBandwidth,omitempty"`
 	// Diagnose results from adaptive fault isolation.
 	Diagnose *DiagnoseReport `json:"diagnose,omitempty"`
 	// Iterations shows per-iteration timing and outcome.
 	Iterations []IterationReport `json:"iterations,omitempty"`
+	// Hint is a suggested next step for a failure the run could not narrow on
+	// its own. Empty when there is nothing useful to suggest.
+	Hint string `json:"hint,omitempty"`
 }
 
 // IterationReport holds per-iteration timing and outcome.
@@ -136,6 +175,20 @@ type DiagnoseTestRow struct {
 	Domain string   `json:"domain,omitempty"` // clique/domain for screening tests
 	BusBW  string   `json:"busBW"`            // peak bus bandwidth
 	Passed bool     `json:"passed"`           // job succeeded
+	// Provisional is true when BusBW comes from a measurement that is not
+	// final (see controller.BandwidthFinal); ProvisionalReason is its
+	// Complete condition reason, for example LogsUnavailable, or NotComplete
+	// while the measurement is still running.
+	//
+	// The same contract holds on BandwidthRow and GroupBandwidthRow in the
+	// --results-file JSON: "provisional" is true when any measurement the
+	// row was built from is not final, so the row must not be read as a
+	// result threshold evaluation used. "provisionalReason" is set only when
+	// it describes the measurement that supplied the displayed BusBW; it is
+	// empty when that value is final but another measurement in the row's
+	// set is not. Both keys are omitted when every measurement is final.
+	Provisional       bool   `json:"provisional,omitempty"`
+	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
 
 // DomainReport holds averaged training metrics for a topology domain.
@@ -153,6 +206,11 @@ type BandwidthRow struct {
 	AlgBW   string `json:"algBW"`
 	BusBW   string `json:"busBW"`
 	Samples int    `json:"samples"`
+	// Provisional is true when any measurement reaching the row's size is
+	// not final; ProvisionalReason describes the measurement that supplied
+	// BusBW. See DiagnoseTestRow for the full contract.
+	Provisional       bool   `json:"provisional,omitempty"`
+	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
 
 // CliqueReport holds per-clique validation status.
@@ -183,11 +241,21 @@ type FailureLogReport struct {
 
 // GroupBandwidthRow holds bandwidth for a single group in multi-group Workflows.
 type GroupBandwidthRow struct {
-	GroupName string   `json:"groupName"` // e.g., "group-0" or "clique-0 (18 nodes)"
-	Nodes     []string `json:"nodes"`     // node names in the group
-	BusBW     string   `json:"busBW"`     // peak BusBW at largest message size
-	BelowMin  bool     `json:"belowMin"`  // true if below minBusBandwidthGBps threshold
-	Failed    bool     `json:"failed"`    // true if the group's Job failed
+	// Group is the orchestration group name (GroupStatus.Name), the key rows
+	// are deduplicated on. GroupName is only a display label, and two groups
+	// in one clique can share it.
+	Group     string   `json:"group,omitempty"`
+	GroupName string   `json:"groupName"`           // e.g., "group-0" or "clique-0 (18 nodes)"
+	Nodes     []string `json:"nodes"`               // node names in the group
+	BusBW     string   `json:"busBW"`               // peak BusBW at largest message size
+	Transport []string `json:"transport,omitempty"` // NCCL network names for this group
+	BelowMin  bool     `json:"belowMin"`            // true if BusBW is below the busBandwidthGBps minimum
+	Failed    bool     `json:"failed"`              // true if the group's Job failed
+	// Provisional and ProvisionalReason describe the group's one
+	// measurement, including one that recorded a transport but no
+	// bandwidth rows. See DiagnoseTestRow for the full contract.
+	Provisional       bool   `json:"provisional,omitempty"`
+	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -250,15 +318,83 @@ func CertFailedNodeDetails(ctx context.Context, c client.Client, cert *nvcrev1al
 // CertFailedNodes returns the deduped union of failed node names across all
 // categories: the unique names from CertFailedNodeDetails.
 func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
+	return failedNodeNameUnion(CertFailedNodeDetails(ctx, c, cert))
+}
+
+// failedNodeReasons maps each failed node to the distinct reasons recorded for
+// it, joined with ", ". A node that failed different ways across categories has
+// several entries, and naming only the first would describe one failure as the
+// whole story. Reasons are joined rather than messages: a message can run to
+// several hundred characters and the summary line is width-bounded, so the full
+// text stays in failedNodeDetails and in the failed group's card.
+func failedNodeReasons(details []nvcrev1alpha1.FailedNode) map[string]string {
+	if len(details) == 0 {
+		return nil
+	}
+	seen := make(map[string]map[string]struct{}, len(details))
+	order := make(map[string][]string, len(details))
+	for _, fn := range details {
+		if fn.Name == "" || fn.Reason == "" {
+			continue
+		}
+		reason := string(fn.Reason)
+		if seen[fn.Name] == nil {
+			seen[fn.Name] = make(map[string]struct{}, 2)
+		}
+		if _, dup := seen[fn.Name][reason]; dup {
+			continue
+		}
+		seen[fn.Name][reason] = struct{}{}
+		order[fn.Name] = append(order[fn.Name], reason)
+	}
+	out := make(map[string]string, len(order))
+	for name, reasons := range order {
+		out[name] = strings.Join(reasons, ", ")
+	}
+	return out
+}
+
+// failedNodeNameUnion reduces sorted FailedNode entries to their unique names.
+// Callers that already hold the details use this instead of CertFailedNodes so
+// the failed-nodes ConfigMaps are read once per report rather than twice.
+func failedNodeNameUnion(details []nvcrev1alpha1.FailedNode) []string {
 	// Non-nil so an empty result serializes as [] rather than null: null reads
 	// as "unknown" to a consumer, where the truth is "no nodes failed".
 	union := []string{}
-	for _, n := range CertFailedNodeDetails(ctx, c, cert) {
+	for _, n := range details {
 		if len(union) == 0 || union[len(union)-1] != n.Name {
 			union = append(union, n.Name)
 		}
 	}
 	return union
+}
+
+// CategoryEnvNames returns the names of the environment variables the category
+// at index i resolved, in the order ResolveOptions produces them: the global
+// spec.env entries first, then any name the category added on top. Names only;
+// the values stay out of the report because they can carry a path or a
+// hostname and a report is a document people forward.
+//
+// The merge is read from the spec rather than from the Workflow, for the same
+// reason CategoryMNNVL reads it there: the report has to describe the run even
+// when the Workflow is gone.
+func CategoryEnvNames(cert *nvcrev1alpha1.Certification, i int) []string {
+	if i >= len(cert.Spec.Categories) {
+		return nil
+	}
+	var override *nvcrev1alpha1.CategoryOptions
+	if opts := cert.Spec.Categories[i].Options; opts != nil {
+		override = opts
+	}
+	resolved := controller.ResolveOptions(&cert.Spec.CategoryOptions, override)
+	if len(resolved.Env) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(resolved.Env))
+	for _, e := range resolved.Env {
+		names = append(names, e.Name)
+	}
+	return names
 }
 
 // CategoryMNNVL returns the MNNVL label for the category at index i of the
@@ -291,10 +427,12 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 	} else if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
 		result = "PASSED"
 	}
+	failedNodeDetails := CertFailedNodeDetails(ctx, c, cert)
 	report := &CertReport{
-		Name:        cert.Name,
-		FailedNodes: CertFailedNodes(ctx, c, cert),
-		Result:      result,
+		Name:              cert.Name,
+		FailedNodes:       failedNodeNameUnion(failedNodeDetails),
+		FailedNodeDetails: failedNodeDetails,
+		Result:            result,
 	}
 
 	// Fetch metrics per category from Workflows.
@@ -312,6 +450,10 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 		// Populate MNNVL: check per-category options first, fall back to global.
 		cat.MNNVL = CategoryMNNVL(cert, i)
 
+		// And the names of any variables the category resolved, so a passing
+		// result says what it was configured with (ADR-097).
+		cat.Env = CategoryEnvNames(cert, i)
+
 		if cs.WorkflowRef != nil {
 			wf := &nvcrev1alpha1.Workflow{}
 			ns := cs.WorkflowRef.Namespace
@@ -324,7 +466,7 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 					cat.FailureReason = failureReasonFromConditions(wf.Status.Conditions)
 				}
 				if cat.Status == statusRunning {
-					cat.StatusDetail = schedulingBlockedDetail(wf.Status.Conditions)
+					cat.StatusDetail = runningStatusDetail(wf.Status.Conditions)
 				}
 			}
 		}
@@ -412,13 +554,22 @@ func failureReasonFromConditions(conditions []metav1.Condition) string {
 	return ""
 }
 
-// schedulingBlockedDetail returns the Workflow InProgress message when its
-// reason is JobSchedulingBlocked, so a stalled Running category says why
-// (ADR-083). Returns "" otherwise.
-func schedulingBlockedDetail(conditions []metav1.Condition) string {
+// blockedReasons are the Workflow InProgress reasons that mean a Running
+// category is not progressing: scheduling blocked (ADR-083), or waiting for
+// the controller's write access in the namespace (ADR-092).
+var blockedReasons = map[string]bool{
+	controller.ReasonJobSchedulingBlocked:        true,
+	controller.ReasonNamespacePermissionsMissing: true,
+	controller.ReasonNamespaceAccessCheckFailed:  true,
+}
+
+// runningStatusDetail returns the Workflow InProgress message when its reason
+// says the category is blocked, so a stalled Running category says why.
+// Returns "" otherwise.
+func runningStatusDetail(conditions []metav1.Condition) string {
 	for _, cond := range conditions {
 		if cond.Type == nvcrev1alpha1.WorkflowInProgress && cond.Status == metav1.ConditionTrue &&
-			cond.Reason == controller.ReasonJobSchedulingBlocked {
+			blockedReasons[cond.Reason] {
 			return cond.Message
 		}
 	}
@@ -650,6 +801,20 @@ func buildFailedGroups(
 	return result
 }
 
+// populateCategoryScope records how much of the target a category ran against.
+// Only Unpinned carries it: under Pinned the counts reconcile on their own, so
+// the scope line is omitted and these fields stay zero.
+func populateCategoryScope(cat *CategoryReport, orch *nvcrev1alpha1.OrchestrationStatus) {
+	if !nvcrev1alpha1.IsUnpinned(orch.Placement) {
+		return
+	}
+	cat.Placement = orch.Placement
+	cat.TargetNodes = orch.TotalNodes
+	for i := range orch.Groups {
+		cat.ExercisedNodes += len(orch.Groups[i].Nodes)
+	}
+}
+
 // PopulateCategoryFromWorkflow fills in category metrics from a Workflow and its children.
 func PopulateCategoryFromWorkflow(
 	ctx context.Context, c client.Client, cat *CategoryReport, wf *nvcrev1alpha1.Workflow,
@@ -658,6 +823,7 @@ func PopulateCategoryFromWorkflow(
 	if orch != nil {
 		cat.NodesPerJob = orch.NodesPerJob
 		cat.Jobs = orch.TotalGroups
+		populateCategoryScope(cat, orch)
 	}
 	cat.TestScale = detectTestScale(wf)
 
@@ -718,11 +884,18 @@ func PopulateCategoryFromWorkflow(
 		}
 
 		// Diagnose mode: show per-job results across all stages.
-		if cat.Diagnose != nil && len(filtered) > 0 {
-			cat.Diagnose.Tests = buildDiagnoseTests(ctx, c, wf, filtered)
-			computeDiagnoseMinMax(cat.Diagnose)
-		} else if len(filtered) > 1 && orch != nil && orch.TotalGroups > 1 {
-			// Multi-group: show per-group peak bandwidth.
+		if cat.Diagnose != nil {
+			if len(filtered) > 0 {
+				cat.Diagnose.Tests = buildDiagnoseTests(ctx, c, wf, filtered)
+				computeDiagnoseMinMax(cat.Diagnose)
+			}
+		} else if orch != nil && orch.TotalGroups > 1 &&
+			(wf.Spec.JobTemplate.Spec.BandwidthMeasurement != nil || len(filtered) > 0) {
+			// Multi-group: show per-group peak bandwidth. Chosen from the
+			// orchestration state, not the measurement count, so a failed
+			// group still gets its row when few or no measurements exist.
+			// Only for workflows that measure bandwidth, so a category such
+			// as training never shows an empty group bandwidth section.
 			var bwThreshold string
 			if v := wf.Spec.Validation; v != nil && v.Performance != nil &&
 				v.Performance.Thresholds != nil {
@@ -731,127 +904,298 @@ func PopulateCategoryFromWorkflow(
 			cat.GroupBandwidth = buildGroupBandwidthRows(orch, filtered, bwThreshold)
 		}
 
+		cat.Transport = unionTransports(filtered)
+
 		// Show aggregate bandwidth for non-diagnose modes.
 		// Diagnose shows per-stage bandwidth in the diagnosis section.
 		if cat.Diagnose == nil {
-			var peak *nvcrev1alpha1.BandwidthResult
-			for i := range filtered {
-				r := peakBandwidthResult(filtered[i].Status.Results)
-				if r == nil {
-					continue
-				}
-				if peak == nil || r.SizeBytes > peak.SizeBytes {
-					peak = r
-				}
-			}
-			if peak != nil {
-				cat.Bandwidth = append(cat.Bandwidth, BandwidthRow{
-					Size:    humanSize(peak.SizeBytes),
-					AlgBW:   peak.AlgBW + " GB/s",
-					BusBW:   peak.BusBW + " GB/s",
-					Samples: peak.Samples,
-				})
+			if row := aggregateBandwidthRow(filtered); row != nil {
+				cat.Bandwidth = append(cat.Bandwidth, *row)
 			}
 		}
 	}
+
+	// Set last: the hint reads the bandwidth rows populated above.
+	cat.Hint = diagnoseHint(cat, wf.Spec.JobTemplate.Spec.BandwidthMeasurement != nil)
 }
 
-// buildGroupBandwidthRows maps BandwidthMeasurements to groups and returns
-// per-group peak bandwidth rows for multi-group Workflows.
+// diagnoseHintText points a reader at the mechanism that can narrow a
+// multi-node collective failure to a node or a link.
+const diagnoseHintText = "No bandwidth was recorded on a multi-node group. " +
+	"Re-running this category with testScale: diagnose bisects the group to " +
+	"separate a node-local fault from one on the path between nodes."
+
+// diagnoseHint returns the next-step hint for a category where a multi-node
+// group failed without moving bytes, and "" otherwise. measuresBandwidth
+// reports whether the Workflow asked for a BandwidthMeasurement at all.
+//
+// The conditions together are that signature: the category measures bandwidth,
+// it failed, and some failed group of two or more nodes recorded no bandwidth.
+// The measuresBandwidth gate is load-bearing rather than defensive. Training
+// categories never measure bandwidth, so for them "no bandwidth rows" is the
+// normal state and not a signal; without the gate a goodput threshold violation
+// on a two-node training run would be told to bisect a fabric it never
+// exercised. A single-node group has nothing to bisect, and a group that
+// reported bandwidth did communicate, so neither gets the hint. Categories
+// already running diagnose are skipped: they are doing this.
+//
+// The per-group check matters on a fleet. buildGroupBandwidthRows emits a row
+// for every FAILED group even when nothing was measured, so a category with
+// more than one group always has a non-empty GroupBandwidth and a
+// category-wide emptiness test would never fire. Judging each failed group
+// against its own row means one bad pair among several healthy groups still
+// gets the hint, which is the common case.
+//
+// The hint says what bisection can distinguish and asserts nothing about the
+// fault. Naming a cause from a failed run's logs is what ADR-099 declined to do.
+func diagnoseHint(cat *CategoryReport, measuresBandwidth bool) string {
+	if !measuresBandwidth || cat.Status != statusFailed || cat.Diagnose != nil {
+		return ""
+	}
+	// The aggregate row is built from every group's measurements, so on a
+	// multi-group category a healthy group's bandwidth would otherwise
+	// suppress the hint for a failed sibling: the one-bad-pair case this
+	// exists for. Consult it only when there are no per-group rows to judge,
+	// where it is the single thing that says whether bytes moved at all.
+	if len(cat.GroupBandwidth) == 0 && len(cat.Bandwidth) > 0 {
+		return ""
+	}
+	// A row counts as measured only when it carries a BusBW: groupBandwidthRow
+	// emits a bare row for a failed group with no measurement.
+	measured := make(map[string]bool, len(cat.GroupBandwidth))
+	for _, row := range cat.GroupBandwidth {
+		if row.BusBW != "" {
+			measured[row.Group] = true
+		}
+	}
+	for _, fg := range cat.FailedGroups {
+		if fg.NodeCount >= 2 && !measured[fg.Name] {
+			return diagnoseHintText
+		}
+	}
+	return ""
+}
+
+// aggregateBandwidthRow returns the category's Bandwidth row: the peak result
+// at the largest message size measured and, when several measurements reach
+// that size, the lowest BusBW among them. Taking the minimum means one healthy
+// group cannot stand in for a slow one at the same size. A measurement that
+// stopped at a smaller size contributes nothing to the row; that is a
+// deliberate choice (the row reports one size), pinned by the
+// aggregate-bandwidth-row/unequal-size-largest-wins fixture. The clique line
+// differs: it compares BusBW across groups with no size term.
+//
+// The row is provisional when any measurement with results is not final, so
+// the flag does not depend on which measurement won. The reason is kept only
+// when it describes the winner. Nil when no measurement has results.
+func aggregateBandwidthRow(measurements []nvcrev1alpha1.BandwidthMeasurement) *BandwidthRow {
+	var peak *nvcrev1alpha1.BandwidthResult
+	var from *nvcrev1alpha1.BandwidthMeasurement
+	for i := range measurements {
+		r := peakBandwidthResult(measurements[i].Status.Results)
+		if r == nil {
+			continue
+		}
+		if peak == nil || r.SizeBytes > peak.SizeBytes ||
+			(r.SizeBytes == peak.SizeBytes && parseFloat(r.BusBW) < parseFloat(peak.BusBW)) {
+			peak, from = r, &measurements[i]
+		}
+	}
+	if peak == nil {
+		return nil
+	}
+	row := &BandwidthRow{
+		Size:    humanSize(peak.SizeBytes),
+		AlgBW:   peak.AlgBW + " GB/s",
+		BusBW:   peak.BusBW + " GB/s",
+		Samples: peak.Samples,
+	}
+	row.Provisional, row.ProvisionalReason = bandwidthProvisional(from)
+	for i := range measurements {
+		if row.Provisional {
+			break
+		}
+		if len(measurements[i].Status.Results) == 0 {
+			continue
+		}
+		// Another measurement is not final; the winner's value is, so
+		// mark the row without a reason that would misdescribe it.
+		row.Provisional, _ = bandwidthProvisional(&measurements[i])
+	}
+	return row
+}
+
+// bandwidthProvisional reports whether a measurement is not final, and the
+// reason to show. It defers to controller.BandwidthFinal, so the report marks
+// exactly what threshold evaluation ignores. A measurement with a transport
+// but no bandwidth rows (NoDataCollected, or LogsUnavailable after a failed
+// read) is not final either, so it is marked rather than shown as passing.
+// Callers that only show measured values check for results themselves.
+func bandwidthProvisional(bm *nvcrev1alpha1.BandwidthMeasurement) (bool, string) {
+	if controller.BandwidthFinal(bm) {
+		return false, ""
+	}
+	cond := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
+	if cond == nil || cond.Reason == "" {
+		return true, "NotComplete"
+	}
+	return true, cond.Reason
+}
+
+// provisionalSuffix renders the marker appended to a provisional value.
+func provisionalSuffix(provisional bool, reason string) string {
+	if !provisional {
+		return ""
+	}
+	if reason == "" {
+		return " (provisional)"
+	}
+	return " (provisional: " + reason + ")"
+}
+
+// unionTransports returns the sorted distinct set of NCCL network names
+// recorded across measurements. Empty when none recorded.
+func unionTransports(measurements []nvcrev1alpha1.BandwidthMeasurement) []string {
+	sets := make([][]string, 0, len(measurements))
+	for _, bm := range measurements {
+		sets = append(sets, bm.Status.Transport)
+	}
+	return unionSortedStrings(sets...)
+}
+
+// unionSortedStrings returns the sorted distinct union of string sets.
+func unionSortedStrings(sets ...[]string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, set := range sets {
+		for _, t := range set {
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[t]; ok {
+				continue
+			}
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	slices.Sort(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// buildGroupBandwidthRows returns one peak bandwidth row per group for
+// multi-group Workflows, in group order. Rows are keyed by GroupStatus.Name,
+// never by the display label: groups in the same clique with the same node
+// count share a label, and a failed group must appear exactly once whether or
+// not it has a measurement.
 func buildGroupBandwidthRows(
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	measurements []nvcrev1alpha1.BandwidthMeasurement,
-	minBusBandwidthGBps string,
+	busBWThreshold string,
 ) []GroupBandwidthRow {
-	// Map job name → group info.
-	type groupInfo struct {
-		name      string
-		nodes     []string
-		domains   []string
-		nodeCount int
-		failed    bool
-	}
-	jobToGroup := map[string]groupInfo{}
-	for _, g := range orch.Groups {
-		if g.JobRef != nil {
-			jobToGroup[g.JobRef.Name] = groupInfo{
-				name:      g.Name,
-				nodes:     g.Nodes,
-				domains:   g.Domains,
-				nodeCount: len(g.Nodes),
-				failed:    g.Phase == nvcrev1alpha1.GroupFailed,
-			}
+	// Map job name → measurement. The first measurement for a Job wins.
+	byJob := make(map[string]*nvcrev1alpha1.BandwidthMeasurement, len(measurements))
+	for i := range measurements {
+		if _, ok := byJob[measurements[i].Spec.JobRef.Name]; !ok {
+			byJob[measurements[i].Spec.JobRef.Name] = &measurements[i]
 		}
 	}
 
-	// Build per-group bandwidth rows.
 	var rows []GroupBandwidthRow
-	for _, bm := range measurements {
-		gi, ok := jobToGroup[bm.Spec.JobRef.Name]
-		if !ok {
-			continue
-		}
-		// Get peak BusBW from the largest message size.
-		peak := peakBandwidthResult(bm.Status.Results)
-		if peak == nil {
-			continue
-		}
-
-		// Build label: prefer domain name, fall back to group name with nodes.
-		var label string
-		if len(gi.domains) > 0 {
-			label = fmt.Sprintf("%s (%d nodes)", gi.domains[0], gi.nodeCount)
-		} else if gi.nodeCount <= 4 {
-			label = fmt.Sprintf("%s (%s)", gi.name, strings.Join(gi.nodes, ", "))
-		} else {
-			label = fmt.Sprintf("%s (%d nodes)", gi.name, gi.nodeCount)
-		}
-
-		// Check threshold.
-		belowMin := false
-		if minBusBandwidthGBps != "" {
-			threshold, _ := strconv.ParseFloat(minBusBandwidthGBps, 64)
-			measured, _ := strconv.ParseFloat(peak.BusBW, 64)
-			if threshold > 0 && measured < threshold {
-				belowMin = true
-			}
-		}
-
-		rows = append(rows, GroupBandwidthRow{
-			GroupName: label,
-			Nodes:     gi.nodes,
-			BusBW:     peak.BusBW + " GB/s",
-			BelowMin:  belowMin,
-			Failed:    gi.failed,
-		})
-	}
-
-	// Add failed groups that have no BandwidthMeasurement.
-	seen := make(map[string]bool)
-	for _, r := range rows {
-		seen[r.GroupName] = true
-	}
+	seen := make(map[string]bool, len(orch.Groups))
 	for _, g := range orch.Groups {
-		if g.Phase != nvcrev1alpha1.GroupFailed {
+		if seen[g.Name] {
 			continue
 		}
-		var label string
-		if len(g.Domains) > 0 {
-			label = fmt.Sprintf("%s (%d nodes)", g.Domains[0], len(g.Nodes))
-		} else {
-			label = fmt.Sprintf("%s (%d nodes)", g.Name, len(g.Nodes))
+		var bm *nvcrev1alpha1.BandwidthMeasurement
+		if g.JobRef != nil {
+			bm = byJob[g.JobRef.Name]
 		}
-		if seen[label] {
-			continue
+		if row, ok := groupBandwidthRow(g, bm, busBWThreshold); ok {
+			seen[g.Name] = true
+			rows = append(rows, row)
 		}
-		rows = append(rows, GroupBandwidthRow{
-			GroupName: label,
-			Nodes:     g.Nodes,
-			Failed:    true,
-		})
 	}
-
 	return rows
+}
+
+// groupBandwidthRow builds the row for one group. A measurement with no
+// bandwidth rows still gets a row when it recorded a transport, so the group
+// and clique output keep it; its BusBW stays empty. A failed group always gets
+// a row. Any other group without data is skipped (ok is false).
+func groupBandwidthRow(
+	g nvcrev1alpha1.GroupStatus, bm *nvcrev1alpha1.BandwidthMeasurement, busBWThreshold string,
+) (GroupBandwidthRow, bool) {
+	row := GroupBandwidthRow{
+		Group:     g.Name,
+		GroupName: groupBandwidthLabel(g),
+		Nodes:     g.Nodes,
+		Failed:    g.Phase == nvcrev1alpha1.GroupFailed,
+	}
+	var peak *nvcrev1alpha1.BandwidthResult
+	if bm != nil {
+		// Peak BusBW is taken at the largest message size.
+		peak = peakBandwidthResult(bm.Status.Results)
+		row.Transport = unionSortedStrings(bm.Status.Transport)
+		// A measurement with neither results nor a transport has nothing
+		// to show, so there is nothing to mark.
+		if peak != nil || len(row.Transport) > 0 {
+			row.Provisional, row.ProvisionalReason = bandwidthProvisional(bm)
+		}
+	}
+	if peak == nil && len(row.Transport) == 0 && !row.Failed {
+		return row, false
+	}
+	if peak != nil {
+		// Display the largest-size BusBW, but judge LOW on the maximum
+		// across message sizes, the value the threshold gate evaluates.
+		// A provisional row is never judged; it shows as "?".
+		row.BusBW = peak.BusBW + " GB/s"
+		if !row.Provisional {
+			gated := strconv.FormatFloat(controller.MaxBusBandwidth(bm.Status.Results), 'f', -1, 64)
+			row.BelowMin = busBWBelowMin(gated, busBWThreshold)
+		}
+	}
+	return row, true
+}
+
+// groupBandwidthLabel is the display label for a group's bandwidth row: the
+// domain name when the group has one, else the group name with its nodes.
+func groupBandwidthLabel(g nvcrev1alpha1.GroupStatus) string {
+	switch {
+	case len(g.Domains) > 0:
+		return fmt.Sprintf("%s (%d nodes)", g.Domains[0], len(g.Nodes))
+	case len(g.Nodes) > 0 && len(g.Nodes) <= 4:
+		return fmt.Sprintf("%s (%s)", g.Name, strings.Join(g.Nodes, ", "))
+	default:
+		return fmt.Sprintf("%s (%d nodes)", g.Name, len(g.Nodes))
+	}
+}
+
+// busBWBelowMin reports whether a measured BusBW is below the minimum set by
+// the busBandwidthGBps threshold, a CEL expression such as "value >= 300".
+// The expression is evaluated with threshold.Evaluate, as the controller does,
+// so the report and the threshold gate agree. It is below the minimum when the
+// expression fails for the measured value but passes for a larger one, so an
+// upper bound (e.g. "value <= 500") or a range never marks a row LOW. An empty
+// or invalid expression, or an unparsable BusBW, never is.
+func busBWBelowMin(busBW, busBWThreshold string) bool {
+	if busBWThreshold == "" {
+		return false
+	}
+	measured, err := strconv.ParseFloat(busBW, 64)
+	if err != nil {
+		return false
+	}
+	passed, err := threshold.Evaluate(measured, busBWThreshold)
+	if err != nil || passed {
+		return false
+	}
+	passedHigher, err := threshold.Evaluate(math.MaxFloat64, busBWThreshold)
+	return err == nil && passedHigher
 }
 
 // buildDomainReports groups GoodputMeasurements by topology domain.
@@ -1030,6 +1374,25 @@ func buildCliqueReport(wf *nvcrev1alpha1.Workflow, failedNodes []nvcrev1alpha1.F
 const annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
 func detectTestScale(wf *nvcrev1alpha1.Workflow) string {
+	// Unpinned has no test scale, and every value this function could return
+	// would be a claim about coverage that Unpinned explicitly opts out of. A
+	// one-node unpinned job is one job on one node, not "every node tested
+	// independently"; a larger one does not sweep the fleet either. That holds
+	// even when the operator did request a scale, so this precedes the annotation
+	// rather than following it: the request was not honored, and reporting it
+	// would describe a run that did not happen. "" is the documented no-scale
+	// answer and the Placement line carries the real information.
+	//
+	// Status is checked first because it is the resolved, post-override value;
+	// the persisted spec does not show a placement an override introduced. Spec
+	// is the fallback for a Workflow whose status is not populated yet.
+	if orch := wf.Status.Orchestration; orch != nil && orch.Placement != "" {
+		if nvcrev1alpha1.IsUnpinned(orch.Placement) {
+			return ""
+		}
+	} else if nvcrev1alpha1.IsUnpinned(wf.Spec.Orchestration.Placement) {
+		return ""
+	}
 	// What the operator asked for, when the Certification recorded it. The
 	// fallback below infers the scale from what was applied, which is not the
 	// same thing: an entry whose template ignores testScale still partitions one
@@ -1061,6 +1424,9 @@ const (
 	noneString = "none"
 	markPass   = "✓"
 	markFail   = "✗"
+	// markProvisional marks a result that is not final: neither passing
+	// nor failed.
+	markProvisional = "?"
 )
 
 // Print writes the formatted report to the given writer.
@@ -1132,7 +1498,16 @@ func PrintMulti(w io.Writer, reports []*CertReport) {
 			printBoxLine(w, fmt.Sprintf("Failed Nodes: %s", noneString))
 		} else {
 			printBoxLine(w, fmt.Sprintf("Failed Nodes: %d", len(r.FailedNodes)))
+			reasons := failedNodeReasons(r.FailedNodeDetails)
 			for _, node := range r.FailedNodes {
+				// Wrapped, not concatenated: printBoxLine neither wraps nor
+				// truncates, and a cloud-style node name plus reasons joined
+				// across categories runs past the content width and breaks the
+				// right border.
+				if reason := reasons[node]; reason != "" {
+					printWrappedBoxText(w, "  - "+node+"  ", reason)
+					continue
+				}
 				printBoxLine(w, "  - "+node)
 			}
 		}
@@ -1298,6 +1673,104 @@ func sanitizeTerminalText(s string) string {
 	return b.String()
 }
 
+// exercisedNodeCount resolves how many nodes an unpinned category ran on, and
+// whether that number is known at all.
+//
+// The recorded placement is the answer whenever there is one. When there is not,
+// the meaning depends on whether the category is still going:
+//
+//   - Still running: the pods have not all bound yet and the backfill has not
+//     fired. The requested size is the best estimate available, and the
+//     alternative is dropping both numbers from the line while the run is in
+//     exactly the state an operator is watching it for.
+//   - Finished: zero is the real answer. A category that reached Succeeded or
+//     Failed with nothing recorded either never bound a pod or lost the record,
+//     and printing the requested size would assert coverage that is at best
+//     unverified and at worst did not happen. Returning known=false drops the
+//     counts and leaves the bare mode, which claims nothing.
+func exercisedNodeCount(cat *CategoryReport) (exercised int, known bool) {
+	if cat.ExercisedNodes > 0 {
+		return cat.ExercisedNodes, true
+	}
+	if cat.Status != statusRunning && cat.Status != statusInProgress {
+		return 0, false
+	}
+	requested := cat.NodesPerJob * cat.Jobs
+	return requested, requested > 0
+}
+
+// printCategoryEnv prints the names of the environment variables the category
+// resolved, so a reader of a passing result can see the run was tuned. Names
+// only: a value can carry a path or a hostname and a report is a document
+// people forward. The list wraps rather than truncating, because a reader
+// deciding whether to trust the verdict needs all of it.
+func printCategoryEnv(w io.Writer, cat *CategoryReport) {
+	if len(cat.Env) == 0 {
+		return
+	}
+	for _, line := range wrapList("Env:       ", cat.Env, boxWidth-4) {
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", line, pad(boxWidth-4-len(line)))
+	}
+}
+
+// printCategoryScope prints the lines describing how much of the fleet the
+// category ran against. A diagnose run has none of them: its groups come from
+// bisection rather than a requested size, so the counts would describe
+// something the operator never asked for.
+func printCategoryScope(w io.Writer, cat *CategoryReport) {
+	if cat.NodesPerJob > 0 {
+		npjLine := fmt.Sprintf("Nodes/Job: %d", cat.NodesPerJob)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", npjLine, pad(boxWidth-4-len(npjLine)))
+	}
+	if cat.Jobs > 0 {
+		jobsLine := fmt.Sprintf("Jobs:      %d", cat.Jobs)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", jobsLine, pad(boxWidth-4-len(jobsLine)))
+	}
+	// Only Unpinned sets Placement, and it says the one thing the two lines
+	// above cannot: how much of the target was exercised. Under Pinned the
+	// numbers reconcile on their own and the line would be noise.
+	if cat.Placement != "" {
+		placementLine := fmt.Sprintf("Placement: %s", cat.Placement)
+		if exercised, known := exercisedNodeCount(cat); known && cat.TargetNodes > 0 {
+			placementLine = fmt.Sprintf("Placement: %s (%d of %d target nodes exercised)",
+				cat.Placement, exercised, cat.TargetNodes)
+		}
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", placementLine, pad(boxWidth-4-len(placementLine)))
+	}
+	if cat.MNNVL != "" {
+		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
+	}
+}
+
+// wrapList renders label plus a comma-separated list across as many lines as
+// it takes to stay inside width, indenting continuations under the first
+// item so the list reads as one block.
+func wrapList(label string, items []string, maxLen int) []string {
+	indent := strings.Repeat(" ", len(label))
+	var lines []string
+	current := label
+	for i, item := range items {
+		piece := item
+		if i < len(items)-1 {
+			piece += ","
+		}
+		switch {
+		case current == label || current == indent:
+			current += piece
+		case len(current)+1+len(piece) <= maxLen:
+			current += " " + piece
+		default:
+			lines = append(lines, current)
+			current = indent + piece
+		}
+	}
+	if current != label && current != indent {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
 func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	title := cat.Domain + "/" + cat.Variant
 	printCardTop(w)
@@ -1332,22 +1805,22 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 		tsLine := fmt.Sprintf("Scale:     %s", cat.TestScale)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", tsLine, pad(boxWidth-4-len(tsLine)))
 	}
-	isDiagnose := cat.Diagnose != nil
-	if cat.NodesPerJob > 0 && !isDiagnose {
-		npjLine := fmt.Sprintf("Nodes/Job: %d", cat.NodesPerJob)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", npjLine, pad(boxWidth-4-len(npjLine)))
+	if cat.Diagnose == nil {
+		printCategoryScope(w, cat)
 	}
-	if cat.Jobs > 0 && !isDiagnose {
-		jobsLine := fmt.Sprintf("Jobs:      %d", cat.Jobs)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", jobsLine, pad(boxWidth-4-len(jobsLine)))
-	}
-	if cat.MNNVL != "" && !isDiagnose {
-		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
-	}
+	// Outside that conditional on purpose. The scope lines describe a fleet
+	// size a diagnose run never requested, but what the run was configured
+	// with is just as true of a diagnose category, and a bisection that
+	// passed with a hardware feature disabled is exactly the result a reader
+	// must not take at face value.
+	printCategoryEnv(w, cat)
 
-	// Failed groups with reasons.
+	// Failed groups with reasons, then the next step for this failure.
 	printFailedGroups(w, cat.FailedGroups)
+	if cat.Hint != "" {
+		_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
+		printWrappedBoxText(w, "  Next step: ", cat.Hint)
+	}
 
 	// Per-clique validation status.
 	if len(cat.Cliques) > 0 {
@@ -1393,20 +1866,36 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 		printGroupBandwidth(w, cat.GroupBandwidth)
 	}
 
-	// Aggregate bandwidth results.
-	if len(cat.Bandwidth) > 0 {
+	// NCCL transport and aggregate bandwidth results.
+	printTransportAndBandwidth(w, cat.Transport, cat.Bandwidth)
+
+	printCardBottom(w)
+}
+
+// printTransportAndBandwidth prints a category's NCCL transport line and
+// aggregate bandwidth table, preceded by a blank line when either is present.
+func printTransportAndBandwidth(w io.Writer, transport []string, bandwidth []BandwidthRow) {
+	if len(transport) > 0 || len(bandwidth) > 0 {
 		_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
+	}
+	if len(transport) > 0 {
+		trLine := formatTransportLine(transport)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", trLine, pad(boxWidth-4-len(trLine)))
+	}
+	if len(bandwidth) > 0 {
 		bwHeader := "Bandwidth:"
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", bwHeader, pad(boxWidth-4-len(bwHeader)))
 		colHeader := fmt.Sprintf("    %-10s %-12s %-12s %s", "Size", "AlgBW", "BusBW", "Samples")
 		_, _ = fmt.Fprintf(w, "│%s%s│\n", colHeader, pad(boxWidth-2-len(colHeader)))
-		for _, bw := range cat.Bandwidth {
+		for _, bw := range bandwidth {
 			row := fmt.Sprintf("    %-10s %-12s %-12s %d", bw.Size, bw.AlgBW, bw.BusBW, bw.Samples)
 			_, _ = fmt.Fprintf(w, "│%s%s│\n", row, pad(boxWidth-2-len(row)))
+			if bw.Provisional {
+				// Too wide to share the row; the marker gets its own line.
+				printBoxLine(w, "  "+strings.TrimSpace(provisionalSuffix(true, bw.ProvisionalReason)))
+			}
 		}
 	}
-
-	printCardBottom(w)
 }
 
 // printDomainBox prints a nested domain sub-box within a category card.
@@ -1420,7 +1909,9 @@ func computeDiagnoseMinMax(d *DiagnoseReport) {
 	for i := range d.Tests {
 		t := &d.Tests[i]
 		bw := parseFloat(strings.TrimSuffix(t.BusBW, " GB/s"))
-		if bw <= 0 {
+		// Max and Min BW are stated as measured values, so provisional
+		// results stay out of them; the test rows still show them, marked.
+		if bw <= 0 || t.Provisional {
 			continue
 		}
 		e := &entry{bw: bw, test: t}
@@ -1447,8 +1938,12 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 	printBoxLine(w, "Bandwidth by group:")
 	for _, gb := range groups {
 		mark := markPass
-		if gb.Failed || gb.BelowMin {
+		switch {
+		case gb.Failed || gb.BelowMin:
 			mark = markFail
+		case gb.Provisional:
+			// A provisional result is never shown as passing.
+			mark = markProvisional
 		}
 		status := ""
 		if gb.BelowMin {
@@ -1456,9 +1951,12 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 		}
 		printBoxLine(w, fmt.Sprintf("    %s  %s", mark, gb.GroupName))
 		if gb.BusBW != "" {
-			printBoxLine(w, "       "+gb.BusBW+status)
+			printBoxLine(w, "       "+gb.BusBW+status+provisionalSuffix(gb.Provisional, gb.ProvisionalReason))
 		} else {
-			printBoxLine(w, "       no bandwidth data")
+			printBoxLine(w, "       no bandwidth data"+provisionalSuffix(gb.Provisional, gb.ProvisionalReason))
+		}
+		if len(gb.Transport) > 0 {
+			printBoxLine(w, "       "+formatTransportLine(gb.Transport))
 		}
 		if gb.Failed || gb.BelowMin {
 			for _, node := range gb.Nodes {
@@ -1468,27 +1966,103 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 	}
 }
 
-// printCliques renders per-clique validation status with merged bandwidth.
-func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthRow) {
-	_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
-	cliqueBW := make(map[string]string)
+// cliqueBandwidth is the bandwidth shown under one clique, aggregated over
+// the groups in it.
+type cliqueBandwidth struct {
+	busBW             string   // lowest measured BusBW among non-failed groups
+	value             float64  // busBW parsed, for comparison
+	low               bool     // any group below the threshold
+	provisional       bool     // any non-failed group's result not final
+	provisionalReason string   // reason of the group that supplied busBW, if provisional
+	transport         []string // union of the groups' transports
+}
+
+// aggregateCliqueBandwidth folds group rows into per-clique bandwidth, keyed
+// by the clique name the row label starts with. The clique shows the minimum
+// BusBW across its non-failed groups, LOW when any group is below the
+// threshold, so neither list order nor a healthy sibling can hide a slow
+// group. A failed group's partial BusBW is not a measurement of the clique and
+// is never printed beside it; the clique is already marked failed and the
+// group is itemized under Failed Groups. The provisional mark is an ANY over
+// groups, but its reason is shown only when it belongs to the printed value.
+func aggregateCliqueBandwidth(groupBW []GroupBandwidthRow) map[string]*cliqueBandwidth {
+	out := make(map[string]*cliqueBandwidth)
 	for _, gb := range groupBW {
 		name := gb.GroupName
 		if idx := strings.Index(name, " ("); idx > 0 {
 			name = name[:idx]
 		}
-		cliqueBW[name] = gb.BusBW
+		cb := out[name]
+		if cb == nil {
+			cb = &cliqueBandwidth{}
+			out[name] = cb
+		}
+		// A transport-only row has no BusBW; keep a measured value from
+		// another group in the same clique.
+		if gb.BusBW != "" && !gb.Failed {
+			v := parseFloat(strings.TrimSuffix(gb.BusBW, " GB/s"))
+			if cb.busBW == "" || v < cb.value {
+				cb.busBW, cb.value = gb.BusBW, v
+				cb.provisionalReason = ""
+				if gb.Provisional {
+					cb.provisionalReason = gb.ProvisionalReason
+				}
+			}
+		}
+		cb.low = cb.low || gb.BelowMin
+		// A failed group's result is excluded from busBW, so its finality
+		// says nothing about the printed value.
+		cb.provisional = cb.provisional || (gb.Provisional && !gb.Failed)
+		cb.transport = unionSortedStrings(cb.transport, gb.Transport)
 	}
+	return out
+}
+
+// printCliques renders per-clique validation status with merged bandwidth.
+func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthRow) {
+	_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
+	bwByClique := aggregateCliqueBandwidth(groupBW)
 	printBoxLine(w, "Cliques:")
 	for _, cl := range cliques {
+		cb := bwByClique[cl.Name]
 		mark := markPass
-		if !cl.Passed {
+		switch {
+		case !cl.Passed:
 			mark = markFail
+		case cb != nil && cb.low:
+			// A clique below the bandwidth minimum is never shown as passing.
+			mark = markFail
+		case cb != nil && cb.provisional:
+			// A provisional result is never shown as passing.
+			mark = markProvisional
 		}
 		printBoxLine(w, fmt.Sprintf("    %s  %s  %d/%d nodes", mark, cl.Name, cl.Validated, cl.Total))
-		if bw := cliqueBW[cl.Name]; bw != "" {
-			printBoxLine(w, "       "+bw)
+		if cb == nil {
+			continue
 		}
+		if cb.busBW != "" {
+			status := ""
+			if cb.low {
+				status = "  LOW"
+			}
+			printBoxLine(w, "       "+cb.busBW+status+provisionalSuffix(cb.provisional, cb.provisionalReason))
+		}
+		if len(cb.transport) > 0 {
+			printBoxLine(w, "       "+formatTransportLine(cb.transport))
+		}
+	}
+}
+
+// diagnoseTestMark is the mark for one diagnose test: failed when its Job
+// failed, provisional when its Job passed on a result that is not final.
+func diagnoseTestMark(t DiagnoseTestRow) string {
+	switch {
+	case !t.Passed:
+		return markFail
+	case t.Provisional:
+		return markProvisional
+	default:
+		return markPass
 	}
 }
 
@@ -1509,7 +2083,7 @@ func printDiagnoseTestRow(w io.Writer, mark string, t DiagnoseTestRow) {
 		}
 	}
 	if t.BusBW != "" {
-		printBoxLine(w, "       "+t.BusBW)
+		printBoxLine(w, "       "+t.BusBW+provisionalSuffix(t.Provisional, t.ProvisionalReason))
 	}
 }
 
@@ -1594,11 +2168,12 @@ func buildDiagnoseTests(
 	wf *nvcrev1alpha1.Workflow,
 	measurements []nvcrev1alpha1.BandwidthMeasurement,
 ) []DiagnoseTestRow {
-	// Build bandwidth map: job name → peak BusBW (at the largest message size).
-	bwByJob := map[string]string{}
-	for _, bm := range measurements {
-		if peak := peakBandwidthResult(bm.Status.Results); peak != nil {
-			bwByJob[bm.Spec.JobRef.Name] = peak.BusBW
+	// Build bandwidth map: job name → measurement with a peak BusBW (at the
+	// largest message size).
+	bwByJob := map[string]*nvcrev1alpha1.BandwidthMeasurement{}
+	for i := range measurements {
+		if peakBandwidthResult(measurements[i].Status.Results) != nil {
+			bwByJob[measurements[i].Spec.JobRef.Name] = &measurements[i]
 		}
 	}
 
@@ -1629,8 +2204,9 @@ func buildDiagnoseTests(
 			Domain: domain,
 			Passed: passed,
 		}
-		if bw, ok := bwByJob[j.Name]; ok {
-			row.BusBW = bw + " GB/s"
+		if bm, ok := bwByJob[j.Name]; ok {
+			row.BusBW = peakBandwidthResult(bm.Status.Results).BusBW + " GB/s"
+			row.Provisional, row.ProvisionalReason = bandwidthProvisional(bm)
 		}
 		rows = append(rows, row)
 	}
@@ -1823,11 +2399,7 @@ func printDiagnoseResults(w io.Writer, d *DiagnoseReport) {
 			header := fmt.Sprintf("  %s:", stageDisplay[stage])
 			_, _ = fmt.Fprintf(w, "│  %s%s│\n", header, pad(boxWidth-4-len(header)))
 			for _, t := range stageTests {
-				mark := markPass
-				if !t.Passed {
-					mark = markFail
-				}
-				printDiagnoseTestRow(w, mark, t)
+				printDiagnoseTestRow(w, diagnoseTestMark(t), t)
 			}
 		}
 	}
@@ -1998,6 +2570,18 @@ func fmtAvg(vals []float64, fn fmtFunc) string {
 		return ""
 	}
 	return fn(a)
+}
+
+// formatTransportLine renders the NCCL network names recorded on a
+// BandwidthMeasurement (for example "Transport: IB, Socket"). Each name is
+// passed through sanitizeTerminalText so control characters cannot break
+// the report box.
+func formatTransportLine(values []string) string {
+	sanitized := make([]string, 0, len(values))
+	for _, v := range values {
+		sanitized = append(sanitized, sanitizeTerminalText(v))
+	}
+	return "Transport: " + strings.Join(sanitized, ", ")
 }
 
 // peakBandwidthResult returns a pointer to the result with the largest

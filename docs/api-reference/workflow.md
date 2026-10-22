@@ -19,6 +19,7 @@ _Fields documented so far:_
 | `jobTemplate.spec.goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `jobTemplate.spec.bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `gangScheduler` | GangSchedulerSpec | Optional, immutable. The resolved gang-scheduling intent of the WorkloadRun or Certification that generated this Workflow. See [Gang scheduling consistency contract](#gang-scheduling-consistency-contract) |
+| `orchestration.placement` | string | Optional, `Pinned` or `Unpinned`. Empty means `Pinned`. See [Placement](#placement) |
 
 Because `spec.jobTemplate.spec` is a plain `JobSpec`, its `workloadMetadata` cannot be added, removed, or changed after the Workflow is created. Editing it mid-flight is rejected, so every group and iteration produces Jobs with the same workload labels. Raw `spec.overrides` remain editable; a Job's own metadata becomes immutable at the moment that Job is created.
 
@@ -126,7 +127,7 @@ gangScheduler is configured with queue "team-a" but TrainingRuntime "nccl-runtim
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` — aggregates Job validation failures; set True alongside `Failed` whenever any Job failed performance threshold validation, even when hardware failures determine the `Failed` reason. When the threshold miss is the only cause, `Failed` carries reason `JobValidationFailed` |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` — aggregates Job validation failures; set True alongside `Failed` whenever any Job failed performance threshold validation, even when hardware failures determine the `Failed` reason. When the threshold miss is the only cause, `Failed` carries reason `JobValidationFailed`. `NamespaceAccess` — written only once the Workflow has had to wait for the controller's write access in its namespace ([ADR-092](../designs/092-per-namespace-controller-rbac.md)): `False` while it waits, with `InProgress` reason `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed` and its `lastTransitionTime` marking when the wait began; `True` (`NamespaceAccessGranted`) once access is granted. A wait longer than the controller's `--namespace-access-timeout` fails the Workflow with the same reason |
 | `namespace` | string | Resolved namespace where Jobs and dependencies are created |
 | `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
 | `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |
@@ -135,13 +136,36 @@ gangScheduler is configured with queue "team-a" but TrainingRuntime "nccl-runtim
 | `orchestration.totalNodes` | int | Total nodes discovered from the target |
 | `orchestration.nodesPerJob` | int | Nodes per job (auto-detected from workload template) |
 | `orchestration.detectedGPUArchitecture` | string | Detected GPU architecture (e.g. `gb200`) |
+| `orchestration.gpuProducts` | []string | Distinct `nvidia.com/gpu.product` label values of the discovered nodes, as written on the nodes. `detectedGPUArchitecture` is the parsed form and cannot be matched back to a label, so the raw values are recorded here and carried onto every job as a node affinity term |
 | `orchestration.detectedPlatform` | string | Detected cloud platform (e.g. `aws`) |
+| `orchestration.placement` | string | The resolved placement mode for this run, `Pinned` or `Unpinned` |
 | `orchestration.appliedOverrides` | []AppliedOverride | Which spec overrides matched and were applied |
 | `orchestration.groups` | []GroupStatus | Per-group job status for the current iteration |
+
+## Placement
+
+`spec.orchestration.placement` decides how many jobs a Workflow runs and who picks the nodes.
+
+**`Pinned`** is the default and the behavior every Workflow has always had. The discovered target is partitioned into groups of `nodesPerJob`, every node lands in some group, and each job gets a required `kubernetes.io/hostname` node affinity naming its group's machines. A 12-node target with `nodesPerJob: 2` produces six jobs.
+
+**`Unpinned`** runs exactly one job of exactly `nodesPerJob` nodes, no matter how many the target matches, and carries no hostname affinity. The same 12-node target with `nodesPerJob: 2` produces one two-node job and leaves the other ten untouched. The scheduler chooses the machines, constrained to the target by node affinity.
+
+The requested size is honored exactly under `Unpinned`, or the run fails saying why. It is never clamped to fit the fleet, snapped to the nearest size the model constraints allow, or auto-selected when no size is given.
+
+Both modes carry `target.nodeSelector`, `target.matchExpressions`, and the detected GPU products onto every pod as a required node affinity, so the target is enforced by the scheduler at bind time rather than only at discovery time.
+
+Two fields are incompatible with `Unpinned` and fail the Workflow with reason `PartitionError`:
+
+- `orchestration.diagnose`, which is definitionally about subdividing a group to isolate a fault.
+- `orchestration.topology.strictDomain`, which asks for one job per topology domain.
+
+`orchestration.topology.topologyKey` on its own is **ignored**, not rejected. It only feeds the partitioner, which `Unpinned` does not run, and it is injected by catalog overrides on GB200 and GB300 rather than written by the operator. Rejecting it would fail those runs with a message about a field that does not appear in the submitted YAML. To confine an unpinned job to one topology domain, name the domain label in `target.matchExpressions`, which is carried onto the pods.
 
 ## Naming
 
 Workflows are named `<certificationName>-<domain>-<variant>`.
+
+A Workflow with one group and one iteration names its Job `<workflowName>-job`. Otherwise each Job is named `<workflowName>-<group>-iter-<iteration>`. A retried group's Job adds the attempt, as in `<workflowName>-job-retry-1`, so each attempt has its own Job, GoodputMeasurement and BandwidthMeasurement. Names longer than the Job name limit are truncated and end in a hash of the full name, so attempts stay distinct.
 
 ## Lifecycle
 
@@ -149,3 +173,10 @@ Workflows are named `<certificationName>-<domain>-<variant>`.
 2. Detects platform and GPU architecture; applies matching overrides.
 3. Creates a child `Job`.
 4. Manages iteration count; marks Succeeded or Failed when complete.
+
+### Group retries
+
+With `orchestration.execution.retryFailedGroups` above 0, a group whose Job fails (other than by `timeoutPerJob`) is retried until the count is spent. A retry happens in two steps:
+
+1. Once the failed Job's pods have drained, the group's `retries` is incremented and the group returns to `Pending`. Nothing is deleted yet. If the status write doesn't happen, for example because another group's read failed or the controller restarted, the group is still `Running` on the failed Job, and the next reconcile counts the retry then. A retry is never counted twice.
+2. The previous attempt is then retired, starting on the next reconcile. A retried group launches only once no other group is running, but its previous attempt doesn't wait for that: it is retired while the other groups run. Its Job is deleted first, then its GoodputMeasurement and BandwidthMeasurement, then its job-scoped dependency copies. The next attempt launches only once the API server reports the Job and the copies gone. Job-scoped copies keep their names across attempts, so a copy that is still terminating (a ComputeDomain being torn down, for example) holds the launch instead of being adopted. Copies created for a retry record the attempt in the `nvcre.nvidia.com/group-attempt` annotation.

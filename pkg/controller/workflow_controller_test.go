@@ -27,7 +27,7 @@ func TestBuildTolerations(t *testing.T) {
 			return err
 		}
 
-		result := buildTolerations(input.Selectors)
+		result := BuildTolerations(input.Selectors)
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -240,6 +240,7 @@ func TestGetGroupJobName(t *testing.T) {
 			Iteration    int    `yaml:"iteration"`
 			Iterations   int    `yaml:"iterations"`
 			TotalGroups  int    `yaml:"totalGroups"`
+			Attempt      int    `yaml:"attempt"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -260,7 +261,7 @@ func TestGetGroupJobName(t *testing.T) {
 		}
 
 		r := &WorkflowReconciler{}
-		result := r.getGroupJobName(workflow, input.GroupName, input.Iteration)
+		result := r.getGroupJobName(workflow, input.GroupName, input.Iteration, input.Attempt)
 
 		data, err := json.MarshalIndent(struct {
 			Result string `json:"result"`

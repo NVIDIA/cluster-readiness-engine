@@ -1,0 +1,21 @@
+# A trainJob whose runtimeRef names no dependency in the resolved Workflow.
+# The catalog always ships the runtime it references, so a ref that resolves to
+# nothing means the shape cannot be determined. Guessing torch would write
+# container env that an MPI entry's ranks never read -- the silent no-op this
+# transform exists to prevent -- so it fails and names what it could not find.
+# A ClusterTrainingRuntime is cluster-scoped and never supplied as a
+# dependency, so it lands here too, which is also what the kind default makes
+# of a runtimeRef that omits one.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: some-cluster-runtime
+        trainer:
+          command:
+            - /bin/bash
+dependencies: []

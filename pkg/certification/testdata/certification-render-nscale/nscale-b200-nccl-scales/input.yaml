@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Control for the GB300 topology override: on B200 the arch-only blocks set
+# no clique key, so intra-rack and diagnose keep nvidia.com/gpu.clique.
+platform: nscale
+gpuArch: b200

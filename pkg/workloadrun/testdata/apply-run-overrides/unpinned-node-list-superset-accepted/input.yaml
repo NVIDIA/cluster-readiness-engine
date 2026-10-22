@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control for unpinned-node-list-shortfall-rejected. --node-list is still
+# usable under Unpinned; only the shortfall is refused.
+#
+# Three names for a 2-node job is not a contradiction, it is a narrower target:
+# run on 2 of these 3, scheduler's pick. numNodes is untouched because the clamp
+# only fires on a shortfall, so the same code path that refuses the shortfall
+# leaves this one alone, and it reaches the target write with nothing to adjust.
+#
+# Without this case the rejection would read as "Unpinned bans --node-list",
+# which is not what was implemented and would be a worse feature.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 2
+    framework:
+      torch:
+        script: /t.py
+    orchestration:
+      placement: Unpinned
+nodeList: node001,node002,node003

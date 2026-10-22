@@ -11,7 +11,7 @@ description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness En
 - Kubernetes 1.29+ cluster with GPU nodes (the Certification CRD's CEL rules use the `quantity()` library, which the API server accepts in new CRD expressions from 1.29)
 - `kubectl` configured and pointing at the target cluster
 - NVIDIA GPU Operator installed
-- Helm 3.x
+- Helm 3.8 or later (3.10 or later to pass your own `--set-json` to `setup init`)
 
 ## Install the CLI
 

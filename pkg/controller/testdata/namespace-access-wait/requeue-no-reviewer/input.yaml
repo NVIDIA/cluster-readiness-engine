@@ -1,0 +1,4 @@
+# With no access reviewer configured, a Forbidden write's error is returned
+# unchanged and no wait is recorded.
+call: requeue
+noReviewer: true

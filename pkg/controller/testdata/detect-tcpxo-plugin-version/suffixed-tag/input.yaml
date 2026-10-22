@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Google republishes some releases as a rebuild with a build suffix
+# (v1.0.13-1 a week after v1.0.13). v1.0.17-1 is release v1.0.17, so it is
+# exact and renders the v1.0.17 (CUDA 13) images, not the CUDA 12 minimum.
+# The tag is reported as found.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods:
+  - name: nccl-tcpxo-installer-aaaaa
+    nodeName: gke-a3mega-0
+    initImages:
+    - ubuntu
+    - us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17-1
+    images:
+    - gke.gcr.io/pause:3.8
+  - name: nccl-tcpxo-installer-bbbbb
+    nodeName: gke-a3mega-1
+    initImages:
+    - ubuntu
+    - us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17-1
+    images:
+    - gke.gcr.io/pause:3.8

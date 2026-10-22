@@ -1,0 +1,3 @@
+{
+  "error": "certification test-cert: invalid env \"NCCL_SOCKET_IFNAME\": valueFrom is not supported; a variable reaches MPI ranks by value on a command line, which cannot carry a reference"
+}

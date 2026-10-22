@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A plain training job has no launcher to co-locate, so the controller injects
+# nothing and the workload's own tolerations stand alone. Unpinned does not
+# change that: apply=false in both modes, which is why placement is not even
+# consulted on this arm.
+unpinned: true
+hasLauncher: false

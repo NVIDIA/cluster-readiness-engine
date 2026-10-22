@@ -1,0 +1,4 @@
+# With no access reviewer configured, a forbidden node-result write stays best
+# effort: it is logged and the pass goes on.
+call: node-results
+noReviewer: true

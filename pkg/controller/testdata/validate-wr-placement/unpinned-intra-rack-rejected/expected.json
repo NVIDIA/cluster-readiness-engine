@@ -1,0 +1,3 @@
+{
+  "error": "orchestration.placement: Unpinned is incompatible with orchestration.testScale \"intra-rack\": intra-rack runs one job per topology domain, Unpinned runs exactly one job; to confine a single unpinned job to one domain, name the domain label in target.matchExpressions instead"
+}

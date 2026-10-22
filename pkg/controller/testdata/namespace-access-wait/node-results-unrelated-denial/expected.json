@@ -1,0 +1,9 @@
+{
+  "endsPass": false,
+  "events": [
+    "Warning NodeResultsWriteRejected record: configmaps \"node-results\" is forbidden: injected. The write was rejected although the controller has access in the namespace, so an admission policy or ResourceQuota refused it; the Workflow continues without this record."
+  ],
+  "reviewsAskFresh": [
+    true
+  ]
+}

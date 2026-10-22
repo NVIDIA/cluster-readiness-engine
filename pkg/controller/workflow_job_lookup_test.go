@@ -39,6 +39,9 @@ const (
 	testWorkflowName = "wf"
 	// testGroupName is the orchestration group name used by those fixtures.
 	testGroupName = "g0"
+	// testGroupZero is the controller's default first group name, used by the
+	// fixtures that run the real naming.
+	testGroupZero = "group-0"
 	// testGroupJobName is the Job that group runs.
 	testGroupJobName = "g0-job"
 	// testClaimTemplateName is the group's job-scoped DRA dependency, the one
@@ -79,7 +82,10 @@ func TestWorkflowSetupDefaultsAPIReader(t *testing.T) {
 // cache must not be the only witness to the Job's absence.
 //
 // The reconciler's Client plays the informer cache and APIReader plays the API
-// server, so each case sets exactly what each side can see.
+// server, so each case sets exactly what each side can see. The Workflow is on
+// both sides, as it is in reality: once the Job's absence is confirmed, the
+// branch also confirms against the live Workflow that the group is still
+// Running on that Job (groupViewIsStale), and that read is counted too.
 func TestWorkflowJobLookup(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "workflow-job-lookup",
@@ -176,6 +182,8 @@ func TestWorkflowJobLookup(t *testing.T) {
 
 		apiReads := 0
 		apiBuilder := fake.NewClientBuilder().WithScheme(scheme).
+			WithObjects(workflow.DeepCopy()).
+			WithStatusSubresource(&nvcrev1alpha1.Workflow{}).
 			WithInterceptorFuncs(interceptor.Funcs{
 				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey,
 					obj client.Object, opts ...client.GetOption,
@@ -272,7 +280,7 @@ func TestWorkflowCreateOrAdoptJobLookup(t *testing.T) {
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
 			// Holder decides who owns the Job already carrying the name:
-			// "own", "foreign", or "foreign-terminating".
+			// "own", "own-terminating", "foreign", or "foreign-terminating".
 			Holder string `yaml:"holder"`
 			// InCache also places that holder in the cache.
 			InCache bool `yaml:"inCache"`
@@ -299,7 +307,7 @@ func TestWorkflowCreateOrAdoptJobLookup(t *testing.T) {
 			UID:        ownerUID,
 			Controller: new(true),
 		}}
-		if input.Holder == "foreign-terminating" {
+		if strings.HasSuffix(input.Holder, "-terminating") {
 			now := metav1.Now()
 			holder.DeletionTimestamp = &now
 			holder.Finalizers = []string{jobFinalizer}

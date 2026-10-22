@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,7 +33,6 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
@@ -180,7 +179,12 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	// Certification.
 	var dryRunClient client.Client
 	var dryRunNodes []corev1.Node
+	// Names of the nodes whose nvidia.com/gpu.product label discovery synthesized
+	// from ResourceSlices. The affinity build in DryRunCreate needs it, because a
+	// term matching a synthesized value would match nothing on this very cluster.
+	var synthesizedProducts []string
 	var gkeTCPXONetworks []string
+	var tcpxoPluginVersion string
 	if dryRun {
 		var cErr error
 		dryRunClient, cErr = render.NewK8sClient(configFlags)
@@ -204,15 +208,17 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		// (no --dry-run) has no cluster and stays field-only.
 		ctx := context.Background()
 		var nodesErr error
-		dryRunNodes, nodesErr = controller.DiscoverTargetNodes(ctx, dryRunClient, &cert.Spec.Target)
+		dryRunNodes, synthesizedProducts, nodesErr = controller.DiscoverTargetNodesWithSynthesized(
+			ctx, dryRunClient, &cert.Spec.Target)
 		if nodesErr != nil {
 			return fmt.Errorf("discover nodes: %w", nodesErr)
 		}
 		applyNICDetection(cert, dryRunNodes, platformFlag)
 		gkeTCPXONetworks = detectGKETCPXONetworks(dryRunNodes, platformFlag)
+		tcpxoPluginVersion = detectTCPXOPluginVersion(ctx, dryRunClient, dryRunNodes, platformFlag)
 	}
 
-	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks)
+	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion)
 	if err != nil {
 		return err
 	}
@@ -229,7 +235,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		nodes := dryRunNodes
 		if len(nodes) == 0 {
 			var nErr error
-			nodes, nErr = controller.DiscoverTargetNodes(ctx, dryRunClient, workflows[0].Spec.Orchestration.Target)
+			nodes, synthesizedProducts, nErr = controller.DiscoverTargetNodesWithSynthesized(
+				ctx, dryRunClient, workflows[0].Spec.Orchestration.Target)
 			if nErr != nil {
 				return fmt.Errorf("discover nodes: %w", nErr)
 			}
@@ -247,7 +254,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				return err
 			}
 
-			results, dryRunErr := render.DryRunCreate(ctx, dryRunClient, namespace, &workflows[i].Spec, nodes)
+			results, dryRunErr := render.DryRunCreate(
+				ctx, dryRunClient, namespace, &workflows[i].Spec, nodes, synthesizedProducts)
 			if dryRunErr != nil {
 				return fmt.Errorf("dry-run workflow %s: %w", workflows[i].Name, dryRunErr)
 			}
@@ -297,7 +305,7 @@ func resolveWorkflowsOffline(
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
 		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
-			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
+			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
 		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
@@ -327,6 +335,7 @@ func applyWorkflowTransforms(
 			GangScheduler:  cert.Spec.GangScheduler,
 			Image:          opts.Image,
 			WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+			Env:            opts.Env,
 		}); err != nil {
 		return fmt.Errorf("apply transforms for %s: %w", workflows[i].Name, err)
 	}
@@ -337,7 +346,7 @@ func applyWorkflowTransforms(
 // allocatable for the dry-run render path, mirroring the certification
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
-// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// runs only for on-prem GB200/GB300 and x86 HGX B200/B300 targets, and only a single qualifying
 // candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
 // mlnxPerNode count on every target node) is used. On zero or multiple
 // candidates it prints the note the controllers emit as a
@@ -427,6 +436,43 @@ func detectGKETCPXONetworks(nodes []corev1.Node, platformFlag string) []string {
 	return names
 }
 
+// detectTCPXOPluginVersion resolves the TCPXO plugin release that picks the
+// GCP H100 workload and tcpxo-daemon images for the dry-run render path,
+// mirroring the certification controller: detection runs only for GCP H100
+// targets, and only one release tag on every target node's installer pod is
+// used. An unmapped or missing release prints the note the controller emits
+// as a TCPXOPluginDetection event; the catalog then renders the nearest safe
+// profile for the returned version ("" renders the minimum).
+//
+// The same gate and node-set divergence as detectGKETCPXONetworks applies.
+func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes []corev1.Node, platformFlag string) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	platformName := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		platformName = platformFlag
+	}
+	version, fallbackMessage, ran := controller.ResolveTCPXOPluginVersion(
+		ctx, reader, platformName, controller.DetectGPUArchitecture(nodes), nodes)
+	if !ran {
+		return ""
+	}
+	if fallbackMessage != "" {
+		_, _ = fmt.Fprintln(os.Stderr, fallbackMessage)
+		return version
+	}
+	profile, release, _ := catalog.TCPXOPluginProfileFor(version)
+	detected := version
+	if release != version {
+		detected += " (release " + release + ")"
+	}
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected TCPXO plugin %s on every target node: NCCL image %s, training image %s, tcpxo-daemon %s\n",
+		detected, profile.NCCLImage, profile.TrainingImage, profile.DaemonImage)
+	return version
+}
+
 // renderCertification builds all Workflows that the controller would create
 // from catalog entries for the given Certification. The platform argument
 // (from --platform or detected from cluster nodes) is used to resolve
@@ -440,10 +486,13 @@ func detectGKETCPXONetworks(nodes []corev1.Node, platformFlag string) []string {
 // explicit architecture.
 //
 // gkeTCPXONetworks are the GKE networks detected under --dry-run
-// (detectGKETCPXONetworks). Nil renders the catalog default, which is what an
-// offline render without a cluster always gets.
+// (detectGKETCPXONetworks), and tcpxoPluginVersion is the TCPXO plugin
+// release detected there (detectTCPXOPluginVersion). Nil and "" render the
+// catalog defaults, which is what an offline render without a cluster always
+// gets.
 func renderCertification(
 	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
+	tcpxoPluginVersion string,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
@@ -478,6 +527,15 @@ func renderCertification(
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
 		}
+		// --gpu-arch is validated against gpu-defaults.yaml; an architecture
+		// that arrived from the nodeSelector or from dry-run discovery is not,
+		// so say when the catalog had no node shape for it, once per category
+		// with the resolved counts, in the text the controller emits as the
+		// GPUArchitectureDefaults event (ADR-094).
+		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+			controller.GPUArchFieldHintCertification); msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
+		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is
 		// only ever user-supplied; on the dry-run path applyNICDetection has
@@ -510,7 +568,9 @@ func renderCertification(
 			GpusPerNode:                gpusPerNode,
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
+			RDMADeviceAccess:           opts.RDMADeviceAccess,
 			GKETCPXONetworks:           gkeTCPXONetworks,
+			TCPXOPluginVersion:         tcpxoPluginVersion,
 			Resources:                  opts.Resources,
 			EnableMNNVL:                enableMNNVL,
 			EnableCheckpoint:           derefBoolPtr(opts.EnableCheckpoint),
@@ -538,15 +598,19 @@ func renderCertification(
 			TimeoutPerJob:      opts.TimeoutPerJob,
 			MeasurementTimeout: opts.MeasurementTimeout,
 			SourceRepo:         opts.SourceRepo,
+			DCGMHost:           opts.DCGMHost,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)
 		}
 
-		workflowName := naming.Truncate(
-			fmt.Sprintf("%s-%s-%s", cert.Name, cat.Domain, cat.Variant),
-			naming.MaxWorkflowNameLen,
-		)
+		// The controller's rule, not a copy of it. Rebuilding the name here
+		// is how render drifted from the controller before: it dropped the
+		// per-category options suffix, so a Certification with per-category
+		// options previewed under a name the controller never creates, and
+		// two categories differing only in options rendered two documents
+		// with one metadata.name.
+		workflowName := controller.WorkflowName(cert.Name, cat)
 
 		workflow := nvcrev1alpha1.Workflow{
 			APIVersion: nvcreAPIVersion,
@@ -611,7 +675,76 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
 	}
+
+	// Reject an out-of-enum rdmaDeviceAccess here for the same reason. The
+	// kubebuilder Enum marker only binds server-side, and offline render never
+	// reaches an API server, so a wrong-case "HostPath" would otherwise render
+	// cleanly with no mount and no privileged flag, handing an operator a
+	// manifest that looks right and still fails with EPERM on the cluster.
+	if err := validateRDMADeviceAccess(cert.Spec.RDMADeviceAccess); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := validateRDMADeviceAccess(cat.Options.RDMADeviceAccess); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+	}
+
+	// And reject an env entry the CRD's own CEL rule would reject, for the
+	// third time for the same reason: the markers bind server-side only. A
+	// valueFrom here would render as a bare name on an mpirun command line,
+	// and a PET_* or OMPI_MCA_* name would render into the launcher's own
+	// settings, both of which look fine in a preview and break on the cluster.
+	if err := validateCategoryEnv(cert.Spec.Env); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := validateCategoryEnv(cat.Options.Env); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+	}
 	return &cert, nil
+}
+
+// validateCategoryEnv rejects the env entries the CRD's CEL rule rejects, so
+// an offline render fails the same way a cluster apply would. Mirrors
+// validateRDMADeviceAccess: the kubebuilder markers bind server-side only.
+func validateCategoryEnv(env []corev1.EnvVar) error {
+	for _, e := range env {
+		if e.ValueFrom != nil {
+			return fmt.Errorf(
+				"invalid env %q: valueFrom is not supported; a variable reaches MPI ranks "+
+					"by value on a command line, which cannot carry a reference", e.Name)
+		}
+		if strings.HasPrefix(e.Name, "PET_") ||
+			slices.Contains(nvcrev1alpha1.ReservedLauncherEnvNames, e.Name) {
+			return fmt.Errorf(
+				"invalid env %q: the name is owned by Kubeflow Trainer and setting it "+
+					"breaks the launch rather than overriding a default", e.Name)
+		}
+	}
+	return nil
+}
+
+// validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not
+// one of the enum values. Empty means unset, which is the devicePlugin default.
+func validateRDMADeviceAccess(value string) error {
+	if value == "" {
+		return nil
+	}
+	if slices.Contains(nvcrev1alpha1.ValidRDMADeviceAccessValues, value) {
+		return nil
+	}
+	return fmt.Errorf("invalid rdmaDeviceAccess %q; valid values: [%s]",
+		value, strings.Join(nvcrev1alpha1.ValidRDMADeviceAccessValues, ", "))
 }
 
 // platformToProviderID is now syntheticProviderID in run_common.go.
@@ -649,12 +782,6 @@ func syntheticRenderNode(platformName string, nodeSelector map[string]string, gp
 		node.Labels["node-role.together.ai/worker"] = ""
 	case platform.Forge:
 		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
-	case platform.NScale:
-		// Detection maps openstack:// to nscale only when the node also
-		// reports the nscale.com/rdmashare allocatable.
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return node
 }
@@ -678,6 +805,7 @@ type certRunConfig struct {
 	doWait                   bool   // --wait: watch + report
 	doSetup                  bool   // --setup: runInit before create
 	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
+	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	resultsFile              string // --results-file: path to write JSON report
 	junitFile                string // --junit-file: path to write JUnit XML report
 	timeout                  time.Duration
@@ -708,7 +836,7 @@ func newRunCommand(version string) *cobra.Command {
 	var nodesPerJob, maxSteps, exitDurationMins, startupStallTimeoutSeconds, gpusPerNode, repeatCount, maxRestarts int32
 	var enableCheckpoint, enableMNNVL bool
 	var storageClass string
-	var doWait, doSetup, doCleanup bool
+	var doWait, doSetup, doCleanup, grantRunAccess bool
 	var certFile string
 	var controllerImage string
 	var controllerPullSecret string
@@ -799,6 +927,7 @@ Use --cleanup to teardown installed components after completion.`,
 			cfg.version = version
 			cfg.resultsFile = resultsFile
 			cfg.junitFile = junitFile
+			cfg.grantRunAccess = grantRunAccess
 			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
 				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
 			return executeCertificationRun(cfg)
@@ -815,6 +944,9 @@ Use --cleanup to teardown installed components after completion.`,
 		"Watch for completion and print a report")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete certification, namespace, and installed components after completion")
+	cmd.Flags().BoolVar(&grantRunAccess, "grant-run-access", false,
+		"With the chart's rbac.scope: namespaced, create the RoleBinding that grants the controller write access "+
+			"in a namespace that already existed (namespaces this run creates are granted automatically)")
 	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
 		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
 	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
@@ -939,7 +1071,6 @@ func buildConfigFromFlags(
 	if err != nil {
 		return nil, err
 	}
-
 	if name == "" {
 		name = generateCertName()
 	}
@@ -1098,61 +1229,14 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Cleanup defer (registered BEFORE setup so it runs on setup failures) ---
 	certCreated := false
 	createdNamespace := ""
+	// createdRunBinding is a RoleBinding this run created in a namespace it
+	// did not create. Deleting the namespace cannot remove it, so cleanup
+	// does, once the Certification is gone.
+	createdRunBinding := false
 
 	if cfg.doCleanup {
 		defer func() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer cleanupCancel()
-
-			_, _ = fmt.Fprintln(out, "[cleanup] Cleaning up...")
-			warnings := false
-
-			// Delete certification resource and wait for the controller to
-			// cascade-delete all Workflows, Jobs, and workloads. The controller
-			// needs its RBAC and Deployment to process this cascade, so we MUST
-			// wait for the Certification to be fully gone before running reset.
-			if certCreated {
-				_, _ = fmt.Fprintln(out, "[cleanup] Deleting certification...")
-				if err := wc.Delete(cleanupCtx, cfg.cert); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete certification: %v\n", err)
-					warnings = true
-				} else {
-					waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
-				}
-			}
-
-			// Note: the workload pull secret is owned by the Certification and
-			// will be garbage-collected automatically when the Certification is
-			// deleted above. No explicit deletion needed.
-
-			// Delete namespace if we created it, and wait for it to fully
-			// terminate so the next run doesn't fail with "namespace is being
-			// terminated".
-			if createdNamespace != "" {
-				_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
-				ns := &corev1.Namespace{Name: createdNamespace}
-				if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
-					warnings = true
-				} else {
-					setup.WaitForNamespaceDeletion(cleanupCtx, wc, createdNamespace, out)
-				}
-			}
-
-			// Reset all installed phases via runReset. SSA makes setup
-			// idempotent, so we reset everything unconditionally.
-			if cfg.doSetup {
-				if err := setup.RunReset("", true, cfg.configFlags, nil, out); err != nil {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: reset failed: %v\n", err)
-					warnings = true
-				}
-			}
-
-			if warnings {
-				_, _ = fmt.Fprintln(out, "[cleanup] Done (with warnings).")
-			} else {
-				_, _ = fmt.Fprintln(out, "[cleanup] Done.")
-			}
+			runCertificationCleanup(wc, cfg, certCreated, createdNamespace, createdRunBinding)
 		}()
 	}
 
@@ -1160,7 +1244,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
 		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.controllerPullSecret, "", true,
-			cfg.configFlags, "", "", "", nil, out)
+			cfg.configFlags, "", "", "", "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
 		}
@@ -1195,6 +1279,20 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, cfg.namespace)
 	}
 
+	// Grant the controller write access in the namespace (ADR-092). This is
+	// the last step before the run object is created, so a failure anywhere
+	// earlier (pull secret, node discovery) leaves no standing grant behind,
+	// and the only later failure, the create, rolls it back below.
+	bindingCreated, err := setup.EnsureRunBinding(ctx, wc, cfg.namespace,
+		setup.RunBindingOptions{NamespaceCreated: wasCreated, Grant: cfg.grantRunAccess}, out)
+	if err != nil {
+		if wasCreatedByUs {
+			_ = wc.Delete(ctx, &corev1.Secret{Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace})
+		}
+		return err
+	}
+	createdRunBinding = bindingCreated && !wasCreated
+
 	// --- Create Certification ---
 	if err := wc.Create(ctx, cfg.cert); err != nil {
 		// Clean up only if we actually created the secret (not if we updated one
@@ -1204,6 +1302,20 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 			pullSec := &corev1.Secret{
 				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace}
 			_ = wc.Delete(ctx, pullSec)
+		}
+		// Nothing was submitted, so a binding this run added to an existing
+		// namespace has nothing to serve and must not stay as a standing grant,
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
+		// keeps it then, like cleanup does, and this run no longer owns it.
+		// It gets its own context: an interrupt cancels ctx, which is often why
+		// the create failed. If the release could not complete, this run keeps
+		// ownership so --cleanup tries again.
+		if createdRunBinding {
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, cfg.namespace, true, "certification", out); !retry {
+				createdRunBinding = false
+			}
+			releaseCancel()
 		}
 		return fmt.Errorf("create certification: %w", err)
 	}
@@ -1490,7 +1602,7 @@ func watchCertification(
 	_, _ = fmt.Fprintln(out, "[watch] Watching certification progress...")
 
 	start := time.Now()
-	lastStatuses := map[string]string{}
+	lastStatuses := map[int]categoryWatchStatus{}
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
@@ -1508,7 +1620,7 @@ func watchCertification(
 			return nil, fmt.Errorf("start watch: %w", err)
 		}
 
-		cert, done, watchErr := processWatchEvents(ctx, wc, watcher, start, lastStatuses, heartbeat, out)
+		cert, done, watchErr := processWatchEvents(ctx, wc, watcher, start, lastStatuses, heartbeat.C, out)
 		watcher.Stop()
 		if done {
 			if cert == nil && ctx.Err() != nil {
@@ -1524,10 +1636,9 @@ func watchCertification(
 }
 
 // categoryWatchLabels returns one display label per entry in
-// cert.Status.CategoryStatuses. Labels are "domain/variant"; when the
-// certification contains two or more categories with the same domain/variant,
-// an "(MNNVL Enabled)"/"(MNNVL Disabled)" suffix — matching the report's
-// MNNVL label — disambiguates the duplicates.
+// cert.Status.CategoryStatuses. Labels are "domain/variant"; duplicate labels
+// are disambiguated with the MNNVL setting and, if needed, the category's
+// one-based position in the Certification spec.
 func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 	counts := map[string]int{}
 	for _, cs := range cert.Status.CategoryStatuses {
@@ -1543,7 +1654,23 @@ func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 		}
 		labels[i] = key
 	}
+
+	labelCounts := map[string]int{}
+	for _, label := range labels {
+		labelCounts[label]++
+	}
+	for i, label := range labels {
+		if labelCounts[label] > 1 {
+			labels[i] = fmt.Sprintf("%s [category %d]", label, i+1)
+		}
+	}
+
 	return labels
+}
+
+type categoryWatchStatus struct {
+	label  string
+	status string
 }
 
 // processWatchEvents handles events from a single watch session.
@@ -1551,7 +1678,7 @@ func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 // when the watch channel closes and should be reconnected.
 func processWatchEvents(
 	ctx context.Context, c client.Client, watcher watch.Interface, start time.Time,
-	lastStatuses map[string]string, heartbeat *time.Ticker, out io.Writer,
+	lastStatuses map[int]categoryWatchStatus, heartbeat <-chan time.Time, out io.Writer,
 ) (*nvcrev1alpha1.Certification, bool, error) {
 	events := watcher.ResultChan()
 	for {
@@ -1576,11 +1703,10 @@ func processWatchEvents(
 			// Print category status changes.
 			labels := categoryWatchLabels(cert)
 			for i, cs := range cert.Status.CategoryStatuses {
-				key := labels[i]
-				if cs.Status != lastStatuses[key] {
+				if current, ok := lastStatuses[i]; !ok || cs.Status != current.status {
 					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
-						key, cs.Status, elapsed)
-					lastStatuses[key] = cs.Status
+						labels[i], cs.Status, elapsed)
+					lastStatuses[i] = categoryWatchStatus{label: labels[i], status: cs.Status}
 				}
 			}
 
@@ -1603,17 +1729,12 @@ func processWatchEvents(
 		case <-ctx.Done():
 			return nil, true, ctx.Err()
 
-		case <-heartbeat.C:
+		case <-heartbeat:
 			elapsed := time.Since(start).Truncate(time.Second)
-			for _, cs := range lastStatuses {
-				if cs == "InProgress" {
-					for key, status := range lastStatuses {
-						if status == "InProgress" {
-							_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
-								key, status, elapsed)
-						}
-					}
-					break
+			for i := 0; i < len(lastStatuses); i++ {
+				if status, ok := lastStatuses[i]; ok && status.status == "InProgress" {
+					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
+						status.label, status.status, elapsed)
 				}
 			}
 			if len(lastStatuses) == 0 {
@@ -1623,11 +1744,81 @@ func processWatchEvents(
 	}
 }
 
-// waitForDeletion waits for a Certification to be fully deleted.
-// The timeout is generous because the controller must cascade-delete all
-// Workflows, Jobs, workloads, and dependencies before the Certification
-// finalizer is removed. The controller needs its RBAC to process this.
-func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+// runCertificationCleanup is the --cleanup phase of executeCertificationRun. It
+// runs on every exit path, and deletes only what this run created: the
+// Certification, a RoleBinding it added to an existing namespace, the
+// namespace, and with --setup the installed components.
+func runCertificationCleanup(wc client.Client, cfg *certRunConfig, certCreated bool, createdNamespace string, createdRunBinding bool) {
+	out := cfg.out
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cleanupCancel()
+
+	_, _ = fmt.Fprintln(out, "[cleanup] Cleaning up...")
+	warnings := false
+
+	// Delete certification resource and wait for the controller to
+	// cascade-delete all Workflows, Jobs, and workloads. The controller
+	// needs its RBAC and Deployment to process this cascade, so we MUST
+	// wait for the Certification to be fully gone before running reset.
+	certGone := !certCreated
+	if certCreated {
+		_, _ = fmt.Fprintln(out, "[cleanup] Deleting certification...")
+		if err := wc.Delete(cleanupCtx, cfg.cert); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete certification: %v\n", err)
+			warnings = true
+		} else {
+			certGone = waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
+		}
+	}
+
+	// The controller's finalizers write in the namespace until the
+	// Certification is gone, so the binding goes only after it.
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, cfg.namespace, certGone, "certification", out); warned {
+			warnings = true
+		}
+	}
+
+	// Note: the workload pull secret is owned by the Certification and
+	// will be garbage-collected automatically when the Certification is
+	// deleted above. No explicit deletion needed.
+
+	// Delete namespace if we created it, and wait for it to fully
+	// terminate so the next run doesn't fail with "namespace is being
+	// terminated".
+	if createdNamespace != "" {
+		_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
+		ns := &corev1.Namespace{Name: createdNamespace}
+		if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
+			warnings = true
+		} else {
+			setup.WaitForNamespaceDeletion(cleanupCtx, wc, createdNamespace, out)
+		}
+	}
+
+	// Reset all installed phases via runReset. SSA makes setup
+	// idempotent, so we reset everything unconditionally.
+	if cfg.doSetup {
+		if err := setup.RunReset("", true, cfg.configFlags, nil, out); err != nil {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: reset failed: %v\n", err)
+			warnings = true
+		}
+	}
+
+	if warnings {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done (with warnings).")
+	} else {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done.")
+	}
+}
+
+// waitForDeletion waits for a Certification to be fully deleted and reports
+// whether it is gone. The timeout is generous because the controller must
+// cascade-delete all Workflows, Jobs, workloads, and dependencies before the
+// Certification finalizer is removed. The controller needs its RBAC to process
+// this, which is why cleanup deletes a run RoleBinding only once this is true.
+func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1638,12 +1829,12 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 		select {
 		case <-ctx.Done():
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
-			return
+			return false
 		case <-ticker.C:
 			cert := &nvcrev1alpha1.Certification{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
 				if apierrors.IsNotFound(err) {
-					return // deleted
+					return true // deleted
 				}
 			}
 		}

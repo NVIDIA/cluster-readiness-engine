@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both tiers are collected. The Workflow golden shows the run reached
+# InProgress/JobRunning on a fleet whose architecture exists only in
+# ResourceSlices, with the H100 node recorded as excluded and gpuProducts empty
+# despite detectedGPUArchitecture reading gb300. The Job golden shows what the
+# pods are actually constrained by, which is where the omitted gpu.product term
+# is visible rather than merely implied.
+#
+# The Job name collapses to <workflow>-job because the architecture filter leaves
+# two nodes and numNodes is 2, so the partition yields a single group and
+# getGroupJobName shortens.
+waitFor:
+  kind: Workflow
+  name: drapin-default
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: drapin-default
+    namespace: default
+  - kind: Job
+    name: drapin-default-job
+    namespace: default

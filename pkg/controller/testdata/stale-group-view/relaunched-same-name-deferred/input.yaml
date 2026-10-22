@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Retries are compared as well as Job names. Each retry attempt now has its own
+# Job name, but a Workflow upgraded mid-retry can have run its second attempt
+# under the first attempt's name. If the live group is Running on that Job with
+# retries 1, a cached view still on the first attempt (retries 0) must not be
+# taken as agreement just because the Job names match.
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job, retries: 0}
+    live: {phase: Running, jobRef: g0-job, retries: 1}
+    job: absent

@@ -1,0 +1,16 @@
+│                                                                │
+│  Bandwidth:                                                    │
+│    Size       AlgBW        BusBW        Samples                │
+│    1 MB       14.00 GB/s   27.00 GB/s   3                      │
+│    (provisional: LogsUnavailable)                              │
+--- rows ---
+[
+  {
+    "size": "1 MB",
+    "algBW": "14.00 GB/s",
+    "busBW": "27.00 GB/s",
+    "samples": 3,
+    "provisional": true,
+    "provisionalReason": "LogsUnavailable"
+  }
+]

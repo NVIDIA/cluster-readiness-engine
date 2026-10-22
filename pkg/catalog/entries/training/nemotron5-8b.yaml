@@ -37,7 +37,7 @@ jobTemplate:
                         spec:
                           imagePullSecrets:
                           {{- range .ImagePullSecrets }}
-                          - name: {{ .Name }}
+                          - name: {{ printf "%q" .Name }}
                           {{- end }}
         {{- end }}
     goodputMeasurement:
@@ -47,6 +47,13 @@ jobTemplate:
       cel:
         expression: "node.spec.unschedulable == true"
 orchestration:
+  # Bounded like every other entry. Without this the Job has no timeout at
+  # all (isJobTimedOut returns false on a nil Execution.TimeoutPerJob), so a
+  # pod held in ContainerCreating, for example by a missing /dev/infiniband
+  # under rdmaDeviceAccess: hostPath, runs until someone notices. The entry
+  # default lives in meta.yaml; spec.timeoutPerJob overrides it.
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
   iterations: 1
 dependencies:
 {{- if .EnableCheckpoint }}
@@ -132,8 +139,6 @@ dependencies:
                       value: "16"
                     - name: NVTE_BWD_LAYERNORM_SM_MARGIN
                       value: "16"
-                    - name: NVTE_FUSED_ATTN
-                      value: "0"
                     - name: TORCHINDUCTOR_WORKER_START
                       value: fork
 {{ lib "nccl/gb200-training-base-env.yaml" . | indent 20 }}
@@ -325,12 +330,12 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
-            # Fused attention is disabled in the runtime base env for broad
-            # compatibility; H100 supports it and the kernel is a large win.
-            # Kubeflow upserts trainer env over runtime env by name.
-            - name: NVTE_FUSED_ATTN
-              value: "1"
-# --- GCP + H100 (TCPxo/FastRak) ---
+            # train.sh defaults to the flash attention backend for broad
+            # compatibility. H100 also supports fused attention and the kernel
+            # is a large win, so let Transformer Engine choose per shape.
+            - name: ATTENTION_BACKEND
+              value: auto
+# --- GCP + H100 (TCPxo/FastRak, image from the TCPXO plugin version) ---
 - when:
     platform:
       equals: gcp
@@ -338,13 +343,22 @@ overrides:
       equals: h100
   dependencies:
 {{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
+{{ lib "deps/gcp-h100-training-image-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
         trainJob:
           trainer:
+            image: {{ .GCPH100TrainingImage }}
             env:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
+            # GKE mounts the driver at /usr/local/nvidia/lib64 (on
+            # LD_LIBRARY_PATH), but the NGC image's ldconfig cache points
+            # libcuda.so.1 at a CUDA compat path that does not exist in the
+            # pod, and Triton trusts ldconfig over LD_LIBRARY_PATH, so
+            # Megatron's import fails with "libcuda.so cannot found!".
+            - name: TRITON_LIBCUDA_PATH
+              value: /usr/local/nvidia/lib64
 # --- Azure + A100 (InfiniBand) ---
 - when:
     platform:
@@ -418,12 +432,40 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+# --- OCI + GB200 (RoCE) ---
+# A missing arm rather than a clobbered one: the OCI block above is scoped to
+# l40/l40s, and the GB200/GB300 block sets only dependencies and orchestration,
+# so OCI GB200 matched nothing that carried RoCE env (see ADR-088).
+# Uses trainer.env (not toMpiArgs) because torchrun inherits the container env
+# directly, with no MPI SSH launch involved. The runtime's node container already
+# carries gb200-training-base-env.yaml (NCCL_MNNVL_ENABLE, NVLS, CUMEM), so
+# only the OCI RoCE profile and the UCX GID index are added here.
+# oci-gb200-roce-env.yaml is a delta over oci-roce-env.yaml, not a replacement:
+# both are listed, and no name is set twice. trainer.env is a server-side map
+# list keyed on name, so a duplicate would make the API server reject the
+# Workflow outright.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-roce-env.yaml" . | indent 12 }}
+{{ lib "nccl/oci-gb200-roce-env.yaml" . | indent 12 }}
 # --- OCI + GB300 (RoCE) ---
 # Adds SR-IOV NIC resources (oci-mlnxnics-comm.yaml) and OCI GB300-specific
 # env vars. Uses trainer.env (not toMpiArgs) because torchrun inherits the
 # container env directly — no MPI SSH launch involved.
-# NCCL_MNNVL_ENABLE and NCCL_DMABUF_ENABLE are conditioned on EnableMNNVL
-# via the template; see oci-gb300-roce-env.yaml for the reasoning.
+# NCCL_MNNVL_ENABLE is conditioned on EnableMNNVL via the template; the
+# NCCL topology file comes from oci-gb300-nccl-topo.yaml. See
+# oci-gb300-roce-env.yaml for the reasoning.
 - when:
     platform:
       equals: oci
@@ -431,6 +473,7 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+{{ lib "deps/oci-gb300-nccl-topo.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
@@ -480,6 +523,18 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+# --- On-prem + x86 HGX B200/B300 (ADR-094) ---
+# Deps-only: the GPU taint toleration and the optional NIC resource block
+# (injected only when nicResourceName is set or auto-detected, count from
+# mlnxPerNode). No NCCL environment and no arm64 toleration: an x86 HGX chassis
+# is not an NVL72 tray, and the fabric tuning waits on multi-node evidence.
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [b200, b300]
+  dependencies:
+{{ lib "deps/onprem-hgx-runtime-patch-training.yaml" . | indent 2 }}
 # --- GCP + RTX PRO 6000 (G4 TCP; 8B training on 4-GPU nodes) ---
 - when:
     platform:
@@ -495,3 +550,43 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+# --- Akamai + RTX PRO 6000 (LKE VMs; TCP over eth0, no RDMA) ---
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Deps-only like the on-prem block: torchrun inherits the runtime container
+# env, so the portable IB env rides there (merged by name into the base env)
+# alongside the gpu.nvidia.com/rdma.nscale.com claims.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma-training.yaml" . | indent 2 }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique from the GB200/GB300 block
+# above never exists there; the NVLink domain is published as
+# topology.nks.nscale.com/accelerator-domain instead.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}

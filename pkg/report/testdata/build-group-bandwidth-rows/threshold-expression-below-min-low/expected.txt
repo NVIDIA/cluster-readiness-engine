@@ -1,0 +1,20 @@
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✗  clique-0 (2 nodes)                                     │
+│         150.0 GB/s  LOW                                        │
+│         - node-0                                               │
+│         - node-1                                               │
+--- rows ---
+[
+  {
+    "group": "group-0",
+    "groupName": "clique-0 (2 nodes)",
+    "nodes": [
+      "node-0",
+      "node-1"
+    ],
+    "busBW": "150.0 GB/s",
+    "belowMin": true,
+    "failed": false
+  }
+]

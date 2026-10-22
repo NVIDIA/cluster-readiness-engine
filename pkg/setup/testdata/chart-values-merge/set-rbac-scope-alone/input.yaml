@@ -1,0 +1,10 @@
+# --set rbac.scope alone is allowed and overrides the kept scope.
+release:
+  rbac:
+    scope: cluster
+operator:
+  rbac:
+    scope: namespaced
+probed:
+  rbac:
+    scope: namespaced

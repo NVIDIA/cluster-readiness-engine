@@ -6,15 +6,18 @@
 # The NIC resource block is injected only when nicResourceName is configured;
 # the resource name depends on the RDMA device plugin the site runs, so there
 # is no safe default. The per-container count comes from mlnxPerNode.
+# Carries no mlPolicy: the MPI entries' base runtimes already set
+# mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
+# mlPolicy.torch, which a merged mlPolicy.mpi collides with (the
+# TrainingRuntime CRD allows exactly one policy; ADR-094). Tolerations have
+# no merge key, so the list below replaces the base list; the loopback entries
+# append tolerate-all-runtime-patch.yaml after this fragment to restore theirs.
 
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
     name: {{ .EntryName }}-runtime
   spec:
-    mlPolicy:
-      mpi:
-        numProcPerNode: {{ .GpusPerNode }}
     template:
       spec:
         replicatedJobs:
@@ -23,7 +26,7 @@
             spec:
               template:
                 spec:
-{{- if .NicResourceName }}
+{{- if and .NicResourceName (gt (int .MlnxPerNode) 0) }}
                   containers:
                   - name: node
                     resources:

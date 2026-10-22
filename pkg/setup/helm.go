@@ -30,6 +30,10 @@ const (
 	helmFlagNamespace = "--namespace"
 	helmFlagVersion   = "--version"
 	helmFlagSet       = "--set"
+	helmFlagSetJSON   = "--set-json"
+	helmFlagValues    = "-f"
+	helmFlagOutput    = "-o"
+	helmSubcommandGet = "get"
 	helmFlagWait      = "--wait"
 	helmFlagTimeout   = "--timeout"
 )
@@ -110,11 +114,12 @@ type helmInstallParams struct {
 	kubeContext     string
 	versionOverride string
 	registryToken   string
-	image           string
 	// chartRef is the NVCRE chart location; empty means helmChartOCI.
-	chartRef       string
-	pullSecretName string
-	out            io.Writer
+	chartRef string
+	// valuesFile holds every value the release is given: the kept values,
+	// this run's values and nvcrectl's own, merged in preflight (ADR-098).
+	valuesFile string
+	out        io.Writer
 }
 
 // installHelmRelease installs or upgrades NVCRE via the helm CLI, after
@@ -161,8 +166,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		return "", err
 	}
 
-	imageName, imageTag := parseImage(p.image)
-	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, imageName, imageTag, p.pullSecretName)
+	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, p.valuesFile)
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
@@ -172,8 +176,10 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 }
 
 // nvcreHelmUpgradeArgs returns the `helm upgrade --install` argument list for
-// the NVCRE release. An empty chartRef means the published GHCR chart.
-func nvcreHelmUpgradeArgs(chartRef, chartVersion, imageName, imageTag, pullSecretName string) []string {
+// the NVCRE release. An empty chartRef means the published GHCR chart. Every
+// value reaches the upgrade through valuesFile, so nvcrectl's only addition
+// is one -f, which any Helm 3 accepts (ADR-098).
+func nvcreHelmUpgradeArgs(chartRef, chartVersion, valuesFile string) []string {
 	if chartRef == "" {
 		chartRef = helmChartOCI
 	}
@@ -182,13 +188,11 @@ func nvcreHelmUpgradeArgs(chartRef, chartVersion, imageName, imageTag, pullSecre
 		helmFlagNamespace, nvcreNamespace,
 		"--create-namespace",
 		helmFlagVersion, chartVersion,
-		helmFlagSet, "manager.image.repository=" + imageName,
-		helmFlagSet, "manager.image.tag=" + imageTag,
 		helmFlagWait,
 		helmFlagTimeout, helmInstallTimeout.String(),
 	}
-	if pullSecretName != "" {
-		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+pullSecretName)
+	if valuesFile != "" {
+		args = append(args, helmFlagValues, valuesFile)
 	}
 	return args
 }
@@ -349,7 +353,7 @@ func helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext stri
 func helmReleaseStateAndVersion(
 	helmPath, release, namespace, kubeconfig, kubeContext string,
 ) (string, string, error) {
-	args := []string{"status", release, helmFlagNamespace, namespace, "-o", "json"}
+	args := []string{"status", release, helmFlagNamespace, namespace, helmFlagOutput, outputJSON}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout, stderr bytes.Buffer
@@ -387,7 +391,7 @@ func helmReleaseStateAndVersion(
 // returns the installed chart version, or "" when it cannot be determined.
 // Used only when `helm status` stripped the chart metadata from its payload.
 func helmReleaseMetadataVersion(helmPath, release, namespace, kubeconfig, kubeContext string) string {
-	args := []string{"get", "metadata", release, helmFlagNamespace, namespace, "-o", "json"}
+	args := []string{helmSubcommandGet, "metadata", release, helmFlagNamespace, namespace, helmFlagOutput, outputJSON}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout bytes.Buffer

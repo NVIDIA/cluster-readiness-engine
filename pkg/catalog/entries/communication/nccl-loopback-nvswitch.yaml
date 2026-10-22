@@ -70,6 +70,12 @@ jobTemplate:
                           - emptyDir:
                               medium: Memory
                             name: dshm
+                          {{- if .ImagePullSecrets }}
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                          {{- end }}
         runtimeRef:
           kind: TrainingRuntime
           name: nccl-loopback-nvswitch-runtime
@@ -147,7 +153,7 @@ overrides:
 {{ lib "nccl/aws-h100-efa-comm-env.yaml" . | indent 12 }}
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
-# --- GCP + H100 (FastRak/TCPXO, CUDA 12 image) ---
+# --- GCP + H100 (FastRak/TCPXO, image from the TCPXO plugin version) ---
 - when:
     platform:
       equals: gcp
@@ -155,13 +161,13 @@ overrides:
       equals: h100
   dependencies:
 {{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
-{{ lib "deps/gcp-h100-cuda12-image-patch-loopback.yaml" . | indent 2 }}
+{{ lib "deps/gcp-h100-nccl-image-patch-loopback.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
         trainJob:
           trainer:
-            image: nvcr.io/nvidia/pytorch:25.06-py3
+            image: {{ .GCPH100NCCLImage }}
             env:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
             - name: NCCL_MNNVL_ENABLE
@@ -254,6 +260,7 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/gcp-gb200-roce-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/tolerate-all-runtime-patch.yaml" . | indent 2 }}
   jobTemplatePatch:
   - op: add
     path: /spec/workload/trainJob/trainer/env/-
@@ -293,6 +300,34 @@ overrides:
     value:
       name: NCCL_MAX_BYTES
       value: {{ .MaxBytes }}
+# --- OCI + GB200 (RoCE) ---
+# Mirrors the OCI+GB300 block below. Must come AFTER the GB200/GB300
+# ComputeDomain block (which sets the base env via jobTemplate) so that
+# jobTemplatePatch appends to that env array rather than replacing it, which a
+# second jobTemplate would (see ADR-088).
+# Appends OCI GID index vars needed for RoCEv2 connectivity.
+# NCCL_NVLS_ENABLE, NCCL_CUMEM_ENABLE, and NCCL_MNNVL_ENABLE are already set
+# by the GB200/GB300 base override (gb200-env.yaml). As in the GB300 block,
+# NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally NOT set: this variant
+# exercises the NVLink/NVSwitch fabric.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: UCX_IB_GID_INDEX
+      value: "3"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_IB_GID_INDEX
+      value: "3"
 # --- OCI + GB300 (RoCE) ---
 # Mirrors nccl-loopback's OCI+GB300 block. Must come AFTER the GB200/GB300
 # ComputeDomain block (which sets the base env via jobTemplate) so that
@@ -322,13 +357,6 @@ overrides:
     value:
       name: NCCL_IB_GID_INDEX
       value: "3"
-{{- if not .EnableMNNVL }}
-  - op: add
-    path: /spec/workload/trainJob/trainer/env/-
-    value:
-      name: NCCL_DMABUF_ENABLE
-      value: "0"
-{{- end }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
@@ -337,6 +365,7 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/mistral-gb300-ib-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/tolerate-all-runtime-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
@@ -357,6 +386,7 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/tolerate-all-runtime-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
@@ -364,3 +394,43 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
+# --- On-prem + x86 HGX B200/B300 (ADR-094) ---
+# Deps-only: the GPU taint toleration and the optional NIC resource block
+# (injected only when nicResourceName is set or auto-detected, count from
+# mlnxPerNode). No NCCL environment and no arm64 toleration: an x86 HGX chassis
+# is not an NVL72 tray, and the fabric tuning waits on multi-node evidence.
+# The HGX fragment's toleration list would replace this per-node entry's
+# tolerate-everything toleration, so the trailing patch restores it.
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [b200, b300]
+  dependencies:
+{{ lib "deps/onprem-hgx-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/tolerate-all-runtime-patch.yaml" . | indent 2 }}
+# --- Nscale NKS (GPU DRA claim; ADR-085) ---
+# Appended last so its trainer.env replacement wins over the GB200/GB300
+# ComputeDomain block above. nscale-ib-env carries the base GB200/GB300 vars.
+# Unlike nccl-loopback, NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally
+# NOT set: this variant exercises the NVLink/NVSwitch fabric only, so it
+# claims the GPUs but no rail NICs. The GPU-only fragment sets no
+# tolerations, so the base tolerate-everything toleration survives.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}

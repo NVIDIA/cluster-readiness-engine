@@ -263,9 +263,9 @@ func TestJobWorkloadLookup(t *testing.T) {
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		// jobStatusGauge is process-global and keyed by job name, which every
-		// fixture here shares. Reconciling leaves one label set behind, and
-		// TestCleanupJobMetrics counts the whole collector, so drop this Job's
+		// Job-scoped metrics are process-global and keyed by job name, which
+		// every fixture here shares. Reconciling leaves label sets behind, and
+		// the cardinality test counts whole collectors, so drop this Job's
 		// series the way the Job tier itself does on deletion.
 		defer cleanupJobMetrics(testNS, testJobName)
 

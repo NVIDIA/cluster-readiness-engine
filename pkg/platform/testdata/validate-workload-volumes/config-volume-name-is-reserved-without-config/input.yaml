@@ -1,0 +1,10 @@
+# config-volume is reserved even when spec.config is unset, so that adding
+# spec.config later never turns a valid spec into a duplicate-name failure.
+framework: exec
+volumes:
+  - name: config-volume
+    configMap:
+      name: my-config
+volumeMounts:
+  - name: config-volume
+    mountPath: /opt/config

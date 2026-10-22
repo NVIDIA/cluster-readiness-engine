@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# After the backfill, with the same topology key and the same workflow shape as
+# the empty case above. The only difference is that the group now names the
+# nodes its pods actually landed on, which is the whole value of the backfill.
+#
+# The two nodes sit in different cliques on purpose. An Unpinned group carries
+# no Domains, so getNodeDomain's single-domain fast path cannot fire and each
+# node must resolve through its own live label. A fast path that wrongly claimed
+# a single domain would file both nodes under one clique, and only a case
+# spanning two can see that.
+#
+# node-03 is in the cluster and in neither group. It must stay at 0 on both
+# gauges: the scheduler placed the job on two of the three eligible nodes, and
+# an untested node is not a validated one.
+topologyKey: nvidia.com/gpu.clique
+placement: Unpinned
+nodes:
+  - name: node-01
+    domain: clique-a
+  - name: node-02
+    domain: clique-b
+  - name: node-03
+    domain: clique-b
+groups:
+  - name: group-0
+    phase: Succeeded
+    nodes:
+      - node-01
+      - node-02

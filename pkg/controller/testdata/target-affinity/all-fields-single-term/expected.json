@@ -1,0 +1,53 @@
+{
+  "hostnames": [
+    "node-a",
+    "node-b"
+  ],
+  "affinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": {
+      "nodeSelectorTerms": [
+        {
+          "matchExpressions": [
+            {
+              "key": "kubernetes.io/hostname",
+              "operator": "In",
+              "values": [
+                "node-a",
+                "node-b"
+              ]
+            },
+            {
+              "key": "nvidia.com/gpu.present",
+              "operator": "In",
+              "values": [
+                "true"
+              ]
+            },
+            {
+              "key": "pool",
+              "operator": "In",
+              "values": [
+                "burnin"
+              ]
+            },
+            {
+              "key": "topology.kubernetes.io/zone",
+              "operator": "In",
+              "values": [
+                "us-east-1a",
+                "us-east-1b"
+              ]
+            },
+            {
+              "key": "nvidia.com/gpu.product",
+              "operator": "In",
+              "values": [
+                "NVIDIA-GB200"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

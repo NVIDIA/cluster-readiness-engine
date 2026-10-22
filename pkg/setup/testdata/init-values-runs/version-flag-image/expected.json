@@ -1,0 +1,26 @@
+[
+  {
+    "args": [
+      "--version",
+      "0.9.0"
+    ],
+    "summary": [
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:0.9.0 (--version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version 0.9.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version 0.9.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "0.9.0"
+        }
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  }
+]

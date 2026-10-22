@@ -4,8 +4,13 @@
   "retries": 1,
   "hasJobRef": false,
   "hasCompletionTime": false,
-  "dependencyRefs": [],
-  "depConfigMapExists": false,
+  "groupNodes": [
+    "node-a"
+  ],
+  "dependencyRefs": [
+    "ConfigMap/dep-cm"
+  ],
+  "depConfigMapExists": true,
   "workloadExists": false,
-  "jobExists": false
+  "jobExists": true
 }

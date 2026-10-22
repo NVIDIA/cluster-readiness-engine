@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: unpin-strict
+  namespace: default
+  condition: Failed
+  reason: PartitionError
+collect:
+  - kind: Workflow
+    name: unpin-strict
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: unpin-strict-job
+    namespace: default

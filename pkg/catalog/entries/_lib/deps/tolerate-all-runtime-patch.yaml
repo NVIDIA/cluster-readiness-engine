@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Restores a per-node entry's tolerate-everything toleration after a platform
+# fragment whose own toleration list replaced it: tolerations carry no name
+# key, so mergeMaps replaces the list wholesale instead of merging it. List
+# this fragment after that platform fragment in the same override block so it
+# is merged last. `operator: Exists` with no key is a strict superset of any
+# keyed toleration, so nothing the platform fragment tolerated is lost.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  tolerations:
+                  - operator: Exists

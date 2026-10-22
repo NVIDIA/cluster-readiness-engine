@@ -1,0 +1,20 @@
+{
+  "hostnames": null,
+  "affinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": {
+      "nodeSelectorTerms": [
+        {
+          "matchExpressions": [
+            {
+              "key": "nvidia.com/gpu.present",
+              "operator": "In",
+              "values": [
+                "true"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -45,3 +45,5 @@ Additional diagnostic fields (all optional):
 4. Sets `Complete` when the referenced Job reaches a terminal state.
 
 Threshold evaluation (pass/fail) is done at the Job tier, not here — see `Job.spec.thresholds`.
+
+A measurement the Job controller creates records the Job's UID in the `nvcre.nvidia.com/job-uid` annotation. The Workflow owns the measurement, so it outlives its Job. A retried Workflow group gives each attempt its own Job name, and so its own measurement, and the earlier attempt's measurement is deleted when that attempt is retired. A Job can still be replaced under the same name, for example a retry relaunched by a controller version from before attempt-indexed names. A measurement left by such an earlier Job is not used for the new Job's thresholds or stall detection: the Job controller deletes it and creates a fresh one for the new Job, the same way it treats a BandwidthMeasurement. A measurement without the annotation was created before it existed and is matched by Job name.

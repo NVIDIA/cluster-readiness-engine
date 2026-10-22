@@ -6,6 +6,8 @@ package platform
 import (
 	"encoding/json"
 	"fmt"
+	"path"
+	"slices"
 	"strconv"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -56,6 +58,26 @@ const (
 	launcherJobName       = "launcher"
 	mpiSSHAuthName        = "mpi-ssh-auth"
 	keyReadOnly           = "readOnly"
+	// dshmMountPath is where the built-in memory-backed dshm volume is mounted
+	// on every workload container.
+	dshmMountPath = "/dev/shm"
+	// trainerStatusVolumeName and trainerStatusMountPath are the projected
+	// service-account token Kubeflow Trainer's TrainJobStatus plugin upserts,
+	// by volume name and by mount path, on the replicated job that carries the
+	// "trainer" ancestor label: the node job on torch and exec, the launcher on
+	// mpi. The plugin sits behind Trainer's TrainJobStatus feature gate (alpha
+	// and off by default in v2.2.1); where it is on, a user volume or mount
+	// with that name or path is replaced without an error.
+	trainerStatusVolumeName = "kubeflow-trainer-token"
+	trainerStatusMountPath  = "/var/run/secrets/kubeflow/trainer"
+)
+
+// Names both WorkloadRun call sites (the controller and the nvcrectl render
+// path) give the spec.config volume and its mount. Exported so the call sites,
+// BuildMPIRuntime and ValidateWorkloadVolumes agree on them.
+const (
+	ConfigVolumeName = "config-volume"
+	ConfigMountPath  = "/config"
 )
 
 // defaultWorkerResources returns the worker resources block when the user did
@@ -122,16 +144,17 @@ type RuntimeConfig struct {
 	GpusPerNode int32
 	// Env is the merged env vars (base NCCL + user).
 	Env []corev1.EnvVar
-	// Volumes are additional volumes.
+	// Volumes are additional volumes on the workload pods, which on MPI are
+	// the worker pods (the launcher is not touched).
 	Volumes []corev1.Volume
-	// VolumeMounts are additional volume mounts.
+	// VolumeMounts are additional volume mounts on the workload container of
+	// the workload pods, which on MPI are the worker pods.
 	VolumeMounts []corev1.VolumeMount
-	// InitContainers are user-provided init containers.
+	// InitContainers are user-provided init containers on the workload pods,
+	// which on MPI are the worker pods.
 	InitContainers []corev1.Container
 	// Resources overrides GPU/memory/CPU resources.
 	Resources *corev1.ResourceRequirements
-	// ImagePullSecrets for container pull.
-	ImagePullSecrets []corev1.LocalObjectReference
 	// GangSchedulerName is the scheduler name to inject into pod specs (e.g. "kai-scheduler").
 	// Empty means no gang scheduler is configured.
 	GangSchedulerName string
@@ -180,7 +203,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 
 	// Volume mounts: shared memory + user-provided.
 	mounts := make([]corev1.VolumeMount, 0, 1+len(cfg.VolumeMounts))
-	mounts = append(mounts, corev1.VolumeMount{Name: volumeNameDSHM, MountPath: "/dev/shm"})
+	mounts = append(mounts, corev1.VolumeMount{Name: volumeNameDSHM, MountPath: dshmMountPath})
 	mounts = append(mounts, cfg.VolumeMounts...)
 	container[keyVolumeMounts] = mounts
 
@@ -273,17 +296,146 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	}
 }
 
+// sshdProbeCommand is the worker's readiness check: a real loopback SSH
+// session, not a TCP connect.
+//
+// A tcpSocket probe on port 22 answers "is something listening", which is not
+// the question the launcher's dependsOn gate is asking. sshd binds the port
+// before it can serve anything and keeps the listener up no matter how badly
+// individual sessions fail, so every way a worker can accept connections and
+// still refuse work reads as Ready: unreadable host keys, authorized_keys
+// written with the wrong mode, and the issue #461 case, where privilege
+// separation cannot chroot and sshd kills each session preauth. The gate then
+// releases mpirun against workers that refuse every orted, and the only symptom
+// is the generic ORTE banner.
+//
+// A banner-level check would not close this. OpenSSH writes its version string
+// in kex_exchange_identification, before privsep_preauth forks and chroots
+// (sshd.c; sshd-session.c from 9.8), so a worker failing exactly the way #461
+// fails still greets a prober. The chroot is on the path to authentication, so
+// authentication is the earliest point that can observe it: the probe has to
+// open a real session.
+//
+// When coreutils `timeout` is present the session runs under `timeout 8`,
+// inside the probe's own 10s budget, so a hung connection is reported with
+// ssh's stderr rather than the kubelet's generic "command timed out", and the
+// probe stays bounded on a kubelet whose ExecProbeTimeout gate is off. Without
+// `timeout` the same ssh runs bare and the kubelet's timeoutSeconds is the
+// bound; neither helper's absence turns a healthy worker into a failing one.
+//
+// It dials 127.0.0.1, never a peer, so the probe reports on this worker alone.
+// Probing other workers would couple their readiness together and deadlock on
+// whichever starts first. `true` runs under the user's login shell, so the
+// session is exercised end to end rather than stopping at authentication.
+//
+// The `command -v ssh` guard keeps the probe honest on an image that ships sshd
+// without the client. Every image NVCRE renders today has both (on Debian and
+// Ubuntu openssh-server depends on openssh-client, and the fallback path
+// installs it), but a user-supplied image in a WorkloadRun need not, and a
+// probe that fails because the prober is missing would report a healthy worker
+// as broken forever. The fallback reads /proc/net/tcp directly, which needs
+// nothing but grep: a listening socket on port 22 has a local address ending
+// in :0016 (22 in hex) and state 0A (TCP_LISTEN). That is the same question
+// the old tcpSocket probe asked, so such a worker keeps exactly what it had.
+const sshdProbeCommand = `command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+exec "$@"`
+
+// sshdReadinessProbe returns the probe block for a container running sshd.
+//
+// timeoutSeconds is 10 so the 8s `timeout` around ssh expires first; the
+// field's default of 1s would fail a healthy worker under load.
+//
+// periodSeconds is 30 rather than the default 10 because the probe keeps
+// running for the pod's whole life while nothing consumes its verdict after
+// the launcher's dependsOn gate has fired, and sshd -e logs every accepted
+// session into the worker's log. Thirty seconds keeps that to two sessions a
+// minute. The cost is up to 30s of added gate latency on an image that
+// installs openssh-server at start; a prebaked image passes the first probe
+// at 5s. failureThreshold keeps its default: readiness starts out failed and
+// flips on the first success, so the threshold never delays a worker becoming
+// Ready, and after the gate nothing depends on the Ready-to-NotReady edge
+// (JobSet publishes not-ready addresses, so DNS does not either).
+//
+// A worker that never passes this probe never releases the gate, so the
+// launcher is never created and the Job stays InProgress until timeoutPerJob.
+// The worker's own events carry the reason (`Readiness probe failed` with
+// ssh's stderr), which is the trade this probe makes: a slower terminal
+// failure in exchange for a direct diagnosis instead of the ORTE banner.
+func sshdReadinessProbe() map[string]any {
+	return map[string]any{
+		"initialDelaySeconds": 5,
+		"periodSeconds":       30,
+		"timeoutSeconds":      10,
+		"exec": map[string]any{
+			keyCommand: []string{"sh", "-c", sshdProbeCommand},
+		},
+	}
+}
+
+// sshdInstallCommand installs openssh-server on a worker whose image lacks
+// sshd. The multi-node catalog entries render the same text from
+// pkg/catalog/entries/_lib/nccl/mpi-worker-sshd-args.yaml, and
+// TestSSHDWorkerInvariants requires every worker that installs it to carry
+// this command verbatim, so the two cannot drift.
+//
+// The install is bounded and retried here (issue #527). A worker whose apt-get
+// hangs never passes its readiness probe, so the launcher is never created and
+// the Job waits out timeoutPerJob; at a few thousand workers per category a
+// hang is rare per worker but routine per run. apt's own timeouts did not end
+// the observed hang, so timeout is the bound.
+//
+// At the limit, timeout sends SIGKILL straight away (-s KILL) to the step's
+// whole process group: apt-get or dpkg, apt's method helpers, and the dpkg that
+// apt-get install runs. Dpkg::Use-Pty=0 keeps dpkg in this group: apt otherwise
+// starts it in a separate session for its PTY, beyond timeout's reach.
+// Nothing in the group can ignore SIGKILL, so a timed-out attempt cannot
+// leave these processes holding the apt or dpkg lock against the next one.
+// A SIGTERM first would not guarantee that: timeout escalates to SIGKILL
+// only while its own child is alive, so a child that exits on SIGTERM leaves
+// any descendant that ignores it running. Nothing is lost by skipping the
+// SIGTERM: apt-get update needs no cleanup, and dpkg does not shut down
+// gracefully on SIGTERM either. dpkg --configure -a before a retry attempts to
+// finish an install the previous attempt's timeout interrupted, since apt
+// refuses to run until that is done; its result is ignored, because a recovery
+// that fails leaves the next apt-get to fail the attempt. The Acquire options
+// only make apt retry a failed fetch sooner.
+//
+// Worst case, with every step running to its limit: 4 minutes for the first
+// attempt and 6 for each retry, 16 in all.
+//
+// The retry lives in the script rather than in restartPolicy so it holds
+// however the restart behaviour changes (issue #498). An image that needs the
+// install but lacks apt-get or timeout fails at once with a message naming the
+// fix, rather than with "not found" or an unbounded install; on Debian and
+// Ubuntu timeout is in coreutils, which every image with apt-get has.
+const sshdInstallCommand = `if ! test -x /usr/sbin/sshd; then
+  if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+    echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+    exit 1
+  fi
+  apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
+  for attempt in 1 2 3; do
+    [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+    timeout -s KILL 120 apt-get $apt update &&
+      timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+    echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+    [ "$attempt" -lt 3 ] || exit 1
+  done
+fi`
+
 // BuildMPIRuntime creates TrainingRuntime dependencies for MPI-based workloads.
 // Generates:
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
-// - Worker nodes with sshd, IPC_LOCK, readiness probe, and cfg.Env
+// - Worker nodes with sshd, capabilities, an SSH readiness probe, and cfg.Env
 // - Launcher with mpirun, SSH key setup, and cfg.Env
 //
-// The worker's openssh-server install is guarded by `test -x /usr/sbin/sshd`,
-// so images that already ship sshd start without any package-manager egress
-// (issue #319: air-gapped and restricted-egress clusters). The guard tests
-// the exact path the chain execs (/usr/sbin/sshd); a PATH lookup could
-// disagree with it in either direction.
+// The worker's openssh-server install (sshdInstallCommand) is guarded by
+// `test -x /usr/sbin/sshd`, so images that already ship sshd start without any
+// package-manager egress (issue #319: air-gapped and restricted-egress
+// clusters). The guard tests the exact path the chain execs (/usr/sbin/sshd); a
+// PATH lookup could disagree with it in either direction.
 //
 // cfg.Env goes on both containers as container-level env, the same way
 // BuildTorchRuntime emits it (issue #68: it used to be dropped here, so
@@ -293,8 +445,42 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 // launched through it may not inherit them. A variable that must reach the
 // ranks should be passed as "-x NAME=value" in mpiArgs, which forwards it
 // through mpirun itself.
+//
+// cfg.Volumes, cfg.VolumeMounts and cfg.InitContainers go on the worker pod
+// and its "node" container, after the built-in mpi-ssh-auth and dshm entries,
+// the same way BuildTorchRuntime emits them (issue #455: they used to be
+// dropped here, so spec.volumes, spec.volumeMounts, spec.config and
+// spec.initContainers were a silent no-op on the mpi framework). The launcher
+// gets none of them, with one exception below. The ranks run on the worker
+// (mpirun on the launcher starts them there over ssh; runLauncherAsNode is
+// off, so the launcher hosts no rank), and the launcher is a coordinator with
+// fixed resources (cpu 2, memory 1Gi, no GPU; spec.resources never applies to
+// it), so a hugepages emptyDir there would fail at volume setup on the
+// kubelet, which refuses the medium without a hugepages request on the pod,
+// and a ReadWriteOnce PVC could not attach on a second node. This matches the
+// catalog precedent in
+// pkg/catalog/entries/_lib/overrides/hostpath-rdma.yaml and ADR-088, which
+// scope the RDMA hostPath mount to the node container.
+//
+// The exception is the spec.config volume (ConfigVolumeName), which the
+// launcher container also mounts, read-only. mpirun runs on the launcher, so
+// a rankfile, an appfile or an MCA parameter file under /config that mpiArgs
+// names is only usable if the launcher sees it, and a binary under /config is
+// then present where mpirun resolves it instead of relying on mpirun not
+// checking for it locally. None of the reasons above apply to a ConfigMap,
+// which mounts on any node and requests nothing. Env is different again: the
+// launcher's own MPI initialisation reads it, so it stays on both containers.
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
-	// Worker (node) container: runs sshd
+	// Worker (node) container: runs sshd. Volume mounts: SSH auth + shared
+	// memory + user-provided, in that order.
+	workerMounts := make([]any, 0, 2+len(cfg.VolumeMounts))
+	workerMounts = append(workerMounts,
+		map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+		map[string]any{keyName: volumeNameDSHM, keyMountPath: dshmMountPath},
+	)
+	for _, m := range cfg.VolumeMounts {
+		workerMounts = append(workerMounts, m)
+	}
 	workerContainer := map[string]any{
 		keyName:    nodeJobName,
 		keyImage:   cfg.Image,
@@ -302,7 +488,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		keyCommand: []string{"sh", "-c"},
 		keyArgs: []string{
 			"set -x && " +
-				"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
+				sshdInstallCommand + " && " +
 				"mkdir -p /var/run/sshd && " +
 				"chmod 0755 /var/run/sshd && " +
 				"mkdir -p /root/.ssh && " +
@@ -312,21 +498,21 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys && " +
 				"/usr/sbin/sshd -De",
 		},
-		"readinessProbe": map[string]any{
-			"initialDelaySeconds": 5,
-			"tcpSocket": map[string]any{
-				"port": 22,
-			},
-		},
+		"readinessProbe": sshdReadinessProbe(),
 		"securityContext": map[string]any{
 			"capabilities": map[string]any{
-				"add": []string{"IPC_LOCK"},
+				// SYS_CHROOT is what sshd needs, not what the workload needs.
+				// OpenSSH has made privilege separation mandatory since 7.5, so
+				// every inbound session chroots to the compiled-in PRIVSEP_PATH
+				// before authenticating. Docker and containerd grant SYS_CHROOT
+				// in their default set, which is why this went unnoticed; CRI-O
+				// dropped it from default_capabilities, so on OpenShift the
+				// chroot returns EPERM and sshd kills the session preauth while
+				// the listener stays up (issue #461).
+				"add": []string{"IPC_LOCK", "SYS_CHROOT"},
 			},
 		},
-		keyVolumeMounts: []map[string]any{
-			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameDSHM, keyMountPath: "/dev/shm"},
-		},
+		keyVolumeMounts: workerMounts,
 	}
 
 	if cfg.Resources != nil {
@@ -361,7 +547,24 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		keyVolumeMounts: launcherInitMounts,
 	}
 
-	// Launcher container
+	// Launcher container. Its mounts and the launcher pod's volumes are the
+	// built-in SSH material plus, when spec.config is set, the config volume
+	// read-only: mpirun runs here, so a file under /config that mpiArgs names
+	// (a rankfile, an appfile, an MCA parameter file) or the binary itself has
+	// to be visible to it. Every other user volume stays on the worker (see the
+	// function comment).
+	launcherMounts := []any{
+		map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+		map[string]any{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
+	}
+	launcherVolumes := []any{
+		map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
+	}
+	if configVolume, configMount, ok := configVolumeAndMount(cfg); ok {
+		configMount.ReadOnly = true
+		launcherMounts = append(launcherMounts, configMount)
+		launcherVolumes = append(launcherVolumes, configVolume)
+	}
 	launcherContainer := map[string]any{
 		keyName:  nodeJobName,
 		keyImage: cfg.Image,
@@ -372,23 +575,30 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				"memory": "1Gi",
 			},
 		},
-		keyVolumeMounts: []map[string]any{
-			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
+		keyVolumeMounts: launcherMounts,
+	}
+
+	// Worker pod volumes: shared memory + user-provided.
+	workerVolumes := make([]any, 0, 1+len(cfg.Volumes))
+	workerVolumes = append(workerVolumes, map[string]any{
+		keyName: volumeNameDSHM,
+		keyEmptyDir: map[string]any{
+			"medium": "Memory",
 		},
+	})
+	for _, v := range cfg.Volumes {
+		workerVolumes = append(workerVolumes, v)
 	}
 
 	workerPodSpec := map[string]any{
 		keyContainers:   []any{workerContainer},
 		"restartPolicy": "OnFailure",
-		keyVolumes: []any{
-			map[string]any{
-				keyName: volumeNameDSHM,
-				keyEmptyDir: map[string]any{
-					"medium": "Memory",
-				},
-			},
-		},
+		keyVolumes:      workerVolumes,
+	}
+	// User init containers run on the worker pod, where the ranks run; the
+	// launcher keeps only its own fix-ssh-permissions init container.
+	if len(cfg.InitContainers) > 0 {
+		workerPodSpec[keyInitContainers] = cfg.InitContainers
 	}
 	workerJobLabels := map[string]any{}
 	workerPodLabels := map[string]any{}
@@ -423,9 +633,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		"initContainers": []any{launcherInitContainer},
 		keyContainers:    []any{launcherContainer},
 		"restartPolicy":  "OnFailure",
-		keyVolumes: []any{
-			map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
-		},
+		keyVolumes:       launcherVolumes,
 	}
 	launcherJobLabels := map[string]any{
 		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
@@ -520,6 +728,25 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	return nvcrev1alpha1.DependencySpec{
 		Raw: data,
 	}
+}
+
+// configVolumeAndMount returns the spec.config volume and its mount from the
+// user-level lists when both are present: the volume named ConfigVolumeName
+// and the mount of it at ConfigMountPath. The call sites append the two
+// together, so one without the other never comes from spec.config. A user
+// volume that merely shares the name is refused by ValidateWorkloadVolumes
+// before any builder runs, and the mount is matched on its path as well, so a
+// user mount that names the config volume at a second path is never the one
+// the launcher copies.
+func configVolumeAndMount(cfg RuntimeConfig) (corev1.Volume, corev1.VolumeMount, bool) {
+	vi := slices.IndexFunc(cfg.Volumes, func(v corev1.Volume) bool { return v.Name == ConfigVolumeName })
+	mi := slices.IndexFunc(cfg.VolumeMounts, func(m corev1.VolumeMount) bool {
+		return m.Name == ConfigVolumeName && path.Clean(m.MountPath) == ConfigMountPath
+	})
+	if vi < 0 || mi < 0 {
+		return corev1.Volume{}, corev1.VolumeMount{}, false
+	}
+	return cfg.Volumes[vi], cfg.VolumeMounts[mi], true
 }
 
 // BuildExecRuntime creates a TrainingRuntime dependency for arbitrary command execution.

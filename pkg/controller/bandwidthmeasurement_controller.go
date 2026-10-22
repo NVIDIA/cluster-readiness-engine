@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,16 +106,6 @@ type cachedNCCLParser struct {
 	parser          *nccl.Parser
 }
 
-// podReader returns the APIReader when available, falling back to the cached
-// client. The APIReader bypasses the informer cache so pod lookups reflect the
-// current API server state rather than a potentially-stale watch snapshot.
-func (r *BandwidthMeasurementReconciler) podReader() client.Reader {
-	if r.APIReader != nil {
-		return r.APIReader
-	}
-	return r.Client
-}
-
 func (r *BandwidthMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 	if r.LogFetcher != nil {
 		return r.LogFetcher
@@ -207,8 +199,9 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
 	if !measuresJob(measurement, job) {
-		// The Job was replaced under the same name (a group retry): the one
-		// this measurement was created for is gone.
+		// The Job was replaced under the same name (see
+		// ensureBandwidthMeasurement): the one this measurement was created
+		// for is gone.
 		return r.finalizeJobGone(ctx, measurement)
 	}
 
@@ -266,7 +259,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
-	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
+	discoverer := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader))
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
@@ -327,9 +320,10 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
 
-	// Parse bandwidth results from new lines.
+	// Parse bandwidth results and NCCL network names from new lines.
 	dataPoints := parser.ParseBandwidthLogs(lines)
-	if len(dataPoints) == 0 {
+	transports := parser.ParseTransports(lines)
+	if len(dataPoints) == 0 && len(transports) == 0 {
 		restarts, _ := podutil.ContainerRestartStatus(pod, containerName)
 		if restarts > 0 {
 			// Container has restarted — don't advance the anchor. The empty
@@ -349,7 +343,12 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	}
 
 	// Merge new data points into existing results (running averages).
-	measurement.Status.Results = mergeBandwidthResults(measurement.Status.Results, dataPoints)
+	if len(dataPoints) > 0 {
+		measurement.Status.Results = mergeBandwidthResults(measurement.Status.Results, dataPoints)
+	}
+	if len(transports) > 0 {
+		measurement.Status.Transport = mergeTransports(measurement.Status.Transport, transports)
+	}
 
 	// Set start time if not already set.
 	if measurement.Status.StartTime == nil {
@@ -432,13 +431,15 @@ func (r *BandwidthMeasurementReconciler) handleJobSucceeded(ctx context.Context,
 	anchor := terminalAnchor(job)
 	final, readErr := r.readFinalResults(ctx, measurement, job)
 	if readErr == nil {
-		if len(final) == 0 {
+		if len(final.results) == 0 {
 			return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
-				reason: reasonBandwidthNoData, message: noDataMessage, results: final, replace: true,
+				reason: reasonBandwidthNoData, message: noDataMessage,
+				results: final.results, replace: true, transports: final.transports,
 			})
 		}
 		return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
-			reason: reasonBandwidthJobSucceeded, message: "Job succeeded", results: final, replace: true,
+			reason: reasonBandwidthJobSucceeded, message: "Job succeeded",
+			results: final.results, replace: true, transports: final.transports,
 		})
 	}
 
@@ -477,8 +478,11 @@ func withoutFinalResults(measurement *nvcrev1alpha1.BandwidthMeasurement) string
 // evaluated against thresholds. Failing that, the provisional results stay.
 func (r *BandwidthMeasurementReconciler) handleJobFailed(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	outcome := terminalOutcome{reason: reasonBandwidthJobFailed, message: "Job failed"}
-	if final, err := r.readFinalResults(ctx, measurement, job); err == nil && len(final) > 0 {
-		outcome.results, outcome.replace = final, true
+	if final, err := r.readFinalResults(ctx, measurement, job); err == nil {
+		outcome.transports = final.transports
+		if len(final.results) > 0 {
+			outcome.results, outcome.replace = final.results, true
+		}
 	}
 	return r.finalizeTerminal(ctx, measurement, terminalAnchor(job), outcome)
 }
@@ -525,55 +529,76 @@ func (r *BandwidthMeasurementReconciler) finalizeJobGone(ctx context.Context, me
 	})
 }
 
+// finalRead is what the final log read collects: every bandwidth row,
+// aggregated, and the distinct NCCL network names the log reports.
+type finalRead struct {
+	results    []nvcrev1alpha1.BandwidthResult
+	transports []string
+}
+
 // readFinalResults reads the launcher's current log in full and aggregates
-// every bandwidth row in it, each exactly once.
-func (r *BandwidthMeasurementReconciler) readFinalResults(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) ([]nvcrev1alpha1.BandwidthResult, error) {
+// every bandwidth row in it, each exactly once. It also collects the NCCL
+// network names, so a Job that finishes before a running sample sees its
+// "Using network" line still records the transport.
+func (r *BandwidthMeasurementReconciler) readFinalResults(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (finalRead, error) {
 	if job.Status.WorkloadRef == nil || job.Status.WorkloadRef.Name == "" {
-		return nil, fmt.Errorf("job %s has no workload reference", job.Name)
+		return finalRead{}, fmt.Errorf("job %s has no workload reference", job.Name)
 	}
 	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
 	if err != nil {
-		return nil, err
+		return finalRead{}, err
 	}
 	replicatedJobName := labelNode
 	if profile.Spec.WorkerStrategy != nil && profile.Spec.WorkerStrategy.ReplicatedJobName != "" {
 		replicatedJobName = profile.Spec.WorkerStrategy.ReplicatedJobName
 	}
-	pod, err := podutil.NewWorkerDiscoverer(r.podReader()).GetReplicatedJobPod(
+	pod, err := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader)).GetReplicatedJobPod(
 		ctx, measurement.Namespace, job.Status.WorkloadRef.Name, replicatedJobName)
 	if err != nil {
-		return nil, err
+		return finalRead{}, err
 	}
 	// Only a finished pod's log is final; a pod still running may yet write
 	// the rows the read exists to capture.
 	if pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
-		return nil, fmt.Errorf("pod %s has not finished (%s)", pod.Name, pod.Status.Phase)
+		return finalRead{}, fmt.Errorf("pod %s has not finished (%s)", pod.Name, pod.Status.Phase)
 	}
 
 	// Rows are summed per size as they are read, so memory is bounded by the
 	// number of message sizes rather than the length of the log, and each
-	// average is rounded once, whatever the page boundaries.
+	// average is rounded once, whatever the page boundaries. Network names
+	// are kept as a set for the same reason.
 	var agg bandwidthAggregate
+	seen := make(map[string]struct{})
+	var transports []string
 	err = podlogs.ReadAll(ctx, r.getLogFetcher(), measurement.Namespace, pod.Name,
 		podlogs.ReadAllOptions{Container: profile.Spec.ContainerName},
 		func(line string) {
 			if dp, ok := parser.ParseBandwidthLine(line); ok {
 				agg.add(dp)
+				return
+			}
+			if name, ok := parser.ParseTransportLine(line); ok {
+				if _, dup := seen[name]; !dup {
+					seen[name] = struct{}{}
+					transports = append(transports, name)
+				}
 			}
 		})
 	if err != nil {
-		return nil, fmt.Errorf("reading log of pod %s: %w", pod.Name, err)
+		return finalRead{}, fmt.Errorf("reading log of pod %s: %w", pod.Name, err)
 	}
-	return agg.results(), nil
+	return finalRead{results: agg.results(), transports: mergeTransports(nil, transports)}, nil
 }
 
 // terminalOutcome is what a measurement completes with. results replace the
-// provisional ones only when replace is set.
+// provisional ones only when replace is set. transports are unioned into the
+// recorded set, never replace it.
 type terminalOutcome struct {
-	reason  string
-	message string
-	results []nvcrev1alpha1.BandwidthResult
-	replace bool
+	reason     string
+	message    string
+	results    []nvcrev1alpha1.BandwidthResult
+	replace    bool
+	transports []string
 }
 
 // finalizeTerminal writes the terminal status in one update: results,
@@ -590,6 +615,7 @@ func (r *BandwidthMeasurementReconciler) finalizeTerminal(ctx context.Context, m
 		if outcome.replace {
 			m.Status.Results = outcome.results
 		}
+		m.Status.Transport = mergeTransports(m.Status.Transport, outcome.transports)
 		m.Status.CompletionTime = &completion
 		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
 			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
@@ -811,6 +837,36 @@ func (a *bandwidthAggregate) results() []nvcrev1alpha1.BandwidthResult {
 	return mergeAggregate(nil, a)
 }
 
+// mergeTransports unions newly observed NCCL network names into the existing
+// status set. The result is sorted for stable CRD and golden-file output.
+func mergeTransports(existing, observed []string) []string {
+	if len(observed) == 0 {
+		return existing
+	}
+	seen := make(map[string]struct{}, len(existing)+len(observed))
+	var out []string
+	add := func(vals []string) {
+		for _, t := range vals {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[t]; ok {
+				continue
+			}
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	add(existing)
+	add(observed)
+	slices.Sort(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // warnf emits a Warning event if the Recorder is configured. Every
 // BandwidthMeasurement-tier event is a warning; the Workflow reconciler's
 // eventf takes an explicit type because it emits Normal events too.
@@ -825,6 +881,11 @@ func (r *BandwidthMeasurementReconciler) warnf(obj runtime.Object, reason, messa
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BandwidthMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Default the uncached reader. The launcher this reads has no NVCRE job
+	// label, so the job-scoped cache never holds it (ADR-102).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.BandwidthMeasurement{}).
 		Watches(

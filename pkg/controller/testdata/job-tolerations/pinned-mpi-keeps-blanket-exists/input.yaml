@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The default. Every MPI entry in the catalog renders through this arm today,
+# and every committed UAT golden records `operator: Exists` because of it.
+# Unpinned narrowing the blanket must not move this case by a byte.
+unpinned: false
+hasLauncher: true

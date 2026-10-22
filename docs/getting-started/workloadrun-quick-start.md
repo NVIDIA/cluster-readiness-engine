@@ -29,10 +29,14 @@ spec:
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
       mpirunPath: /usr/local/mpi/bin/mpirun
   numNodes: 4
+  orchestration:
+    placement: Unpinned
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
 ```
+
+`placement: Unpinned` is what makes this a single four-node job. Without it, `numNodes` is a group size rather than a total: NVCRE partitions every node matching the target into groups of four and runs one job per group, so a 20-node cluster runs five jobs at once. Leave it out when you want that fleet-wide sweep, and see [Placement](../api-reference/workloadrun.md#placement) for the full contract.
 
 ## Run it
 

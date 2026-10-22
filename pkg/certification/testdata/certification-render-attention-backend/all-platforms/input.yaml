@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every training entry, rendered on every platform in platform.Names() for every
+# architecture in entries/_lib/gpu-defaults.yaml, at each node count below, so
+# an override arm added for any combination is checked against megatron's
+# --attention-backend assert (issue #486).
+#
+# 1 reaches the single-node arms (nemotron5-8b gates its L40/L40S fit args on
+# nodesPerJob 1). 8 satisfies nemotron5-56b minGPUs 32 on the 4-GPU GB200/GB300
+# nodes as well as the 8-GPU ones. A count below an entry's minGPUs is recorded
+# as skipped rather than rendered.
+nodesPerJob: [1, 8]

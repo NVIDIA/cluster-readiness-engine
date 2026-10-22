@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The window between job creation and the first backfill reconcile.
+#
+# The group has succeeded but names no nodes yet, so the per-domain loop
+# iterates zero times and records nothing. Every gauge reads 0. That is accurate
+# rather than wrong: nothing is known about placement yet, and recording a
+# domain would be inventing one. A dashboard scraped in this window shows a gap,
+# which self-corrects on the next reconcile.
+#
+# The topology key is present and the nodes carry clique labels, so this case
+# cannot pass by the metrics being switched off. The ignore in Unpinned mode is
+# about partitioning, not about metrics, and this holds that distinction in
+# place: if the key were being rejected instead of ignored, the workflow would
+# never have reached this point at all.
+topologyKey: nvidia.com/gpu.clique
+placement: Unpinned
+nodes:
+  - name: node-01
+    domain: clique-a
+  - name: node-02
+    domain: clique-a
+groups:
+  - name: group-0
+    phase: Succeeded
+    nodes: []

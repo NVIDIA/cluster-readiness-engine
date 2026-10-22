@@ -1,0 +1,11 @@
+{
+  "apply": true,
+  "tolerations": [
+    {
+      "key": "my-org/reserved",
+      "operator": "Equal",
+      "value": "burnin",
+      "effect": "NoSchedule"
+    }
+  ]
+}

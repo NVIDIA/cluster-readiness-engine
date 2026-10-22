@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Detection runs only for GCP H100. An AWS target reads nothing and emits
+# nothing.
+platform: aws
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods:
+  - name: nccl-tcpxo-installer-aaaaa
+    nodeName: gke-a3mega-0
+    initImages:
+    - ubuntu
+    - us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17
+    images:
+    - gke.gcr.io/pause:3.8

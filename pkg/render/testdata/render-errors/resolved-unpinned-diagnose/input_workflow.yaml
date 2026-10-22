@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# What `certification render` produces from a cert carrying both
+# `placement: Unpinned` and `testScale: diagnose`: the catalog lowers testScale
+# into this diagnose block at entry.Build() time (see
+# pkg/catalog/entries/communication/nccl-all-reduce.yaml), so by the time any
+# render path sees a Workflow the conflict is already baked into the base spec.
+#
+# The controller rejects this on the first reconcile. Before the render path
+# carried the same check, `nvcrectl certification render` previewed it as a
+# valid Workflow and exited 0, which is the worst possible answer: the operator
+# reads the preview as confirmation and submits a spec that cannot run.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: resolved-unpinned-diagnose
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: diag-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    diagnose:
+      minGroupSize: 1
+      topologyKey: nvidia.com/gpu.clique
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

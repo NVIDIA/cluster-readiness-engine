@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The homogeneous fleet, which is the normal case. The value is kept verbatim:
+# OrchestrationStatus.DetectedGPUArchitecture would say "gb200" here, and
+# gpu.ParseProduct is one-way, so the architecture cannot be turned back into a
+# label match.
+nodes:
+  - metadata:
+      name: node-a
+      labels:
+        nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  - metadata:
+      name: node-b
+      labels:
+        nvidia.com/gpu.product: NVIDIA-GB200-NVL72

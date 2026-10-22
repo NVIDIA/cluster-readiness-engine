@@ -1,0 +1,59 @@
+[
+  {
+    "workflow": "nscale-cert-diagnostics-d-2765f",
+    "dependencyKinds": [
+      "TrainingRuntime/dcgm-level4-runtime",
+      "ResourceClaimTemplate/dcgm-level4-gpu"
+    ],
+    "claimTemplates": [
+      {
+        "name": "dcgm-level4-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 8
+      }
+    ],
+    "trainerArgs": [
+      "diag",
+      "--host",
+      "nvidia-dcgm-dra.nvidia-platform.svc:5555",
+      "--run",
+      "4",
+      "--json",
+      "--verbose",
+      "-p",
+      "targeted_power.test_duration=1200s",
+      "-p",
+      "targeted_stress.test_duration=1200s",
+      "-p",
+      "nvbandwidth.is_allowed=true"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "dcgm-level4-runtime",
+        "resourceClaims": [
+          "gpu=dcgm-level4-gpu"
+        ],
+        "tolerations": [
+          "operator=Exists"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "gpu"
+            ],
+            "env": []
+          }
+        ]
+      }
+    ]
+  }
+]

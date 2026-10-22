@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Under Unpinned the Workflow runs one job but the cluster may be running many,
+# and attribution is only meaningful if it names the nodes this job touched.
+# A neighbouring job's pod on node-z must not appear in either result.
+namespace: default
+jobName: nccl-job
+pods:
+  - name: worker-0
+    jobLabel: nccl-job
+    nodeName: node-a
+    phase: Running
+  - name: neighbour-0
+    jobLabel: other-job
+    nodeName: node-z
+    phase: Running

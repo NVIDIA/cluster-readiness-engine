@@ -30,6 +30,7 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+/kubeconfig
 
 # OSX
 .DS_Store

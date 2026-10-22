@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-node means one job per target node. Unpinned means exactly one job.
+# Both are explicit user requests for a job count and they cannot both be
+# honored, so this rejects rather than silently picking a winner.
+#
+# The check has to live at this tier: by the time buildWROrchestration has run,
+# intra-node has vanished entirely into NodesPerJobForScale and a message from
+# the Workflow tier would name a field the user never wrote.
+placement: Unpinned
+testScale: intra-node

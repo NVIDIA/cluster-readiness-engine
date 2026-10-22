@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-rack lowers to Topology{StrictDomain: true}, which is literally the
+# field ValidatePlacement rejects one tier down. Catching it here means the
+# message names "testScale", which is what the user actually wrote.
+#
+# The remedy in the message matters as much as the rejection: a single unpinned
+# job CAN be confined to one domain, just through target.matchExpressions,
+# which step 6a now carries onto the pods for real.
+placement: Unpinned
+testScale: intra-rack

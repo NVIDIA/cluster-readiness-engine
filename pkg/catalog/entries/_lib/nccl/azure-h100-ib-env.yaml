@@ -27,6 +27,10 @@
   value: "32"
 - name: NCCL_NET_GDR_LEVEL
   value: "5"
+# NVLink SHARP, forced on rather than left to NCCL's default: ADR-060
+# records it as one of the seventeen variables the field-validated Azure
+# H100 ND v5 workflow needs to run as expected, alongside the channel and
+# QP tuning above.
 - name: NCCL_NVLS_ENABLE
   value: "1"
 - name: NCCL_IB_QPS_PER_CONNECTION

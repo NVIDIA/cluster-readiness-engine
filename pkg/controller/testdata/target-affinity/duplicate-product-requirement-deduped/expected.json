@@ -1,0 +1,36 @@
+{
+  "hostnames": [
+    "node-a"
+  ],
+  "affinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": {
+      "nodeSelectorTerms": [
+        {
+          "matchExpressions": [
+            {
+              "key": "kubernetes.io/hostname",
+              "operator": "In",
+              "values": [
+                "node-a"
+              ]
+            },
+            {
+              "key": "nvidia.com/gpu.present",
+              "operator": "In",
+              "values": [
+                "true"
+              ]
+            },
+            {
+              "key": "nvidia.com/gpu.product",
+              "operator": "In",
+              "values": [
+                "NVIDIA-GB200-NVL72"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
@@ -119,6 +121,51 @@ type nodeResultsTarget[T any] struct {
 	merge  func(existing []byte, newEntries []T) ([]byte, error)
 	setRef func(*nvcrev1alpha1.Workflow, *corev1.TypedLocalObjectReference)
 }
+
+// nodeResultsWriteError decides what a failed node-result write does to the
+// pass that made it. Only a write the controller has lost its access for ends
+// the pass (ADR-092): a Forbidden that a fresh access review confirms, or one
+// the review cannot classify. Going on would write a terminal status without
+// the results; every caller writes status only after this, so returning first
+// leaves the persisted state untouched, and requeueAfterForbiddenWrite records
+// the wait. The error carries the review's answer so it is not asked twice.
+//
+// Every other failure stays best effort, as before ADR-092: it is logged and
+// the pass goes on to its terminal status. That includes a Forbidden the
+// review allows, which an admission policy or ResourceQuota on ConfigMaps
+// returned. No binding can fix such a rejection, so ending the pass would only
+// retry it forever; it gets a Warning event on the Workflow, so the lost
+// record is visible beyond the controller log.
+func (r *WorkflowReconciler) nodeResultsWriteError(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, err error, msg string,
+) error {
+	if err == nil {
+		return nil
+	}
+	if apierrors.IsForbidden(err) && r.AccessReviewer != nil {
+		access := r.reviewNamespaceAccess(ctx, workflow, true).forWrite(err)
+		if !access.granted() {
+			return &accessDeniedWriteError{err: err, access: access}
+		}
+		r.eventf(workflow, corev1.EventTypeWarning, ReasonNodeResultsWriteRejected,
+			"%s: %v. The write was rejected although the controller has access in the namespace, "+
+				"so an admission policy or ResourceQuota refused it; the Workflow continues without this record.",
+			msg, err)
+	}
+	logf.FromContext(ctx).Error(err, msg)
+	return nil
+}
+
+// accessDeniedWriteError is a forbidden write an access review attributed to
+// the controller's own permissions, carrying the review's answer.
+type accessDeniedWriteError struct {
+	err    error
+	access namespaceAccessResult
+}
+
+func (e *accessDeniedWriteError) Error() string { return e.err.Error() }
+
+func (e *accessDeniedWriteError) Unwrap() error { return e.err }
 
 // recordNodeResults merges entries into the Workflow's node-result ConfigMap,
 // creating it if absent, and points the corresponding status ref at it.

@@ -1,0 +1,16 @@
+# An operator list replaces a kept list; lists are never merged.
+release:
+  manager:
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+operator:
+  manager:
+    tolerations:
+      - key: dedicated
+        operator: Exists
+probed:
+  manager:
+    tolerations:
+      - key: dedicated
+        operator: Exists

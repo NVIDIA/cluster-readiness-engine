@@ -50,16 +50,34 @@ type BuildConfig struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// requested by the on-prem GB200/GB300 templates (e.g., "rdma/ib"). Empty
+	// requested by the on-prem GB200/GB300 and HGX B200/B300 templates (e.g., "rdma/ib"). Empty
 	// means the templates omit the NIC resource block. The per-container count
 	// comes from MlnxPerNode.
 	NicResourceName string
+
+	// RDMADeviceAccess selects how workload containers reach the host's RDMA
+	// devices: "hostPath" mounts /dev/infiniband and runs the workload
+	// container privileged, "devicePlugin" and empty both leave the templates
+	// requesting NIC devices as an extended resource (see MlnxPerNode and
+	// NicResourceName). Fragments wrap the hostPath patch in
+	// {{- if eq .RDMADeviceAccess "hostPath" }}.
+	RDMADeviceAccess string
 
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order. The controller
 	// detects them from node allocatable; empty means the templates render
 	// DefaultGKETCPXONetworks.
 	GKETCPXONetworks []string
+
+	// TCPXOPluginVersion is the GKE TCPXO NCCL plugin release installed on
+	// the GCP H100 target nodes, e.g. "v1.0.17" or its rebuild "v1.0.17-1".
+	// The controller detects it from the nccl-tcpxo-installer pods; it
+	// selects the GCP H100 workload images and the tcpxo-daemon image
+	// (TCPXOPluginProfileFor), by release, so a build suffix is ignored. An
+	// unmapped release renders the newest mapped profile not newer than it;
+	// empty, older or unparseable renders the MinimumTCPXOPluginVersion
+	// profile.
+	TCPXOPluginVersion string
 
 	// Resources overrides the CPU and memory of training containers.
 	// Nil (or nil sub-fields) means the training entries keep their
@@ -154,6 +172,11 @@ type BuildConfig struct {
 	// entries that fetch source at pod start. Empty means each entry uses its
 	// own default upstream; entries that clone no source ignore it.
 	SourceRepo string
+
+	// DCGMHost is the DCGM hostengine address (host[:port]) dcgm-level4
+	// passes to `dcgmi diag --host`. Empty means the entry's default
+	// address; other entries ignore it.
+	DCGMHost string
 }
 
 // Entry holds a builder that produces a WorkflowSpec for a given target.

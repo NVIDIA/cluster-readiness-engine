@@ -1,4 +1,5 @@
 {
   "name": "myregistry.io/nvcre",
-  "tag": "latest"
+  "tag": "latest",
+  "digest": ""
 }

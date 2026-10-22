@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The only combination that refuses, and the reason this function exists.
+#
+# Unpinned means the scheduler picks the hosts, so the gpu.product term is the
+# only thing holding the job to one architecture. The label was synthesized, so
+# the term cannot be emitted. And discovery excluded nodes for running a
+# different architecture, so those nodes are reachable and the job would land on
+# the wrong GPUs if it ran unconstrained.
+#
+# Dropping the term silently here is the failure mode worth catching: the job
+# runs, reports a clean pass, and certifies hardware it never touched. ok=false
+# makes the caller fail the run with a message naming both node lists.
+placement: Unpinned
+gpuProducts: ["NVIDIA-GB300"]
+synthesizedProducts: ["dra-node-01", "dra-node-02"]
+archExcluded: ["b200-node-01"]

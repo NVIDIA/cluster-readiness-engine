@@ -1,0 +1,111 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      cert-multi
+  Platform:  onprem
+  GPU:       h100
+  Nodes:     4
+
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+│  Reason:    1 groups failed across 1 iterations                │
+│  Runtime:   10m 0s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      2                                                  │
+│                                                                │
+│  Failed Groups:                                                │
+│      ✗  group-1 (2 nodes)                                      │
+│         NCCL init failed on node003                            │
+│           - node003                                            │
+│           - node004                                            │
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✓  group-0 (node001, node002)                             │
+│         400.00 GB/s                                            │
+│      ✗  group-1 (node003, node004)                             │
+│         no bandwidth data                                      │
+│         - node003                                              │
+│         - node004                                              │
+│                                                                │
+│  Bandwidth:                                                    │
+│    Size       AlgBW        BusBW        Samples                │
+│    1 GB       400.00 GB/s  400.00 GB/s  1                      │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/1 passed                                      │
+│  Failed Nodes: none                                            │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "name": "cert-multi",
+  "platform": "onprem",
+  "gpu": "h100",
+  "totalNodes": 4,
+  "categories": [
+    {
+      "domain": "communication",
+      "variant": "nccl-all-reduce",
+      "status": "Failed",
+      "failureReason": "1 groups failed across 1 iterations",
+      "runtime": "10m 0s",
+      "testScale": "full-scale",
+      "nodesPerJob": 2,
+      "jobs": 2,
+      "failedGroups": [
+        {
+          "name": "group-1",
+          "nodeCount": 2,
+          "nodes": [
+            "node003",
+            "node004"
+          ],
+          "reason": "NCCL init failed on node003"
+        }
+      ],
+      "bandwidth": [
+        {
+          "size": "1 GB",
+          "algBW": "400.00 GB/s",
+          "busBW": "400.00 GB/s",
+          "samples": 1
+        }
+      ],
+      "groupBandwidth": [
+        {
+          "group": "group-0",
+          "groupName": "group-0 (node001, node002)",
+          "nodes": [
+            "node001",
+            "node002"
+          ],
+          "busBW": "400.00 GB/s",
+          "belowMin": false,
+          "failed": false
+        },
+        {
+          "group": "group-1",
+          "groupName": "group-1 (node003, node004)",
+          "nodes": [
+            "node003",
+            "node004"
+          ],
+          "busBW": "",
+          "belowMin": false,
+          "failed": true
+        }
+      ]
+    }
+  ],
+  "failedNodes": [],
+  "result": "FAILED"
+}

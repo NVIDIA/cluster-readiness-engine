@@ -12,12 +12,12 @@ also excluded.
 
 | Package | Version | License | Source |
 |---------|---------|---------|--------|
-| `golang.org/x/text` | v0.42.0 | BSD-3-Clause | https://github.com/golang/text/blob/v0.42.0/LICENSE |
+| `golang.org/x/text` | v0.43.0 | BSD-3-Clause | https://github.com/golang/text/blob/v0.43.0/LICENSE |
 | `github.com/evanphx/json-patch/v5` | v5.9.11 | BSD-3-Clause | https://github.com/evanphx/json-patch/blob/v5.9.11/LICENSE |
 | `github.com/google/cel-go` | v0.31.0 | Apache-2.0, BSD-3-Clause | https://github.com/google/cel-go/blob/v0.31.0/LICENSE |
-| `github.com/modelcontextprotocol/go-sdk` | v1.7.0 | Apache-2.0, MIT | https://github.com/modelcontextprotocol/go-sdk/blob/v1.7.0/LICENSE |
+| `github.com/modelcontextprotocol/go-sdk` | v1.8.0 | Apache-2.0, MIT | https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE |
 | `github.com/kubeflow/trainer/v2` | v2.2.1 | Apache-2.0 | https://github.com/kubeflow/trainer/blob/v2.2.1/LICENSE |
-| `github.com/prometheus/client_golang` | v1.24.1 | Apache-2.0 | https://github.com/prometheus/client_golang/blob/v1.24.1/LICENSE |
+| `github.com/prometheus/client_golang` | v1.25.0 | Apache-2.0 | https://github.com/prometheus/client_golang/blob/v1.25.0/LICENSE |
 | `github.com/spf13/cobra` | v1.10.2 | Apache-2.0 | https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt |
 | `github.com/spf13/pflag` | v1.0.10 | BSD-3-Clause | https://github.com/spf13/pflag/blob/v1.0.10/LICENSE |
 | `k8s.io/api` | v0.36.5 | Apache-2.0 | https://github.com/kubernetes/api/blob/v0.36.5/LICENSE |
@@ -31,9 +31,9 @@ also excluded.
 
 ### golang.org/x/text
 
-* Version: v0.42.0
+* Version: v0.43.0
 * License: BSD-3-Clause
-* Source: https://github.com/golang/text/blob/v0.42.0/LICENSE
+* Source: https://github.com/golang/text/blob/v0.43.0/LICENSE
 
 ```text
 Copyright 2009 The Go Authors.
@@ -559,9 +559,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### github.com/prometheus/client_golang
 
-* Version: v1.24.1
+* Version: v1.25.0
 * License: Apache-2.0
-* Source: https://github.com/prometheus/client_golang/blob/v1.24.1/LICENSE
+* Source: https://github.com/prometheus/client_golang/blob/v1.25.0/LICENSE
 
 #### LICENSE
 
@@ -2376,9 +2376,9 @@ Apache license:
 
 ### github.com/modelcontextprotocol/go-sdk
 
-* Version: v1.7.0
+* Version: v1.8.0
 * License: Apache-2.0, MIT
-* Source: https://github.com/modelcontextprotocol/go-sdk/blob/v1.7.0/LICENSE
+* Source: https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE
 
 #### LICENSE
 

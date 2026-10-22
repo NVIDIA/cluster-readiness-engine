@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control for the Unpinned case, and the reason PopulateCategoryFromWorkflow
+# sets Placement only when it is Unpinned.
+#
+# Nine jobs of 2 nodes over an 18-node target: the numbers reconcile on their
+# own, so a "Placement: Pinned (18 of 18 target nodes exercised)" line would add
+# a row to every existing report without adding information. The golden must
+# carry Nodes/Job and Jobs and no Placement line.
+#
+# Scale is set here, unlike the Unpinned case, because full-scale is a real
+# answer under Pinned and the two cases should differ in that line too.
+domain: training
+variant: nemotron5-8b
+status: Succeeded
+runtime: 5m 0s
+testScale: full-scale
+nodesPerJob: 2
+jobs: 9

@@ -35,6 +35,40 @@ const (
 	TestScaleFullScale = "full-scale"
 )
 
+// RDMADeviceAccess values. These mirror the kubebuilder Enum marker on
+// CategoryOptions.RDMADeviceAccess; nvcrectl validates against them too, since
+// the enum marker only binds server-side and the offline render path never
+// reaches an API server.
+const (
+	// RDMADeviceAccessDevicePlugin requests NIC devices as a Kubernetes
+	// extended resource. The default when the field is unset.
+	RDMADeviceAccessDevicePlugin = "devicePlugin"
+
+	// RDMADeviceAccessHostPath mounts the host's /dev/infiniband into the
+	// workload container and runs that container privileged.
+	RDMADeviceAccessHostPath = "hostPath"
+)
+
+// ReservedLauncherEnvNames are the environment variables Kubeflow Trainer's
+// MPI plugin writes on the launcher: the hostfile it generates and the rsh
+// settings mpirun uses to reach the workers. A user value for any of them
+// replaces the plugin's, and the launch fails rather than being tuned. The
+// PET_* family is rejected alongside these by prefix, mirroring what the
+// torch plugin already rejects at TrainJob admission.
+//
+// Kept beside the env field so the CRD's CEL rule and the offline CLI check
+// cannot drift apart.
+var ReservedLauncherEnvNames = []string{
+	"OMPI_MCA_orte_default_hostfile",
+	"OMPI_MCA_plm_rsh_args",
+	"OMPI_MCA_orte_keep_fqdn_hostnames",
+	"OMPI_MCA_orte_set_default_slots",
+}
+
+// ValidRDMADeviceAccessValues lists the accepted rdmaDeviceAccess values, in
+// the order they are reported in validation errors.
+var ValidRDMADeviceAccessValues = []string{RDMADeviceAccessHostPath, RDMADeviceAccessDevicePlugin}
+
 // WorkflowReference references a Workflow resource created by the Certification.
 type WorkflowReference struct {
 	// name is the name of the Workflow resource.
@@ -120,10 +154,18 @@ type CategoryResources struct {
 // (or auto-select for nodesPerJob).
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
-	// When nil at both global and per-category level, the controller auto-selects:
+	//
+	// It is a per-job group size, not a total: a Certification always covers
+	// every node its target matches, so N matching nodes produce
+	// ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+	// per-category level, the controller auto-selects:
 	//   - Entries with per-node-count configs (training): largest config <= matching nodes.
 	//   - All other entries: all matching nodes.
 	// When set, clamped to min(nodesPerJob, matchingNodes).
+	//
+	// To run one job of a chosen size against part of a fleet, use a WorkloadRun
+	// with orchestration.placement: Unpinned. Certification has no such mode by
+	// design: a certification verdict covers everything it targeted. See ADR-089.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	NodesPerJob *int32 `json:"nodesPerJob,omitempty"`
@@ -181,11 +223,11 @@ type CategoryOptions struct {
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
 
 	// nicResourceName sets the Kubernetes extended resource name of the RDMA
-	// NIC devices requested on workload containers for on-prem GB200/GB300
-	// targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-	// the RDMA device plugin the site runs, and the per-container count
-	// comes from mlnxPerNode. When unset, the controller auto-detects the
-	// name on on-prem GB200/GB300 targets: a single candidate resource
+	// NIC devices requested on workload containers for on-prem GB200/GB300 and
+	// x86 HGX B200/B300 targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the
+	// name depends on the RDMA device plugin the site runs, and the
+	// per-container count comes from mlnxPerNode. When unset, the controller
+	// auto-detects the name on those targets: a single candidate resource
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
@@ -201,6 +243,31 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
+
+	// rdmaDeviceAccess selects how workload containers reach the host's RDMA
+	// devices. Leave it unset unless the cluster has no RDMA device plugin.
+	//
+	// "devicePlugin" (the default when unset) requests NIC devices as a
+	// Kubernetes extended resource, which is what grants the container its
+	// device cgroup entries; see mlnxPerNode and nicResourceName.
+	//
+	// "hostPath" mounts the host's /dev/infiniband into the workload
+	// container and runs that container privileged. Both are required
+	// together: kubelet builds the device cgroup allowlist from the
+	// container's requested resources, so a hostPath mount alone makes the
+	// device nodes visible but open() on them still fails with EPERM, and no
+	// capability changes that. Use this on clusters that expose RDMA through
+	// host device nodes rather than through a device plugin. The pod will be
+	// rejected on clusters that enforce a restricted or baseline Pod Security
+	// Standard. A privileged container also runs without the runtime's default
+	// seccomp filter and without AppArmor or SELinux confinement, so a
+	// pod-level seccompProfile no longer constrains it even though the pod spec
+	// still shows it. Some CRI-O runtimes reject a privileged container whose
+	// GPUs come from the NVIDIA device plugin; where that applies, the pods
+	// fail to start.
+	// +optional
+	// +kubebuilder:validation:Enum=hostPath;devicePlugin
+	RDMADeviceAccess string `json:"rdmaDeviceAccess,omitempty"`
 
 	// resources overrides the CPU and memory resources of training workload
 	// containers. Training entries default to DGX-class sizing (limits:
@@ -235,7 +302,14 @@ type CategoryOptions struct {
 	// platform overrides land the workers on an nccl-tests image that ships
 	// the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
 	// the operator then owns the EFA OFI plugin being present in the
-	// replacement.
+	// replacement. On GCP H100 the platform overrides pick the NCCL and
+	// training images from the TCPXO NCCL plugin version detected on the
+	// target nodes, because the plugin loads the CUDA runtime from the
+	// workload image; a replacement must have the same CUDA major as the
+	// plugin. Set at the top level, image applies to every category in the
+	// Certification, so on a Certification that mixes workload kinds (for
+	// example NCCL tests with diagnostics/dcgm-level4) set it per category
+	// under categories[].options instead.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512
@@ -387,6 +461,23 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
 	SourceRepo string `json:"sourceRepo,omitempty"`
 
+	// dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
+	// category passes to `dcgmi diag --host`, as host[:port] where host is a
+	// DNS name or an IPv4 address and port is 1-65535 (for example
+	// "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
+	// to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
+	// nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
+	// address on every platform. Each diag runs on one node and must reach
+	// the hostengine on that same node: the dcgm pod runs on the host
+	// network, so use a Service with internalTrafficPolicy: Local, as the GPU
+	// Operator's is, or localhost:5555 when the hostengine itself listens on
+	// the node's network. A Service that load-balances across nodes would run
+	// the diagnostics on another node's GPUs. Other categories ignore it.
+	// +optional
+	// +kubebuilder:validation:MaxLength=259
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`
+	DCGMHost string `json:"dcgmHost,omitempty"`
+
 	// workloadMetadata sets labels on the workload object each category's Job
 	// creates (today a Kubeflow TrainJob). Use it to place the workload in a
 	// Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
@@ -405,6 +496,43 @@ type CategoryOptions struct {
 	// supplies that same key with a different value fails.
 	// +optional
 	WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
+
+	// env sets environment variables on this category's workload, applied
+	// after the catalog entry and the platform overrides resolve, so a name
+	// set here wins over both. Use it for a site-specific value a release has
+	// not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+	// known NVLink SHARP defect. Prefer a catalog entry when the setting
+	// follows from the hardware rather than from one site.
+	//
+	// Because CertificationSpec inlines CategoryOptions, this field is read
+	// both globally at spec.env and per category at
+	// spec.categories[].options.env. Like workloadMetadata and unlike the
+	// slices beside it, the two levels merge per name rather than replacing
+	// wholesale: a category can change or add a variable but cannot remove a
+	// global one. Set variables per category instead of globally when
+	// categories need genuinely different sets.
+	//
+	// Where a variable lands depends on the entry. The communication/nccl-*
+	// variants run under mpirun, whose ranks start under sshd with a fresh
+	// environment and never read container env, so their variables become
+	// "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+	// env var, which Kubeflow upserts by name onto the workload container.
+	// diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+	// field has no effect there.
+	//
+	// A certification that sets this is tuned: the variable names (not their
+	// values) appear on the category's report entry, so a reader of a passing
+	// result can see what the run was configured with.
+	//
+	// valueFrom is rejected: a variable reaches MPI ranks by value on a
+	// command line, which cannot carry a reference. Use a WorkloadRun for
+	// secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+	// OMPI_MCA_* launcher settings) are rejected because a user value there
+	// breaks the launch rather than overriding a default.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:XValidation:rule="self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_') && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))",message="env entries must not use valueFrom and must not name a variable Kubeflow Trainer owns (PET_* or the OMPI_MCA_* launcher settings)"
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 type CertificateCategory struct {

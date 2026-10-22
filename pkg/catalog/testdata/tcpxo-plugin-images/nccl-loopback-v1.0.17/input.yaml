@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Single-node entries have no launcher: only the worker and trainer.image
+# follow the plugin.
+category: communication
+subcategory: nccl-loopback
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 1
+gpusPerNode: 8
+tcpxoPluginVersion: v1.0.17

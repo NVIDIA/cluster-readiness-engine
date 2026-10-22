@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every entry that includes overrides/hostpath-rdma.yaml, in one case, so the
+# include itself is covered rather than only two of its seven call sites.
+#
+# Without this, five of the seven includes could be deleted and the whole suite
+# would stay green: oci-gb200-nccl-hostpath covers nccl-all-reduce and
+# nccl-loopback, aws-gb200-nccl-hostpath covers nccl-all-reduce again, and
+# nothing reaches nccl-all-gather, nccl-alltoall, nccl-loopback-nvswitch,
+# nemotron5-8b or nemotron5-56b with the field set. An include is one line at
+# the end of an overrides list and is exactly the kind of thing a later edit
+# drops silently.
+#
+# It also pins the claim the fragment's own header makes, that one shared
+# fragment covers both worker shapes: all seven name the worker replicatedJob
+# "node" and its container "node", so all seven get the flag, the mount and the
+# volume, and the two MPI launchers get none of them. A entry that renamed
+# either would show up here as a workload that silently did not get device
+# access.
+#
+# nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
+# below it. maxSteps keeps the two training renders small.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-allentries-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 50

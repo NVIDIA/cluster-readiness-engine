@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The launcher is the pod that escapes.
+#
+# SetNodeSelector writes the worker replicatedJob only, so using it here would
+# leave the MPI launcher with no constraint at all once the hostname pin is
+# gone. SetNodeAffinity writes every replicatedJob, and this case is what holds
+# that choice in place: the golden must show the same target requirements under
+# "launcher" as under "node".
+#
+# Tolerations are the other half. Pinned mode's blanket Operator: Exists is safe
+# only because the job lands on hosts NVCRE chose; with the pin gone it would
+# let the launcher onto any tainted node with a free GPU. This target names a
+# taintSelector, which is the first arm of controller.JobTolerations and wins
+# outright, so the golden must carry the dedicated-burnin toleration and nothing
+# broader. The fallback arm, where no taintSelector is named, is
+# unpinned-mpi-no-taint-selectors.
+placement: Unpinned
+numNodes: 2
+mpi: true
+target:
+  nodeSelector:
+    nvcre.nvidia.com/testbed: burnin
+  taintSelectors:
+    - key: nvcre.nvidia.com/dedicated
+      value: burnin
+      effect: NoSchedule

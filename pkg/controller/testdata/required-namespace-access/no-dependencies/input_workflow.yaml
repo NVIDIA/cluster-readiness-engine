@@ -1,0 +1,8 @@
+# Every Workflow needs the node-result ConfigMaps, its TrainJob and pod logs
+# for measurements, in its own namespace.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf
+  namespace: run-ns
+spec: {}

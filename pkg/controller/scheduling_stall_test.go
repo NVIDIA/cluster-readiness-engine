@@ -382,7 +382,7 @@ func TestCheckStallTimeoutCreditsSchedulingBlock(t *testing.T) {
 	gm := &nvcrev1alpha1.GoodputMeasurement{
 		ObjectMeta: gmMeta,
 		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
-			JobRef: corev1.TypedLocalObjectReference{Kind: "Job", Name: "job-u"},
+			JobRef: corev1.TypedLocalObjectReference{Kind: kindJob, Name: "job-u"},
 		},
 		Status: nvcrev1alpha1.GoodputMeasurementStatus{
 			LastStepTimestamp: &lastStep,
@@ -430,7 +430,7 @@ func TestCheckStallTimeoutCreditsSchedulingBlockDuringStartup(t *testing.T) {
 	gm := &nvcrev1alpha1.GoodputMeasurement{
 		ObjectMeta: gmMeta,
 		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
-			JobRef:         corev1.TypedLocalObjectReference{Kind: "Job", Name: "job-w"},
+			JobRef:         corev1.TypedLocalObjectReference{Kind: kindJob, Name: "job-w"},
 			SampleInterval: &sample,
 		},
 		Status: nvcrev1alpha1.GoodputMeasurementStatus{

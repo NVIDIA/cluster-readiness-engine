@@ -1,0 +1,4 @@
+# --version picks the chart and the default image tag, and the summary names
+# it as the image's source.
+runs:
+  - args: [--version, 0.9.0]

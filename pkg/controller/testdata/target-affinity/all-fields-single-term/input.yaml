@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Everything at once, which is the case that proves the AND semantics: one
+# NodeSelectorTerm holding hostname, both nodeSelector keys, the match
+# expression and the product term. The target's documented semantics are AND,
+# and splitting these across terms would quietly turn it into OR.
+placement: ""
+groupNodes: ["node-a", "node-b"]
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+    pool: burnin
+  matchExpressions:
+    - key: topology.kubernetes.io/zone
+      operator: In
+      values: ["us-east-1a", "us-east-1b"]
+  taintSelectors:
+    - key: nvidia.com/gpu
+      operator: Exists
+  nodeNames: ["node-a", "node-b"]
+gpuProducts: ["NVIDIA-GB200"]

@@ -6624,6 +6624,17 @@ spec:
                   not charged to the stall budget. See ADR-083.
                 format: date-time
                 type: string
+              workloadCreationRejectedSince:
+                description: |-
+                  workloadCreationRejectedSince records when the API server first
+                  rejected this Job's workload create (admission webhook, admission
+                  policy, ResourceQuota). Set on the first rejected create and cleared
+                  once the create succeeds. While set, the Job stays InProgress with
+                  reason "WorkloadCreationRejected"; a rejection that outlasts the
+                  controller's workload creation deadline fails the Job. Persisted so
+                  controller restarts do not reset the deadline. See issue #488.
+                format: date-time
+                type: string
               workloadRef:
                 description: |-
                   workloadRef references the workload resource created by this Job.

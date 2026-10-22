@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Diagnose finished with no faults and is about to succeed, recording the
+# healthy nodes. That write is forbidden after access is revoked. The diagnose
+# stage must not advance to complete in status, and the Workflow waits for
+# access instead of succeeding without the record (ADR-092).
+rejectNodeResultWrites: true
+waitFor:
+  kind: Workflow
+  name: wf-revoked-diagnose
+  namespace: access-revoked-diagnose
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-diagnose
+    namespace: access-revoked-diagnose

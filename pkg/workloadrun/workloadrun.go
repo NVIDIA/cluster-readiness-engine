@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -168,6 +168,13 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	if run.Spec.MlnxPerNode != nil {
 		mlnxPerNode = *run.Spec.MlnxPerNode
 	}
+	// --gpu-arch is validated against gpu-defaults.yaml; an architecture from
+	// the nodeSelector is not, so say when the catalog had no node shape for
+	// it, with the resolved counts (ADR-094).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+		controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+	}
 
 	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
 	if run.Spec.EnableMNNVL != nil {
@@ -210,6 +217,16 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 			return fmt.Errorf("applying overrides: %w", overrideErr)
 		}
 		workflowSpec.Overrides = nil
+
+		// BuildWorkflowSpec already ran ValidateWRPlacement, but that was the
+		// pre-override spec and it only sees testScale. An override can set
+		// orchestration.topology.strictDomain directly, so the resolved spec
+		// needs the lower-tier check too. Without --platform the overrides stay
+		// conditional and the output is a template, so there is nothing resolved
+		// to check and the controller performs it on the target instead.
+		if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+			return err
+		}
 
 		// The construction-time merge inside BuildWorkflowSpec ran before
 		// these overrides, so it is the resolved spec that has to satisfy
@@ -271,6 +288,18 @@ func BuildWorkflowSpec(
 ) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
+	// Same check the controller runs, so an offline render refuses the same
+	// specs the cluster would rather than previewing one that cannot run.
+	if err := controller.ValidateWRPlacement(spec.Orchestration); err != nil {
+		return nil, err
+	}
+	if err := platform.ValidateWorkloadVolumes(spec.Volumes, spec.VolumeMounts, frameworkType, spec.Config != nil); err != nil {
+		return nil, err
+	}
+	if err := platform.ValidateWorkloadInitContainers(spec.InitContainers); err != nil {
+		return nil, err
+	}
+
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
 	mergedEnv := platform.MergeEnvVars(baseEnv, spec.Env)
@@ -285,30 +314,29 @@ func BuildWorkflowSpec(
 		}
 		defaultMode := int32(0755)
 		volumes = append(volumes, corev1.Volume{
-			Name: "config-volume",
+			Name: platform.ConfigVolumeName,
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				Name:        configMapName,
 				DefaultMode: &defaultMode,
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "config-volume",
-			MountPath: "/config",
+			Name:      platform.ConfigVolumeName,
+			MountPath: platform.ConfigMountPath,
 		})
 	}
 
 	// Build runtime dependency.
 	rtCfg := platform.RuntimeConfig{
-		EntryName:        run.Name,
-		Image:            spec.Image,
-		NodesPerJob:      controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
-		GpusPerNode:      gpusPerNode,
-		Env:              mergedEnv,
-		Volumes:          volumes,
-		VolumeMounts:     volumeMounts,
-		InitContainers:   spec.InitContainers,
-		Resources:        spec.Resources,
-		ImagePullSecrets: spec.ImagePullSecrets,
+		EntryName:      run.Name,
+		Image:          spec.Image,
+		NodesPerJob:    controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		GpusPerNode:    gpusPerNode,
+		Env:            mergedEnv,
+		Volumes:        volumes,
+		VolumeMounts:   volumeMounts,
+		InitContainers: spec.InitContainers,
+		Resources:      spec.Resources,
 	}
 	if spec.GangScheduler != nil {
 		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
@@ -333,7 +361,7 @@ func BuildWorkflowSpec(
 	}
 
 	// Build JobTemplate.
-	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
+	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, mergedEnv)
 
 	// Build OrchestrationSpec.
 	orch := &nvcrev1alpha1.OrchestrationSpec{
@@ -344,6 +372,7 @@ func BuildWorkflowSpec(
 		if spec.Orchestration.RepeatCount != nil {
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
+		orch.Placement = spec.Orchestration.Placement
 		switch spec.Orchestration.TestScale {
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
@@ -428,6 +457,7 @@ func applyPlatformMPIArgs(
 		NicResourceName: derefString(run.Spec.NicResourceName),
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         run.Spec.Env,
 	})
 	octx := controller.OverrideContext{
 		Platform:        platformName,
@@ -446,8 +476,10 @@ func validateExecFramework(spec *nvcrev1alpha1.WorkloadRunSpec, name string) err
 	return nil
 }
 
+// buildCLIJobTemplate mirrors the controller's buildJobTemplate. env is the
+// merged env the runtime containers get; MPI forwards it to the ranks with -x.
 func buildCLIJobTemplate(
-	run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
+	run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, env []corev1.EnvVar,
 ) *nvcrev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
@@ -466,24 +498,18 @@ func buildCLIJobTemplate(
 	case controller.FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 10 // fixed args below
-		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
-		mpiArgs = append(mpiArgs,
-			"-N", fmt.Sprintf("%d", gpusPerNode),
-			"--allow-run-as-root",
-			"--mca", "plm_rsh_args",
-			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
-			"-x", "NCCL_DEBUG=INFO",
+		args = slices.Concat(
+			[]string{
+				"-N", fmt.Sprintf("%d", gpusPerNode),
+				"--allow-run-as-root",
+				"--mca", "plm_rsh_args",
+				"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+			},
+			platform.MPIEnvArgs(env, mpi.MpiArgs),
+			mpi.MpiArgs,
+			[]string{mpi.Binary},
+			mpi.Args,
 		)
-		enableStr := "0"
-		if enableMNNVL {
-			enableStr = "1"
-		}
-		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
-		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
-		mpiArgs = append(mpiArgs, mpi.Binary)
-		mpiArgs = append(mpiArgs, mpi.Args...)
-		args = mpiArgs
 	default:
 		exec := spec.Framework.Exec
 		command = exec.Command
@@ -504,14 +530,16 @@ func buildCLIJobTemplate(
 		},
 	}
 
-	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
-
 	// MPI runs have a launcher replicated job that must be pinned and
-	// tolerated like the workers — mirrors buildJobTemplate in the
-	// controller reconcile path (issue #175 UAT).
+	// tolerated like the workers; mirrors buildJobTemplate in the
+	// controller reconcile path (issue #175 UAT). Pull secrets are applied
+	// to every registered job, so the launcher has to be registered before
+	// SetImagePullSecrets runs.
 	if frameworkType == controller.FrameworkMPI {
 		workload.EnsureLauncherTarget(trainJobSpec)
 	}
+
+	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
 	jobSpec := nvcrev1alpha1.JobSpec{
 		Workload: nvcrev1alpha1.WorkloadSpec{
@@ -600,6 +628,13 @@ func runWorkloadRunRenderDryRun(
 	if run.Spec.MlnxPerNode != nil {
 		mlnxPerNode = *run.Spec.MlnxPerNode
 	}
+	// The discovered architecture bypasses --gpu-arch validation, so say when
+	// the catalog had no node shape for it, with the resolved counts, as the
+	// controller does (ADR-094).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+		controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+	}
 	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
 	if run.Spec.EnableMNNVL != nil {
 		enableMNNVL = *run.Spec.EnableMNNVL
@@ -625,7 +660,7 @@ func runWorkloadRunRenderDryRun(
 
 	// NIC resource auto-detection (ADR-075), mirroring the WorkloadRun
 	// controller: the field always wins; when it is unset on an on-prem
-	// GB200/GB300 target, the single candidate (rdma/* or
+	// GB200/GB300 or x86 HGX B200/B300 target, the single candidate (rdma/* or
 	// nvidia.com/mlnxnics) allocatable at the resolved mlnxPerNode count on
 	// every discovered node is used. On zero or multiple candidates nothing
 	// is injected and the note below matches the controllers'
@@ -663,6 +698,12 @@ func runWorkloadRunRenderDryRun(
 		return fmt.Errorf("applying overrides: %w", overrideErr)
 	}
 	workflowSpec.Overrides = nil
+
+	// The resolved-spec half of the placement check; see the note on the same
+	// call in the non-dry-run render path above.
+	if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+		return err
+	}
 
 	// Fail before any dry-run API request, so a conflicting override is
 	// reported as the conflict it is rather than as whatever the API server
@@ -703,7 +744,7 @@ func runWorkloadRunRenderDryRun(
 // --- run ---
 
 func newWorkloadRunRunCommand() *cobra.Command {
-	var doWait, doSetup, doCleanup bool
+	var doWait, doSetup, doCleanup, grantRunAccess bool
 	var controllerPullSecret string
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var controllerImage string
@@ -741,7 +782,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			}
 			return runWorkloadRunExecute(args[0], *configFlags.Namespace,
 				workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
-				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, timeout,
+				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, grantRunAccess, timeout,
 				resultsFile, configFlags,
 				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
 		},
@@ -751,6 +792,9 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion")
+	cmd.Flags().BoolVar(&grantRunAccess, "grant-run-access", false,
+		"With the chart's rbac.scope: namespaced, create the RoleBinding that grants the controller write access "+
+			"in a namespace that already existed, such as default (namespaces this run creates are granted automatically)")
 	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
 		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
 	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
@@ -792,6 +836,7 @@ type wrRunConfig struct {
 	doWait                   bool   // --wait: watch + report
 	doSetup                  bool   // --setup: runInit before create
 	doCleanup                bool   // --cleanup: delete run/ns + runReset after
+	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	timeout                  time.Duration
 	resultsFile              string // --results-file: path to write JSON report
 	configFlags              *kubeconfig.ConfigFlags
@@ -804,7 +849,7 @@ type wrRunConfig struct {
 
 func runWorkloadRunExecute(
 	file, namespace, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword, controllerImage, controllerPullSecret string,
-	doWait, doSetup, doCleanup bool, timeout time.Duration,
+	doWait, doSetup, doCleanup, grantRunAccess bool, timeout time.Duration,
 	resultsFile string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
 	topologyKey, testScale string,
@@ -816,8 +861,10 @@ func runWorkloadRunExecute(
 	}
 
 	// Apply CLI overrides to the WorkloadRun spec.
-	applyRunOverrides(run, nameOverride, nodeList,
-		topologyDomain, topologyKey, testScale)
+	if err := applyRunOverrides(run, nameOverride, nodeList,
+		topologyDomain, topologyKey, testScale); err != nil {
+		return err
+	}
 
 	if namespace != "" {
 		run.Namespace = namespace
@@ -836,6 +883,7 @@ func runWorkloadRunExecute(
 		doWait:                   doWait,
 		doSetup:                  doSetup,
 		doCleanup:                doCleanup,
+		grantRunAccess:           grantRunAccess,
 		timeout:                  timeout,
 		resultsFile:              resultsFile,
 		configFlags:              configFlags,
@@ -871,10 +919,14 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	// certification run --cleanup semantics.
 	runCreated := false
 	createdNamespace := ""
+	// createdRunBinding is a RoleBinding this run created in a namespace it
+	// did not create. Deleting the namespace cannot remove it, so cleanup
+	// does, once the WorkloadRun is gone.
+	createdRunBinding := false
 
 	if cfg.doCleanup {
 		defer func() {
-			runWorkloadRunCleanup(wc, cfg, runCreated, createdNamespace)
+			runWorkloadRunCleanup(wc, cfg, runCreated, createdNamespace, createdRunBinding)
 		}()
 	}
 
@@ -882,7 +934,7 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "Installing NVCRE components...")
 		if initErr := setup.RunInit("", cfg.controllerImage, cfg.controllerPullSecret, "",
-			true, cfg.configFlags, "", "", "", os.Stdin, out); initErr != nil {
+			true, cfg.configFlags, "", "", "", "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
 		_, _ = fmt.Fprintln(out, "Setup complete.")
@@ -944,15 +996,44 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	_, _ = fmt.Fprintf(out, "Discovered %d GPU nodes with product: %s\n",
 		len(nodes), gpuProduct)
 
-	// Auto-infer numNodes from target node count.
+	// Auto-infer numNodes from the discovered node count.
 	// --node-list: clamp down if fewer nodes than spec.
 	// --topology-domain: set to discovered count (all nodes in the domain).
-	if cfg.nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
-		run.Spec.NumNodes = int32(len(nodes))
+	//
+	// Both are skipped under Unpinned, where resizing the job is the thing the
+	// mode exists to prevent. This is the discovery-time half of an adjustment
+	// applyRunOverrides already made once on the spec read from the file; it
+	// fires again here because the real node count is only known now.
+	//
+	// The guard is a skip rather than an error. --topology-domain cannot reach
+	// this line under Unpinned at all, since applyRunOverrides rejects the flag
+	// outright, so only the --node-list clamp is live. Reaching it means the
+	// list was accepted, which means it named at least numNodes nodes; the
+	// clamp would only fire if fewer of them turned out to be live GPU nodes,
+	// and quietly shrinking the job for that reason is the behavior being
+	// removed. Leaving numNodes alone lets the run fail on its own terms.
+	if !nvcrev1alpha1.IsUnpinned(placementOf(run)) {
+		if cfg.nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
+			run.Spec.NumNodes = int32(len(nodes))
+		}
+		if cfg.topologyDomain != "" {
+			run.Spec.NumNodes = int32(len(nodes))
+		}
 	}
-	if cfg.topologyDomain != "" {
-		run.Spec.NumNodes = int32(len(nodes))
+
+	// Grant the controller write access in the namespace (ADR-092). This is
+	// the last step before the run object is created, so a failure anywhere
+	// earlier (pull secret, node discovery) leaves no standing grant behind,
+	// and the only later failure, the create, rolls it back below.
+	bindingCreated, err := setup.EnsureRunBinding(ctx, wc, run.Namespace,
+		setup.RunBindingOptions{NamespaceCreated: wasNamespaceCreated, Grant: cfg.grantRunAccess}, out)
+	if err != nil {
+		if wasCreatedByUs {
+			_ = wc.Delete(ctx, &corev1.Secret{Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace})
+		}
+		return err
 	}
+	createdRunBinding = bindingCreated && !wasNamespaceCreated
 
 	// Create WorkloadRun.
 	if err := wc.Create(ctx, run); err != nil {
@@ -962,6 +1043,20 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 			pullSec := &corev1.Secret{
 				Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}
 			_ = wc.Delete(ctx, pullSec)
+		}
+		// Nothing was submitted, so a binding this run added to an existing
+		// namespace has nothing to serve and must not stay as a standing grant,
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
+		// keeps it then, like cleanup does, and this run no longer owns it.
+		// It gets its own context: an interrupt cancels ctx, which is often why
+		// the create failed. If the release could not complete, this run keeps
+		// ownership so --cleanup tries again.
+		if createdRunBinding {
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, run.Namespace, true, "WorkloadRun", out); !retry {
+				createdRunBinding = false
+			}
+			releaseCancel()
 		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
 	}
@@ -1096,7 +1191,7 @@ const postTimeoutReportTimeout = 30 * time.Second
 // run created it) and wait for the cascade, delete the namespace (only when
 // this run created it), then reset installed components when --setup was
 // given. Failures are reported as warnings; cleanup never aborts.
-func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, createdNamespace string) {
+func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, createdNamespace string, createdRunBinding bool) {
 	out := cfg.out
 	run := cfg.run
 
@@ -1111,13 +1206,22 @@ func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, 
 	// Workflow, whose finalizer deletes Jobs, workloads, and dependencies.
 	// The controller needs its RBAC and Deployment to process that cascade,
 	// so we MUST wait for it to complete before running reset.
+	runGone := !runCreated
 	if runCreated {
 		_, _ = fmt.Fprintln(out, "[cleanup] Deleting WorkloadRun...")
 		if err := wc.Delete(cleanupCtx, run); err != nil && !apierrors.IsNotFound(err) {
 			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete WorkloadRun: %v\n", err)
 			warnings = true
 		} else {
-			waitForWorkloadRunDeletion(cleanupCtx, wc, run.Name, run.Namespace, out)
+			runGone = waitForWorkloadRunDeletion(cleanupCtx, wc, run.Name, run.Namespace, out)
+		}
+	}
+
+	// The Workflow's finalizer writes in the namespace until the cascade is
+	// done, so the binding goes only after it.
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, run.Namespace, runGone, "WorkloadRun", out); warned {
+			warnings = true
 		}
 	}
 
@@ -1182,7 +1286,8 @@ func setPullSecretOwnerReference(ctx context.Context, wc client.Client, run *nvc
 var wrDeletionPollInterval = 2 * time.Second
 
 // waitForWorkloadRunDeletion waits for a deleted WorkloadRun and its child
-// Workflow (same name, per the WorkloadRun controller) to be fully gone.
+// Workflow (same name, per the WorkloadRun controller) to be fully gone, and
+// reports whether they are.
 // The WorkloadRun itself has no finalizer, so it disappears quickly; the
 // cascade that matters is the owned Workflow, whose finalizer deletes Jobs,
 // workloads, and dependency resources. The timeout is generous because the
@@ -1193,7 +1298,7 @@ var wrDeletionPollInterval = 2 * time.Second
 // flight creates the Workflow after both Gets observed NotFound. The residual
 // risk is sub-second against the poll interval and only matters when
 // --setup --cleanup resets the controller immediately afterwards.
-func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1204,7 +1309,7 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 		select {
 		case <-ctx.Done():
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
-			return
+			return false
 		case <-ticker.C:
 			run := &nvcrev1alpha1.WorkloadRun{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, run); err == nil || !apierrors.IsNotFound(err) {
@@ -1212,7 +1317,7 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 			}
 			workflow := &nvcrev1alpha1.Workflow{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, workflow); apierrors.IsNotFound(err) {
-				return // fully cascaded
+				return true // fully cascaded
 			}
 		}
 	}
@@ -1404,14 +1509,6 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 			ProviderID: render.SyntheticProviderID(platformName),
 		},
 	}
-	// nscale shares the openstack:// providerID prefix; detection disambiguates
-	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
-	// node must carry it for node-based detection to resolve to nscale.
-	if platformName == "nscale" {
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
-	}
 	return []corev1.Node{node}
 }
 
@@ -1515,13 +1612,18 @@ func buildWorkloadRunReport(
 		result = "PASSED"
 	}
 
+	// Resolved once: the names and their per-node reasons come from the same
+	// read, so the summary line can name a reason here exactly as a
+	// Certification report does.
+	failedNodeDetails := report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)
 	r := &report.CertReport{
-		Title:       "WorkloadRun Report",
-		Name:        run.Name,
-		Platform:    run.Status.DetectedPlatform,
-		GPU:         run.Status.DetectedGPUArchitecture,
-		FailedNodes: noderesults.FailedNodeNames(report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)),
-		Result:      result,
+		Title:             "WorkloadRun Report",
+		Name:              run.Name,
+		Platform:          run.Status.DetectedPlatform,
+		GPU:               run.Status.DetectedGPUArchitecture,
+		FailedNodes:       noderesults.FailedNodeNames(failedNodeDetails),
+		FailedNodeDetails: failedNodeDetails,
+		Result:            result,
 	}
 
 	// Build a single category from the WorkloadRun's Workflow.
@@ -1567,16 +1669,46 @@ func buildWorkloadRunReport(
 	return r
 }
 
+// placementOf reads a WorkloadRun's placement through the optional
+// orchestration block, which most runs omit entirely.
+func placementOf(run *nvcrev1alpha1.WorkloadRun) string {
+	if run.Spec.Orchestration == nil {
+		return ""
+	}
+	return run.Spec.Orchestration.Placement
+}
+
 // applyRunOverrides modifies a WorkloadRun based on CLI override flags.
+//
+// Under Unpinned it returns an error rather than resizing the run. The two
+// flags below both rewrite numNodes silently: --node-list clamps it down to the
+// length of the list, and --topology-domain replaces it outright with the
+// domain's node count. Either one breaks the guarantee Unpinned makes, that the
+// size written is the size that runs or the run fails saying why, and it breaks
+// it on the CLI where the operator never sees the object that was submitted.
+//
+// Pinned keeps both. There the count is a chunk size and resizing it is what
+// the sweep is for.
 func applyRunOverrides(
 	run *nvcrev1alpha1.WorkloadRun,
 	nameOverride, nodeList, topologyDomain, topologyKey, testScale string,
-) {
+) error {
 	if nameOverride != "" {
 		run.Name = nameOverride
 	}
+	unpinned := nvcrev1alpha1.IsUnpinned(placementOf(run))
 	if nodeList != "" {
 		names := strings.Split(nodeList, ",")
+		// Checked before anything is written. A rejected flag must not
+		// half-apply: returning with the names on the target and numNodes
+		// untouched would leave a spec matching neither the file nor the flag.
+		if unpinned && int32(len(names)) < run.Spec.NumNodes {
+			return fmt.Errorf(
+				"--node-list names %d node(s) but numNodes is %d. Under "+
+					"orchestration.placement Unpinned the requested size is not reduced to fit; "+
+					"list at least %d nodes or lower numNodes to %d",
+				len(names), run.Spec.NumNodes, run.Spec.NumNodes, len(names))
+		}
 		if run.Spec.Target == nil {
 			run.Spec.Target = &nvcrev1alpha1.TargetSpec{}
 		}
@@ -1586,6 +1718,14 @@ func applyRunOverrides(
 		}
 	}
 	if topologyDomain != "" {
+		if unpinned {
+			return fmt.Errorf(
+				"--topology-domain sets numNodes to the number of nodes in the domain, which "+
+					"would replace the requested %d. Under orchestration.placement Unpinned the "+
+					"requested size is authoritative; confine the job with "+
+					"target.matchExpressions on the topology label instead, which keeps numNodes",
+				run.Spec.NumNodes)
+		}
 		if run.Spec.Target == nil {
 			run.Spec.Target = &nvcrev1alpha1.TargetSpec{}
 		}
@@ -1607,6 +1747,7 @@ func applyRunOverrides(
 		}
 		run.Spec.Orchestration.TestScale = testScale
 	}
+	return nil
 }
 
 // buildNodeResults flattens orchestration groups into per-node pass/fail results.

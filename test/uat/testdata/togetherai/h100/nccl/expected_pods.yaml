@@ -47,6 +47,14 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - -N
@@ -71,8 +79,6 @@ spec:
     - NCCL_IB_AR_THRESHOLD=0
     - -x
     - NCCL_IB_HCA==mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1,mlx5_12:1,mlx5_5:1,mlx5_6:1,mlx5_2:1,mlx5_3:1,mlx5_0:1,mlx5_1:1
-    - -x
-    - NCCL_NVLS_ENABLE=1
     - -x
     - NCCL_CUMEM_ENABLE=1
     - /usr/local/bin/all_reduce_perf_mpi
@@ -263,11 +269,32 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - |-
       set -x &&
-      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
+      if ! test -x /usr/sbin/sshd; then
+        if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+          echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+          exit 1
+        fi
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
+        for attempt in 1 2 3; do
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+          [ "$attempt" -lt 3 ] || exit 1
+        done
+      fi &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&
@@ -289,13 +316,20 @@ spec:
     imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - |-
+          command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+          set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+          command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+          exec "$@"
       failureThreshold: 3
       initialDelaySeconds: 5
-      periodSeconds: 10
+      periodSeconds: 30
       successThreshold: 1
-      tcpSocket:
-        port: 22
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     resources:
       limits:
         nvidia.com/gpu: "8"
@@ -307,6 +341,7 @@ spec:
       capabilities:
         add:
         - IPC_LOCK
+        - SYS_CHROOT
     terminationMessagePath: /dev/termination-log
     terminationMessagePolicy: File
     volumeMounts:
@@ -416,11 +451,32 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - |-
       set -x &&
-      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
+      if ! test -x /usr/sbin/sshd; then
+        if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+          echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+          exit 1
+        fi
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
+        for attempt in 1 2 3; do
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+          [ "$attempt" -lt 3 ] || exit 1
+        done
+      fi &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&
@@ -442,13 +498,20 @@ spec:
     imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - |-
+          command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+          set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+          command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+          exec "$@"
       failureThreshold: 3
       initialDelaySeconds: 5
-      periodSeconds: 10
+      periodSeconds: 30
       successThreshold: 1
-      tcpSocket:
-        port: 22
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     resources:
       limits:
         nvidia.com/gpu: "8"
@@ -460,6 +523,7 @@ spec:
       capabilities:
         add:
         - IPC_LOCK
+        - SYS_CHROOT
     terminationMessagePath: /dev/termination-log
     terminationMessagePolicy: File
     volumeMounts:

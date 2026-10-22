@@ -138,7 +138,7 @@ func TestPhaseSummaryMatchesGatedPhases(t *testing.T) {
 		return out
 	}
 
-	assert.Equal(t, sorted(initSkipPhases), summaryNames(initPhaseSummary("trainer-ref", "chart-ref", "image")),
+	assert.Equal(t, sorted(initSkipPhases), summaryNames(initPhaseSummary("trainer-ref", "chart-ref", imageChoice{})),
 		"init summary and its --skip-phases set disagree")
 	assert.Equal(t, sorted(resetSkipPhases), summaryNames(resetPhaseSummary()),
 		"reset summary and its --skip-phases set disagree")
@@ -216,12 +216,13 @@ func TestParseImage(t *testing.T) {
 			return err
 		}
 
-		name, tag := parseImage(in.Input)
+		name, tag, digest := parseImage(in.Input)
 
 		b, err := json.MarshalIndent(struct {
-			Name string `json:"name"`
-			Tag  string `json:"tag"`
-		}{name, tag}, "", "  ")
+			Name   string `json:"name"`
+			Tag    string `json:"tag"`
+			Digest string `json:"digest"`
+		}{name, tag, digest}, "", "  ")
 		if err != nil {
 			return err
 		}

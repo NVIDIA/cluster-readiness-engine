@@ -112,9 +112,14 @@
 
 # --- AWS + GB200 (EFA) ---
 # IPC_LOCK lets the EFA provider pin the memory it registers for RDMA.
-# BuildMPIRuntime already adds the capability; BuildTorchRuntime does not, so
-# setting it here covers the torch path without duplicating it for MPI (the
-# dependency merge matches containers by name and unions nothing).
+# BuildTorchRuntime does not add it, so it is set here to cover the torch path.
+#
+# This list is a full RESTATEMENT, not an addition: the dependency merge matches
+# containers by name but replaces a plain string slice wholesale, so whatever is
+# written here is the entire capability set the MPI worker ends up with. It must
+# therefore stay in sync with BuildMPIRuntime's list, or the capabilities only it
+# sets are silently dropped on exactly this platform and architecture. SYS_CHROOT
+# is MPI-only because only the MPI worker runs sshd (issue #461).
 - when:
     platform:
       equals: aws
@@ -140,6 +145,9 @@
                         capabilities:
                           add:
                           - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 4
@@ -190,7 +198,7 @@
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
 
 # --- AWS + H100 (EFA 32 devices) ---
-# IPC_LOCK as for GB200 above.
+# IPC_LOCK, and the same wholesale-restatement caveat, as for GB200 above.
 - when:
     platform:
       equals: aws
@@ -216,6 +224,9 @@
                         capabilities:
                           add:
                           - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 32
@@ -376,6 +387,19 @@
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
 {{- end }}
 
+# --- On-prem + x86 HGX B200/B300 (ADR-094) ---
+# Deps-only: the GPU taint toleration and the optional NIC resource block
+# (injected only when spec.nicResourceName is set or auto-detected, count from
+# mlnxPerNode). No NCCL environment and no arm64 toleration: an x86 HGX chassis
+# is not an NVL72 tray, and the fabric tuning waits on multi-node evidence.
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [b200, b300]
+  dependencies:
+{{ lib "deps/onprem-hgx-runtime-patch-training.yaml" . | indent 2 }}
+
 # --- GCP + RTX PRO 6000 (G4 TCP; no physical rack label) ---
 {{- if eq .FrameworkType "mpi" }}
 - when:
@@ -403,4 +427,65 @@
           trainer:
             env:
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+{{- end }}
+
+# --- Akamai + RTX PRO 6000 (LKE VMs; TCP over eth0, no RDMA) ---
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  mpiArgs:
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+{{- end }}
+
+# --- Nscale NKS (GPU+RDMA DRA claims runtime patch; ADR-085) ---
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
+
+# --- Nscale NKS (IB env vars) ---
+# MPI ranks start under sshd with a fresh environment, so the env rides
+# mpirun -x (as in the catalog collectives); torch inherits trainer env.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  mpiArgs:
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}
 {{- end }}

@@ -54,7 +54,9 @@ jobTemplate:
           args:
           - diag
           - --host
-          - nvidia-dcgm.gpu-operator.svc:5555
+          # dcgmHost replaces the GPU Operator's DCGM Service. Quoted so a
+          # host that looks like a number or a boolean stays a string.
+          - "{{ if .DCGMHost }}{{ .DCGMHost }}{{ else }}nvidia-dcgm.gpu-operator.svc:5555{{ end }}"
           - --run
           - "4"
           - --json
@@ -70,6 +72,23 @@ jobTemplate:
           image: nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04
           numNodes: 1
           numProcPerNode: 1
+        {{- if .ImagePullSecrets }}
+        runtimePatches:
+        - manager: nvcre.nvidia.com/catalog
+          trainingRuntimeSpec:
+            template:
+              spec:
+                replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+        {{- end }}
 orchestration:
 {{- if gt .MaxConcurrent 0 }}
   execution:
@@ -87,7 +106,9 @@ overrides:
       in: [a100]
 # --- OCI (DGXC / CRI-O) ---
 # CRI-O rejects privileged containers with device plugin GPU injection
-# (device paths already exist on host). Replace privileged with SYS_ADMIN.
+# (device paths already exist on host), so privileged is turned off here. No
+# capability is added in its place: the device plugin already supplies the GPU
+# device cgroup entries DCGM needs, and SYS_ADMIN would not add any.
 - when:
     platform:
       equals: oci
@@ -109,3 +130,39 @@ overrides:
                     - name: node
                       securityContext:
                         privileged: false
+# --- Nscale NKS (GPU DRA claim; ADR-085) ---
+# GPU-only claim: the pod is hostNetwork, so a dra.net RDMA claim has no pod
+# network namespace to inject into, and level-4 diagnostics are intra-node.
+# The fragment sets no tolerations, so the base tolerate-everything toleration
+# survives. NKS runs the DRA-flavoured DCGM hostengine as
+# nvidia-platform/nvidia-dcgm-dra, not gpu-operator/nvidia-dcgm, so --host is
+# repointed; the test op fails the render if the base args ever move. A
+# user-set dcgmHost wins, so the patch is left out when one is set.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu.yaml" . | indent 2 }}
+{{- if not .DCGMHost }}
+  jobTemplatePatch:
+  - op: test
+    path: /spec/workload/trainJob/trainer/args/2
+    value: nvidia-dcgm.gpu-operator.svc:5555
+  - op: replace
+    path: /spec/workload/trainJob/trainer/args/2
+    value: nvidia-dcgm-dra.nvidia-platform.svc:5555
+{{- end }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique from the arch-only block above
+# never exists there; the NVLink domain is published as
+# topology.nks.nscale.com/accelerator-domain instead.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain

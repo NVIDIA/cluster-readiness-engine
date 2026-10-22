@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A mirrored registry keeps the image name, so the installer still matches.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods:
+  - name: nccl-tcpxo-installer-aaaaa
+    nodeName: gke-a3mega-0
+    initImages:
+    - ubuntu
+    - registry.example.com:5000/gke-mirror/nccl-plugin-gpudirecttcpx-dev:v1.0.16
+    images:
+    - gke.gcr.io/pause:3.8
+  - name: nccl-tcpxo-installer-bbbbb
+    nodeName: gke-a3mega-1
+    initImages:
+    - ubuntu
+    - registry.example.com:5000/gke-mirror/nccl-plugin-gpudirecttcpx-dev:v1.0.16
+    images:
+    - gke.gcr.io/pause:3.8

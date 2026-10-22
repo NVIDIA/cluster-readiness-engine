@@ -6,6 +6,8 @@ package controller
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -115,6 +117,7 @@ func (r *CertificationReconciler) workflowReader() client.Reader {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -478,7 +481,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
 	// records them on its own status, which is where the report reads coverage
 	// from, so recording them twice would only risk the two disagreeing.
-	nodes, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
+	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
 	if err != nil {
 		return "", fmt.Errorf("discovering target nodes: %w", err)
 	}
@@ -518,9 +521,16 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the options set the counts; say
+	// so on the Certification, with the resolved counts, instead of running
+	// silently at the wrong rank count (ADR-094). Emitted below, only by the
+	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
+	archFallbackMessage := gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintCertification)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
 	// fills the gap from node allocatable, but only when exactly one
 	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
 	// resolved mlnxPerNode count — the amount the templates will request per
@@ -549,6 +559,15 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// the Workflow is created.
 	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
 
+	// The GCP H100 workload images and the tcpxo-daemon image follow the
+	// TCPXO plugin release GKE installed, read from the installer pods on the
+	// same capable nodes, since node pools can run different releases. The
+	// installer pods live in kube-system and carry no NVCRE job label, so the
+	// cache never holds them (ADR-102) and podread reads them from the API server.
+	// When no mapped release results, the nearest safe profile is rendered,
+	// and a Warning says why once the Workflow is created.
+	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, newPodReader(r.Client, r.APIReader), detectedPlatform, gpuArch, capableNodes)
+
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
 		return "", err
@@ -567,7 +586,9 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GpusPerNode:                gpusPerNode,
 		MlnxPerNode:                mlnxPerNode,
 		NicResourceName:            nicResourceName,
+		RDMADeviceAccess:           opts.RDMADeviceAccess,
 		GKETCPXONetworks:           gkeNetworks.Names,
+		TCPXOPluginVersion:         tcpxoPlugin.Version,
 		Resources:                  opts.Resources,
 		EnableMNNVL:                enableMNNVL,
 		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
@@ -591,6 +612,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		TimeoutPerJob:              opts.TimeoutPerJob,
 		MeasurementTimeout:         opts.MeasurementTimeout,
 		SourceRepo:                 opts.SourceRepo,
+		DCGMHost:                   opts.DCGMHost,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -619,6 +641,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GangScheduler:  certification.Spec.GangScheduler,
 		Image:          opts.Image,
 		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+		Env:            opts.Env,
 	}); err != nil {
 		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
@@ -710,15 +733,34 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			}
 			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
-	} else if gkeNetworks.Ran && len(gkeNetworks.Names) == 0 {
+	} else {
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
-		// the Workflow already there does not repeat it. The message carries no
-		// category: the result is the same for every category, so the warnings
-		// fold into one event.
-		r.warnf(certification, ReasonGKENetworkDetection, "%s", gkeNetworkDetectionMessage(gkeNetworks))
+		// the Workflow already there does not repeat it.
+		r.warnGCPH100DetectionFallbacks(certification, gkeNetworks, tcpxoPlugin)
+		if archFallbackMessage != "" {
+			r.warnf(certification, ReasonGPUArchitectureDefaults,
+				"%s/%s: %s", category.Domain, category.Variant, archFallbackMessage)
+		}
 	}
 
 	return workflowName, nil
+}
+
+// warnGCPH100DetectionFallbacks emits one Warning per GCP H100 detection that
+// ran without an exact result, so a fallback was rendered in its place. The
+// messages carry no category: the result is the same for every category, so
+// every category emits the same text. The Certification's resourceVersion
+// advances between categories, so each emission lands as its own event
+// rather than incrementing a series.
+func (r *CertificationReconciler) warnGCPH100DetectionFallbacks(
+	certification *nvcrev1alpha1.Certification, gkeNetworks gkeNetworkDetection, tcpxoPlugin tcpxoPluginDetection,
+) {
+	if gkeNetworks.Ran && len(gkeNetworks.Names) == 0 {
+		r.warnf(certification, ReasonGKENetworkDetection, "%s", gkeNetworkDetectionMessage(gkeNetworks))
+	}
+	if tcpxoPlugin.Ran && !tcpxoPlugin.Exact {
+		r.warnf(certification, ReasonTCPXOPluginDetection, "%s", tcpxoPluginDetectionMessage(tcpxoPlugin))
+	}
 }
 
 // retryableCreateError marks a createWorkflowForCategory failure that a later
@@ -756,6 +798,11 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	// merge would edit the Certification's own global map. This runs before
 	// the early return so the result is never aliased either way.
 	resolved.WorkloadMetadata = resolveWorkloadMetadata(global, override)
+	// Environment variables merge by name for the same reason labels merge by
+	// key: two variables are independent intents, and a category that names one
+	// should not silently drop a global one. Detached here, before the early
+	// return, so the result never aliases the Certification's own slice.
+	resolved.Env = resolveEnv(global, override)
 	if override == nil {
 		return resolved
 	}
@@ -782,15 +829,27 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.NicResourceName != nil {
 		resolved.NicResourceName = override.NicResourceName
 	}
+	if override.RDMADeviceAccess != "" {
+		resolved.RDMADeviceAccess = override.RDMADeviceAccess
+	}
 	if override.Resources != nil {
 		resolved.Resources = override.Resources
 	}
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL
 	}
-	if override.Image != "" {
-		resolved.Image = override.Image
-	}
+	// String options take the override whenever it is non-empty. Written with
+	// cmp.Or rather than a branch each: there are eight of them, they are
+	// mutually independent, and spelled as ifs they were most of this
+	// function's cyclomatic complexity for no reader benefit.
+	resolved.Image = cmp.Or(override.Image, resolved.Image)
+	resolved.StorageSize = cmp.Or(override.StorageSize, resolved.StorageSize)
+	resolved.TestScale = cmp.Or(override.TestScale, resolved.TestScale)
+	resolved.MaxBytes = cmp.Or(override.MaxBytes, resolved.MaxBytes)
+	resolved.TimeoutPerJob = cmp.Or(override.TimeoutPerJob, resolved.TimeoutPerJob)
+	resolved.MeasurementTimeout = cmp.Or(override.MeasurementTimeout, resolved.MeasurementTimeout)
+	resolved.SourceRepo = cmp.Or(override.SourceRepo, resolved.SourceRepo)
+	resolved.DCGMHost = cmp.Or(override.DCGMHost, resolved.DCGMHost)
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
 	}
@@ -805,15 +864,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.SaveTopK != nil {
 		resolved.SaveTopK = override.SaveTopK
-	}
-	if override.StorageSize != "" {
-		resolved.StorageSize = override.StorageSize
-	}
-	if override.TestScale != "" {
-		resolved.TestScale = override.TestScale
-	}
-	if override.MaxBytes != "" {
-		resolved.MaxBytes = override.MaxBytes
 	}
 	if override.NumIterations != nil {
 		resolved.NumIterations = override.NumIterations
@@ -835,15 +885,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MaxRestarts != nil {
 		resolved.MaxRestarts = override.MaxRestarts
-	}
-	if override.TimeoutPerJob != "" {
-		resolved.TimeoutPerJob = override.TimeoutPerJob
-	}
-	if override.MeasurementTimeout != "" {
-		resolved.MeasurementTimeout = override.MeasurementTimeout
-	}
-	if override.SourceRepo != "" {
-		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
 }
@@ -868,6 +909,50 @@ func resolveWorkloadMetadata(global, override *nvcrev1alpha1.CategoryOptions) *n
 	}
 	return workload.MetadataFrom(workload.MergeLabels(
 		workload.LabelsOf(global.WorkloadMetadata), overrideLabels))
+}
+
+// resolveEnv merges global and per-category environment variables by name,
+// with the per-category value winning, and preserves the order in which they
+// were declared: global variables first, in their own order, then any
+// per-category name the global set did not carry.
+//
+// Per name rather than wholesale, for the reason resolveWorkloadMetadata
+// gives: two variables are independent intents. The failure mode under
+// wholesale replacement is worse here than for labels, because the dropped
+// value is usually the site-wide one — a category that adds an HCA pin would
+// silently lose a global NCCL_NVLS_ENABLE=0 and run with NVLS on, which shows
+// up as a failed or slow run rather than as anything wrong in the spec.
+//
+// The returned slice is freshly allocated, so no caller can reach back into
+// the Certification through the result.
+func resolveEnv(global, override *nvcrev1alpha1.CategoryOptions) []corev1.EnvVar {
+	var overrideEnv []corev1.EnvVar
+	if override != nil {
+		overrideEnv = override.Env
+	}
+	if len(global.Env) == 0 && len(overrideEnv) == 0 {
+		return nil
+	}
+
+	merged := make([]corev1.EnvVar, 0, len(global.Env)+len(overrideEnv))
+	index := make(map[string]int, len(global.Env)+len(overrideEnv))
+	for _, e := range global.Env {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	for _, e := range overrideEnv {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	return merged
 }
 
 // dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before
@@ -909,10 +994,19 @@ func dropUnderCapacityNodes(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCa
 }
 
 // resolveNodesPerJob determines the nodesPerJob for a category.
-// When explicitly set, clamps to the largest valid node count <= min(requested, available).
-// Otherwise auto-selects the largest valid node count <= available nodes.
-// "Valid" means satisfying the entry's constraints (minGPUs, TP×PP divisibility).
-// When no constraints are defined, uses all available nodes.
+//
+// The number is a group size for a sweep that covers the whole target, so the
+// controller is free to pick it: when explicitly set it clamps to the largest
+// valid node count <= min(requested, available), and otherwise auto-selects the
+// largest valid count <= available nodes. "Valid" means satisfying the entry's
+// constraints (minGPUs, TP×PP divisibility). When no constraints are defined,
+// it uses all available nodes.
+//
+// The adjustments are safe here precisely because a Certification covers every
+// targeted node either way: a clamp or a snap changes how the sweep is cut into
+// jobs, not which nodes it reaches. A WorkloadRun with placement Unpinned makes
+// the opposite promise, which is why that mode lives there and not here. See
+// ADR-089.
 func resolveNodesPerJob(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCategory, opts nvcrev1alpha1.CategoryOptions, entry *catalog.Entry, gpusPerNode int32, gpuArch string) (int32, error) {
 	n := int32(len(nodes))
 	if n == 0 {
@@ -1104,7 +1198,16 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 // When per-category options are set, a deterministic suffix is appended so that
 // duplicate domain/variant entries with different options get unique Workflows.
 func (r *CertificationReconciler) getWorkflowName(certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) string {
-	raw := fmt.Sprintf("%s-%s-%s", certification.Name, category.Domain, category.Variant)
+	return WorkflowName(certification.Name, category)
+}
+
+// WorkflowName is the single naming rule for the Workflow a category creates.
+// Offline `nvcrectl certification render` calls it too: when the two paths
+// disagree, render previews a Workflow under a name the controller never
+// creates, and two categories whose options differ render documents with the
+// same metadata.name, so `render | kubectl apply -f -` keeps only the last.
+func WorkflowName(certName string, category nvcrev1alpha1.CertificateCategory) string {
+	raw := fmt.Sprintf("%s-%s-%s", certName, category.Domain, category.Variant)
 	if opts := category.Options; opts != nil {
 		raw += categoryOptionsSuffix(opts)
 	}
@@ -1141,10 +1244,70 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if opts.GpusPerNode != nil {
 		parts = append(parts, fmt.Sprintf("g%d", *opts.GpusPerNode))
 	}
+	// Two categories of one domain and variant differing only in
+	// rdmaDeviceAccess run genuinely different pods: one privileged with
+	// /dev/infiniband mounted, one not. Without a token here they would share
+	// a Workflow name, and the second category would adopt the first's
+	// Workflow and report its result for a configuration that never ran.
+	if opts.RDMADeviceAccess != "" {
+		parts = append(parts, rdmaDeviceAccessToken(opts.RDMADeviceAccess))
+	}
+	// Running one variant twice with a setting on and off is the obvious use of
+	// env, and those two categories must not share a Workflow name: the second
+	// Create would come back AlreadyExists, the holder would pass the owner
+	// check, and the second category would report the first's result for a
+	// configuration that never ran.
+	//
+	// A hash rather than readable tokens, because a variable name alone does
+	// not distinguish the two categories this protects (both set NCCL_ALGO; the
+	// values differ) and the names are long enough that spelling them out would
+	// push every name into Truncate's own hash. Issue #430 is this problem
+	// across the options the suffix still omits; when its derivation lands this
+	// token should give way to it.
+	if token := envToken(opts.Env); token != "" {
+		parts = append(parts, token)
+	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "-" + strings.Join(parts, "-")
+}
+
+// envToken derives a short, stable token from a category's environment
+// variables. Names and values both, sorted so declaration order cannot change
+// a Workflow name, and deduplicated by name because ResolveOptions has already
+// collapsed duplicates before this runs.
+func envToken(env []corev1.EnvVar) string {
+	if len(env) == 0 {
+		return ""
+	}
+	pairs := make([]string, 0, len(env))
+	for _, e := range env {
+		// Length-prefixed, not delimited. A value may contain any byte a
+		// Kubernetes string may contain, newline included, so joining on a
+		// separator lets one variable impersonate two: A="x\nB=y" and the pair
+		// A="x", B="y" would otherwise hash the same and collide on a name.
+		pairs = append(pairs, fmt.Sprintf("%d:%s=%d:%s",
+			len(e.Name), e.Name, len(e.Value), e.Value))
+	}
+	sort.Strings(pairs)
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "")))
+	return "env" + hex.EncodeToString(sum[:])[:8]
+}
+
+// rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe
+// token. Any value outside the enum is rejected before it reaches here by the
+// CRD on the controller path and by readCertification on the CLI path, so the
+// default arm only guards against a value added to the enum without a token.
+func rdmaDeviceAccessToken(value string) string {
+	switch value {
+	case nvcrev1alpha1.RDMADeviceAccessHostPath:
+		return "hostrdma"
+	case nvcrev1alpha1.RDMADeviceAccessDevicePlugin:
+		return "dprdma"
+	default:
+		return strings.ToLower(value)
+	}
 }
 
 // getRequeueInterval returns the configured requeue interval or the default.

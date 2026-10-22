@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The single-node counterpart of gcp-h100-nccl-image-patch-comm.yaml: pins the
+# workload image that matches the detected TCPXO plugin's CUDA major on the
+# only replicated job. Even single-node, the TCPXO patch and FastRak env make
+# NCCL load GKE's host-installed TCPXO plugin, so the same rule applies, and an
+# image override is set per category, as in the comm fragment's comment. A
+# launcher entry must not appear here: replicated jobs merge by name, so it
+# would be appended to a runtime that has no launcher.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: {{ .GCPH100NCCLImage }}

@@ -92,5 +92,21 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 082 | [GPU Architecture Fallback from DRA ResourceSlices](082-gpu-architecture-resourceslice-fallback.md) |
 | 083 | [Surface Runtime Scheduling Stalls as a First-Class Job Condition](083-scheduling-stall-visibility.md) |
 | 084 | [A Read-Only MCP Server for Certification State](084-mcp-server.md) |
+| 085 | [Nscale NKS Support on the DRA Stack](085-nscale-nks-dra-support.md) |
 | 086 | [Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive](086-lifecycle-status-metrics-and-timeout-exclusivity.md) |
 | 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |
+| 088 | [OCI GB200 RoCE Overrides, and `rdmaDeviceAccess` for hostPath RDMA](088-oci-gb200-roce-and-rdma-device-access.md) |
+| 089 | [Unpinned Single-Job Placement](089-unpinned-single-job-placement.md) |
+| 090 | [Sharded Component Results and the Report Bundle](090-component-result-sharding.md) |
+| 091 | [CUTLASS GEMM Per-GPU Burn-In as a `compute` Catalog Entry](091-compute-gemm-catalog-entry.md) |
+| 092 | [Per-Namespace Write Access for the Controller](092-per-namespace-controller-rbac.md) |
+| 093 | [MPI Workers Request `SYS_CHROOT`, and Readiness Means a Working SSH Session](093-mpi-worker-sshd-capability-and-session-probe.md) |
+| 094 | [HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures](094-hgx-b300-architecture-and-onprem-nic-override.md) |
+| 095 | [Preserve Category Identity in Certification Watch Output](095-certification-watch-category-identity.md) |
+| 096 | [Mokka GPU Simulation for Local Development and a UAT Runtime Lane](096-mokka-local-environment-and-uat-runtime-lane.md) |
+| 097 | [Environment Variables on CategoryOptions](097-certification-category-env.md) |
+| 098 | [`nvcrectl setup init` Takes Chart Values and Keeps Them Across Runs](098-setup-init-chart-values.md) |
+| 099 | [Relay the Failure Attribution NVCRE Already Has, and Do Not Classify Causes from Log Text](099-failed-node-attribution-relay.md) |
+| 100 | [One Fragment Owns Each Variable in a Composed NCCL Profile](100-catalog-env-fragment-ownership.md) |
+| 101 | [Akamai LKE RTX PRO 6000 TCP Overrides](101-akamai-rtxpro6000-tcp.md) |
+| 102 | [Cache Only NVCRE's Own Pods](102-scoped-pod-cache.md) |

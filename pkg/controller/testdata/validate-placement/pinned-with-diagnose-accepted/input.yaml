@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The guard against over-reach. Every rejection in ValidatePlacement is gated on
+# Unpinned, and diagnose with strictDomain is a perfectly ordinary Pinned spec
+# that ships today. If this ever starts returning an error, the new mode has
+# leaked into the default path.
+placement: Pinned
+iterations: 1
+diagnose:
+  minGroupSize: 2
+topology:
+  topologyKey: nvidia.com/gpu.clique
+  strictDomain: true

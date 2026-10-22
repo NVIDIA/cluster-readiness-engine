@@ -1,0 +1,9 @@
+{
+  "name": "wr",
+  "numNodes": 2,
+  "target": null,
+  "orchestration": {
+    "placement": "Unpinned"
+  },
+  "error": "--topology-domain sets numNodes to the number of nodes in the domain, which would replace the requested 2. Under orchestration.placement Unpinned the requested size is authoritative; confine the job with target.matchExpressions on the topology label instead, which keeps numNodes"
+}

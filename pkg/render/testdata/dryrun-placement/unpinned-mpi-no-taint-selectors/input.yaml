@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Unpinned MPI fallback arm, which is the one with no target.taintSelectors
+# to fall back from.
+#
+# unpinned-mpi-launcher-constrained is the sibling case and it names a
+# taintSelector, so it exercises the first arm of controller.JobTolerations and
+# would keep passing whatever the fallback did. This case is what pins the
+# fallback itself: an MPI workload under Unpinned with nothing explicit tolerates
+# the named GPU taints from UnpinnedMPITolerations, not the blanket
+# Operator: Exists that Pinned still gets, and not nothing.
+#
+# Tolerating nothing is the failure this guards against in the other direction.
+# GPU fleets are routinely tainted to keep non-GPU work off them, so a launcher
+# with no tolerations never schedules, and it does so silently: the pods sit
+# Pending with no event naming a toleration.
+placement: Unpinned
+numNodes: 2
+mpi: true
+target:
+  nodeSelector:
+    nvcre.nvidia.com/testbed: burnin

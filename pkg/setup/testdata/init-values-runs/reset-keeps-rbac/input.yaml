@@ -1,0 +1,11 @@
+# --reset-values returns every value to the chart default except rbac.scope
+# and rbac.runNamespaces, so a reset never widens a namespaced grant.
+runs:
+  - args:
+      - --rbac-scope
+      - namespaced
+      - --set
+      - rbac.runNamespaces={team-a}
+      - --set
+      - manager.resources.limits.memory=8Gi
+  - args: [--reset-values]

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The default mode, with a fully placed job and an empty node list. Nothing is
+# recorded.
+#
+# Pinned is left alone on purpose. The controller chose the nodes at partition
+# time and wrote them then, so g.Nodes is authoritative and live pods can only
+# disagree with it: a pod that the scheduler moved, or that a hostname affinity
+# has not bound yet, would rewrite the partition the group was built from.
+#
+# The empty list is the hostile input. A Pinned group in the field always has
+# its nodes, so the only way to tell a placement check from a len check is to
+# feed it a group that would pass the len check, which is this one.
+placement: ""
+nodesPerJob: 2
+terminal: false
+pods:
+  - {name: w-0, nodeName: node-a, phase: Running}
+  - {name: w-1, nodeName: node-b, phase: Running}

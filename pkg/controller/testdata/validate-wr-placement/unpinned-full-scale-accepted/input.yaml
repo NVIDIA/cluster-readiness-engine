@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# full-scale is deliberately NOT rejected. Its doc has always claimed "all
+# target nodes in a single group" and the switch in buildWROrchestration has
+# never had an arm for it, so the claim has never been true. Unpinned is what
+# finally makes it true. The pair agrees rather than conflicts.
+placement: Unpinned
+testScale: full-scale

@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# TrainingRuntime patch for generic on-prem x86 HGX (B200/B300) communication
+# entries (ADR-094). Tolerates the nvidia.com/gpu taint whatever its value
+# (operator Exists: generic on-prem fleets do not agree on "present") and
+# injects the NIC resource block
+# only when nicResourceName is configured (set or auto-detected) and
+# mlnxPerNode is positive (0 is the ADR-087 opt-out); the resource name depends
+# on the RDMA device plugin the site runs, so there is no safe default. The
+# per-container count comes from mlnxPerNode. Deliberately carries no NCCL
+# environment and no arm64 toleration: the NVL72 on-prem override owns those
+# (the arm64 toleration in onprem-gb200-gb300-runtime-patch-comm.yaml, the IB
+# env in each communication entry's jobTemplate block), and neither fits an
+# x86 chassis.
+# Carries no mlPolicy either: the MPI entries' base runtimes already set
+# mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
+# mlPolicy.torch, which a merged mlPolicy.mpi would collide with (the
+# TrainingRuntime CRD allows exactly one policy). Tolerations have no merge
+# key, so this list replaces the base list; the loopback entries append
+# tolerate-all-runtime-patch.yaml after this fragment to restore theirs.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+{{- if and .NicResourceName (gt (int .MlnxPerNode) 0) }}
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+{{- end }}
+                  tolerations:
+                  - key: nvidia.com/gpu
+                    operator: Exists
+                    effect: NoSchedule

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The WorkloadRun front door to the opt-out contract.
+#
+# numNodes is already Required with Minimum=1 on this path, so Unpinned needs no
+# extra size check here the way the Certification path does. What it does need
+# is for the placement to survive the render into the orchestration block, and
+# for the size to come through as 2 rather than being treated as a chunk.
+#
+# The target is deliberately the permissive default shape. Under Pinned that
+# selector plus numNodes: 2 is exactly the reviewer's nine-jobs symptom; the
+# only thing standing between this spec and that outcome is the placement
+# field, which is why it belongs in the golden.
+run:
+  metadata:
+    name: wr-unpinned
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    orchestration:
+      placement: Unpinned
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

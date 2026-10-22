@@ -1,0 +1,146 @@
+[
+  {
+    "workflow": "nscale-cert-communication-14662",
+    "dependencyKinds": [
+      "TrainingRuntime/nccl-loopback-runtime",
+      "ResourceClaimTemplate/nccl-loopback-gpu",
+      "ResourceClaimTemplate/nccl-loopback-rdma"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nccl-loopback-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 8
+      },
+      {
+        "name": "nccl-loopback-rdma",
+        "deviceClassName": "rdma.nscale.com",
+        "count": 8
+      }
+    ],
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "8",
+      "-n",
+      "10",
+      "-N",
+      "2"
+    ],
+    "trainerEnv": [
+      "NCCL_SOCKET_IFNAME=eth0",
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=0",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "PMIX_MCA_gds=^ds12",
+      "NCCL_SHM_DISABLE=1",
+      "NCCL_P2P_DISABLE=1"
+    ],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-runtime",
+        "resourceClaims": [
+          "gpu=nccl-loopback-gpu",
+          "rdma=nccl-loopback-rdma"
+        ],
+        "tolerations": [
+          "operator=Exists"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "gpu",
+              "rdma"
+            ],
+            "env": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "nscale-cert-communication-cbf6a",
+    "dependencyKinds": [
+      "TrainingRuntime/nccl-loopback-nvswitch-runtime",
+      "ResourceClaimTemplate/nccl-loopback-nvswitch-gpu"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nccl-loopback-nvswitch-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 8
+      }
+    ],
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "8",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [
+      "NCCL_SOCKET_IFNAME=eth0",
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=0",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "PMIX_MCA_gds=^ds12"
+    ],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-nvswitch-runtime",
+        "resourceClaims": [
+          "gpu=nccl-loopback-nvswitch-gpu"
+        ],
+        "tolerations": [
+          "operator=Exists"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "gpu"
+            ],
+            "env": []
+          }
+        ]
+      }
+    ]
+  }
+]

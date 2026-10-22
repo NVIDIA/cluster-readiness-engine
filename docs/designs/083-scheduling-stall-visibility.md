@@ -1,6 +1,6 @@
 # ADR-083: Surface Runtime Scheduling Stalls as a First-Class Job Condition
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

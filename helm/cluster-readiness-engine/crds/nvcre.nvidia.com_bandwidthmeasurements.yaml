@@ -64,7 +64,8 @@ spec:
               logProfileRef:
                 description: |-
                   logProfileRef is the name of the cluster-scoped LogProfile to use for log parsing.
-                  The LogProfile defines a bandwidthResult regex pattern for extracting NCCL bandwidth data.
+                  The LogProfile defines a bandwidthResult regex pattern for extracting NCCL bandwidth data
+                  and an optional networkTransport pattern for the NCCL network name.
                 minLength: 1
                 type: string
               sampleInterval:
@@ -189,6 +190,16 @@ spec:
                   the referenced Job began running).
                 format: date-time
                 type: string
+              transport:
+                description: |-
+                  transport is the distinct set of NCCL network names observed in
+                  "NCCL INFO Using network …" log lines (for example "IB" or "Socket").
+                  Empty when that line never appears, which is typical of NVLink-only
+                  single-node runs. Record-only; never used for pass/fail.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
             type: object
         required:
         - spec

@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pinned is the default and must stay strictly more constrained than before,
+# never less. The hostname term is what it has always been; the target terms
+# are added alongside it in the SAME NodeSelectorTerm, because terms OR while
+# expressions within a term AND. A second term here would widen the match and
+# silently let pods escape the group.
+placement: ""
+groupNodes: ["node-a", "node-b"]
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+gpuProducts: ["NVIDIA-GB200"]

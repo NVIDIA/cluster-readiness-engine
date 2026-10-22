@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# The shape a timeoutPerJob write left before ADR-086 decision B: Failed=True
+# beside InProgress=True. Issue #401 is this Job reading in_progress=1.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: train-nccl-job
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: train-nccl
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: workload is running
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      message: ""
+    - type: Failed
+      status: "True"
+      reason: JobTimedOut
+      message: Job exceeded timeoutPerJob

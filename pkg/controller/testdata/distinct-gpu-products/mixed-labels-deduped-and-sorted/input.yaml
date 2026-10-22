@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# These values go straight into a node affinity term, so order has to be stable
+# across reconciles or the pod spec churns and the goldens flap. The unlabeled
+# node must contribute nothing rather than an empty string, which would make the
+# In list match a node whose label is absent.
+nodes:
+  - metadata:
+      name: node-b
+      labels:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  - metadata:
+      name: node-a
+      labels:
+        nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  - metadata:
+      name: node-c
+      labels:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  - metadata:
+      name: node-d
+      labels:
+        kubernetes.io/hostname: node-d

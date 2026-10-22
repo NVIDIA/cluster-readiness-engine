@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# group-0's measurement completed as LogsUnavailable: its Job was deleted and
+# the samples are provisional, so threshold evaluation ignores them. The row
+# must say so and must not render as passing (#449, report half of #404).
+groups:
+  - name: group-0
+    nodes: [n0, n1]
+    domains: [clique-a]
+    phase: Succeeded
+    jobRef: {name: j0}
+  - name: group-1
+    nodes: [n2, n3]
+    domains: [clique-b]
+    phase: Succeeded
+    jobRef: {name: j1}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      conditions:
+        - type: Complete
+          status: "True"
+          reason: LogsUnavailable
+          message: Referenced Job no longer exists; results are provisional and are not used for threshold evaluation
+          lastTransitionTime: "2026-10-01T00:00:00Z"
+      results:
+        - {sizeBytes: 1048576, algBW: "27.00", busBW: "27.00", samples: 1}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j1}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "400.00", busBW: "400.00", samples: 1}

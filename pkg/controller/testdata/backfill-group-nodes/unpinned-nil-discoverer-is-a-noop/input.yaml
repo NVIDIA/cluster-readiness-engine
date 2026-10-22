@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A reconciler built without a NodeDiscoverer. No panic, no write.
+#
+# SetupWithManager fills the field in, so production always has one. A
+# hand-built reconciler in a test does not, and the nil guard is the only thing
+# between that and a dereference: every other gate in this function passes on
+# this input, so without the guard the case is a crash rather than a no-op.
+placement: Unpinned
+nodesPerJob: 2
+terminal: true
+noDiscoverer: true
+pods:
+  - {name: w-0, nodeName: node-a, phase: Running}
+  - {name: w-1, nodeName: node-b, phase: Running}

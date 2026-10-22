@@ -84,6 +84,9 @@
         "totalGroups": 0,
         "detectedPlatform": "onprem",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100"
+        ],
         "excludedNodes": [
           "gpu-node-01",
           "gpu-node-02"

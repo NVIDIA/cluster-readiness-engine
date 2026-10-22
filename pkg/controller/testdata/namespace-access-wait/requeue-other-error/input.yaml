@@ -1,0 +1,4 @@
+# A pass that ends on an error other than Forbidden returns it unchanged,
+# without a review.
+call: requeue
+writeError: "connection refused"

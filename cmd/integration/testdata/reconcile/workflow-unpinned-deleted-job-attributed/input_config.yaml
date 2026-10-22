@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# 1. The Job is running. Its one bound pod is not recorded yet, because a
+#    running job only records a complete placement. Delete the Job.
+# 2. The Workflow has recorded the node (groupNodesRecorded). That can only
+#    have happened in the DeletionTimestamp branch before the drain wait: the
+#    pod is still Running, so the drain is holding and the group is still
+#    Running too. Now the pod is detached, which lets both drains pass.
+# 3. The Job controller releases the finalizer and the Workflow fails the group.
+#
+# The golden pins the group Failed with nodes [lostjob-node-02], the one node
+# the job was ever placed on, and the Workflow Failed.
+steps:
+  - waitFor:
+      kind: Workflow
+      name: unpin-lostjob
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
+    deletes:
+      - kind: Job
+        name: unpin-lostjob-job
+        namespace: default
+  - waitFor:
+      kind: Workflow
+      name: unpin-lostjob
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
+      groupNodesRecorded: true
+    patches:
+      - target:
+          kind: Pod
+          name: unpin-lostjob-worker-0
+          namespace: default
+        patch:
+          metadata:
+            labels:
+              nvcre.nvidia.com/job: null
+waitFor:
+  kind: Workflow
+  name: unpin-lostjob
+  namespace: default
+  condition: Failed
+waitForDeletion:
+  - kind: Job
+    name: unpin-lostjob-job
+    namespace: default
+collect:
+  - kind: Workflow
+    name: unpin-lostjob
+    namespace: default

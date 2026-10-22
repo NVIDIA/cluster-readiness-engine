@@ -34,8 +34,7 @@ const (
 // e.g., "gpu-cluster-cert-communic-873b9" → "873b9".
 // If the name has no hash (no hyphen or too short), returns a computed hash.
 func ExtractHash(name string) string {
-	if idx := strings.LastIndex(name, "-"); idx >= 0 {
-		tail := name[idx+1:]
+	if _, tail, found := strings.CutLast(name, "-"); found {
 		if len(tail) == hashLen {
 			return tail
 		}

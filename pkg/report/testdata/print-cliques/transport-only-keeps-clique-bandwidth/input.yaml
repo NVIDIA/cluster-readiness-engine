@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two groups map to the same clique. The second recorded a transport but no
+# bandwidth, so its empty BusBW must not blank the first group's value.
+cliques:
+  - name: clique-0
+    total: 4
+    validated: 4
+    passed: true
+groups:
+  - groupName: "clique-0 (2 nodes)"
+    busBW: "100.0 GB/s"
+    transport:
+      - Socket
+  - groupName: "clique-0 (2 nodes)"
+    transport:
+      - IB

@@ -1,0 +1,138 @@
+[
+  {
+    "dependencies": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "error": "failed to get Job wf-b-iter-1: Internal error occurred: injected",
+    "failedNodes": [],
+    "groups": [
+      {
+        "jobRef": "wf-a-iter-1",
+        "name": "a",
+        "phase": "Running",
+        "retries": 0
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-a-iter-1",
+      "wf-b-iter-1"
+    ],
+    "pass": 1
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-a-iter-1",
+      "wf-b-iter-1"
+    ],
+    "pass": 2
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 3
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 4
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 5
+  }
+]

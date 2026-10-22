@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The ordering case. The requested-test-scale annotation normally wins over
+# inference, because what the operator asked for beats what can be guessed from
+# the result. Unpinned precedes even that: the request was not honored, so
+# echoing it would describe a run that did not happen.
+#
+# full-scale is the value used here rather than intra-node or intra-rack because
+# those two are rejected outright at the WorkloadRun tier. full-scale is the one
+# scale that can legitimately coexist with Unpinned, which is what makes the
+# precedence visible rather than unreachable.
+placement: Unpinned
+requestedTestScale: full-scale
+nodesPerJob: 8

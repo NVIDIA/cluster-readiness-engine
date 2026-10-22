@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both the Workflow and the Job are collected, because the claim has two halves
+# that are asserted in different places.
+#
+# The Workflow golden shows totalGroups 1 with no domains on the group, against
+# a fleet workflow-topology splits into two groups each carrying its clique.
+# The Job golden shows the full node affinity, which is where "no clique
+# constraint" is actually visible: one term, two expressions, neither of them
+# nvidia.com/gpu.clique and neither of them kubernetes.io/hostname.
+waitFor:
+  kind: Workflow
+  name: test-wf-unpin-clique
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: test-wf-unpin-clique
+    namespace: default
+  - kind: Job
+    name: test-wf-unpin-clique-job
+    namespace: default

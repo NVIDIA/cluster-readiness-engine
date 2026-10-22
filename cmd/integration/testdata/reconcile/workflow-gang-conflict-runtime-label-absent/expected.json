@@ -126,7 +126,10 @@
         "nodesPerJob": 0,
         "totalGroups": 0,
         "detectedPlatform": "aws",
-        "detectedGPUArchitecture": "h100"
+        "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ]
       }
     }
   },

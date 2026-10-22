@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated Nscale NKS GB300 GPU nodes (ADR-085). See nscale/b200/nodes.yaml
+# for the general shape; GB300 additionally matches the arch-only GB200/GB300
+# ComputeDomain override on top of the nscale-specific block.
+#
+# GB300 nodes: 4 GPUs per node, arm64 (Grace-Blackwell).
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: nscale-gb300-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000201"
+status:
+  capacity:
+    cpu: "144"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    pods: "1913"
+  allocatable:
+    cpu: 143500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: nscale-gb300-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000202"
+status:
+  capacity:
+    cpu: "144"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    pods: "1913"
+  allocatable:
+    cpu: 143500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-02-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-02
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-02
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300

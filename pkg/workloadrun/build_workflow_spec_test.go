@@ -30,6 +30,10 @@ import (
 // records line for line. If these cases recorded it again, then every edit to
 // pkg/platform/overrides/workloadrun.yaml or to the catalog _lib files it reads
 // would fail all of them, even though none of those edits touch this package.
+//
+// A case with an error file in place of expected.json pins a spec the builder
+// refuses before it renders anything, and the message it refuses it with, so
+// that the render path turns away the same specs as the controller.
 func TestBuildWorkflowSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-workflow-spec",
@@ -47,11 +51,19 @@ func TestBuildWorkflowSpec(t *testing.T) {
 			MlnxPerNode   int32                     `json:"mlnxPerNode"`
 			EnableMNNVL   bool                      `json:"enableMNNVL"`
 			FrameworkType string                    `json:"frameworkType"`
+			// Platform and GPUArch bake platform mpirun args into the run
+			// first, as "nvcrectl workloadrun render --platform" does.
+			Platform string `json:"platform"`
+			GPUArch  string `json:"gpuArch"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
+		if input.Platform != "" {
+			applyPlatformMPIArgs(&input.Run, input.Platform, input.GPUArch,
+				input.GpusPerNode, input.MlnxPerNode, input.EnableMNNVL, input.FrameworkType)
+		}
 		got, err := BuildWorkflowSpec(&input.Run, input.GpusPerNode, input.MlnxPerNode,
 			input.EnableMNNVL, input.FrameworkType)
 		if err != nil {
@@ -212,6 +224,11 @@ type projection struct {
 	// the runtime's fixed labels change.
 	GangSchedulerJobLabels []string `json:"gangSchedulerJobLabels,omitempty"`
 	GangSchedulerPodLabels []string `json:"gangSchedulerPodLabels,omitempty"`
+	// ImagePullSecretsByJob maps each replicated job in the TrainJob's
+	// runtimePatches to the pull secret names its pod spec patch carries, in
+	// order. Omitted when no job carries any, so cases without pull secrets
+	// do not change.
+	ImagePullSecretsByJob map[string][]string `json:"imagePullSecretsByJob,omitempty"`
 }
 
 func project(s *nvcrev1alpha1.WorkflowSpec) projection {
@@ -231,6 +248,7 @@ func project(s *nvcrev1alpha1.WorkflowSpec) projection {
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerJobLabels, out.GangSchedulerPodLabels = runtimeWorker(s)
 	out.LauncherEnv = runtimeLauncherEnv(s)
+	out.ImagePullSecretsByJob = runtimePatchImagePullSecrets(s)
 	return out
 }
 
@@ -329,6 +347,43 @@ func runtimeLauncherEnv(s *nvcrev1alpha1.WorkflowSpec) []string {
 		return env
 	}
 	return nil
+}
+
+// runtimePatchImagePullSecrets reads imagePullSecrets out of every replicated
+// job patch on the TrainJob's runtimePatches, keyed by job name. Pull secrets
+// are applied on the TrainJob, not the runtime, so neither runtimeWorker nor
+// runtimeLauncherEnv sees them. It exists because the launcher half of pull
+// secrets regressed unseen: SetImagePullSecrets patched only the node job,
+// and no projection looked at the launcher patch (issue #455 follow-up).
+func runtimePatchImagePullSecrets(s *nvcrev1alpha1.WorkflowSpec) map[string][]string {
+	tj := s.JobTemplate.Spec.Workload.TrainJob
+	if tj == nil {
+		return nil
+	}
+	var out map[string][]string
+	for _, patch := range tj.RuntimePatches {
+		if patch.TrainingRuntimeSpec == nil || patch.TrainingRuntimeSpec.Template == nil ||
+			patch.TrainingRuntimeSpec.Template.Spec == nil {
+			continue
+		}
+		for _, rj := range patch.TrainingRuntimeSpec.Template.Spec.ReplicatedJobs {
+			if rj.Template == nil || rj.Template.Spec == nil || rj.Template.Spec.Template == nil ||
+				rj.Template.Spec.Template.Spec == nil {
+				continue
+			}
+			secrets := rj.Template.Spec.Template.Spec.ImagePullSecrets
+			if len(secrets) == 0 {
+				continue
+			}
+			if out == nil {
+				out = map[string][]string{}
+			}
+			for _, ref := range secrets {
+				out[rj.Name] = append(out[rj.Name], ref.Name)
+			}
+		}
+	}
+	return out
 }
 
 // TestValidateExecFramework drives golden-file cases for validateExecFramework.

@@ -1,0 +1,8 @@
+# --image with a digest renders repo@digest, and the next run without --image
+# returns to the CLI-version image: a digest pinned on an earlier run never
+# holds the controller on an old image.
+runs:
+  - args:
+      - --image
+      - ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523
+  - args: []

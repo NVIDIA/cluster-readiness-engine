@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Workflow whose status has not been populated yet still reports honestly.
+# Status is preferred when present because it holds the resolved, post-override
+# placement, but a report generated before the first reconcile has only the
+# spec to go on.
+#
+# Nothing is set on the status here, so only the spec arm can answer. Without it
+# this falls through to full-scale, which claims the fleet was swept.
+specPlacement: Unpinned

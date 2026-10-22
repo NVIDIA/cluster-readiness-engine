@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-node without Unpinned is an ordinary WorkloadRun that ships today. If
+# this ever starts erroring, the rejection has stopped being gated on placement.
+testScale: intra-node

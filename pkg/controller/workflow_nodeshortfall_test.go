@@ -23,6 +23,7 @@ func TestNotEnoughNodesMessage(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
+			Placement        string   `yaml:"placement"`
 			Needed           int      `yaml:"needed"`
 			Found            int      `yaml:"found"`
 			GPUArch          string   `yaml:"gpuArch"`
@@ -42,7 +43,8 @@ func TestNotEnoughNodesMessage(t *testing.T) {
 			capExcluded = append(capExcluded, gpuCapacityExclusion{Node: e.Node, AllocatableGPUs: e.Has})
 		}
 
-		got := notEnoughNodesMessage(input.Needed, input.Found, input.GPUArch, input.ArchExcluded, capExcluded, input.GpusPerNode)
+		got := notEnoughNodesMessage(input.Placement, input.Needed, input.Found,
+			input.GPUArch, input.ArchExcluded, capExcluded, input.GpusPerNode)
 
 		data, err := json.MarshalIndent(struct {
 			Message string `json:"message"`

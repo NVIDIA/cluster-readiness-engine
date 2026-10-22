@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nodeNames is the user naming hosts themselves, not the controller choosing
+# them, so Unpinned honors it. "Do not pin any nodes" means do not pin nodes
+# the operator did not pick.
+placement: Unpinned
+groupNodes: ["node-a", "node-b"]
+target:
+  nodeNames: ["node-x", "node-y"]
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+gpuProducts: []

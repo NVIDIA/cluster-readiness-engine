@@ -1,0 +1,21 @@
+# Access returns after a wait: only running groups that have a Job are woken.
+# Pending and finished groups, and a running group with no Job yet, are not.
+oldStatus: "False"
+newStatus: "True"
+groups:
+- name: group-0
+  phase: Running
+  nodes: [gpu-0]
+  jobRef: {name: waiting-job, namespace: run-ns}
+  startTime: "2026-10-13T12:00:00Z"
+- name: group-1
+  phase: Pending
+  nodes: []
+  jobRef: {name: pending-job}
+- name: group-2
+  phase: Succeeded
+  nodes: []
+  jobRef: {name: finished-job}
+- name: group-3
+  phase: Running
+  nodes: []

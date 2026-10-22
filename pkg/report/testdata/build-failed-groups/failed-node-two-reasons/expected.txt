@@ -1,0 +1,70 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      cert-two-reasons
+
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  training/nemotron5-8b                                         │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/2 passed                                      │
+│  Failed Nodes: 2                                               │
+│    - node001  HardwareFailureDetected, ThresholdViolation      │
+│    - node002  WorkloadFailed                                   │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "name": "cert-two-reasons",
+  "platform": "",
+  "gpu": "",
+  "totalNodes": 0,
+  "categories": [
+    {
+      "domain": "communication",
+      "variant": "nccl-all-reduce",
+      "status": "Failed"
+    },
+    {
+      "domain": "training",
+      "variant": "nemotron5-8b",
+      "status": "Failed"
+    }
+  ],
+  "failedNodes": [
+    "node001",
+    "node002"
+  ],
+  "failedNodeDetails": [
+    {
+      "name": "node001",
+      "reason": "HardwareFailureDetected",
+      "message": "CEL expression evaluated to true for node node001"
+    },
+    {
+      "name": "node001",
+      "reason": "ThresholdViolation",
+      "message": "Threshold \"busBandwidthGBps\" violated: measured 120.00, expression: value \u003e= 300"
+    },
+    {
+      "name": "node002",
+      "reason": "WorkloadFailed",
+      "message": "Workload default/nccl failed: exit code 1"
+    }
+  ],
+  "result": "FAILED"
+}

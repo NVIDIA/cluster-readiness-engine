@@ -1,0 +1,23 @@
+{
+  "firstJobDeleted": false,
+  "waiting": {
+    "groups": [
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": false,
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": true,
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "hasFailedNodesRef": true,
+    "namespaceAccessReason": "NamespacePermissionsMissing"
+  }
+}

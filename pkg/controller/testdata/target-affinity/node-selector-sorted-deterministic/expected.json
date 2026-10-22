@@ -1,0 +1,34 @@
+{
+  "hostnames": null,
+  "affinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": {
+      "nodeSelectorTerms": [
+        {
+          "matchExpressions": [
+            {
+              "key": "nvidia.com/gpu.present",
+              "operator": "In",
+              "values": [
+                "true"
+              ]
+            },
+            {
+              "key": "pool",
+              "operator": "In",
+              "values": [
+                "burnin"
+              ]
+            },
+            {
+              "key": "zone",
+              "operator": "In",
+              "values": [
+                "us-east-1a"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Under Unpinned the size is the job the operator asked for, not a chunk size
+# the controller is free to pick. "Set nodesPerJob to 6" would be telling them
+# to run a different job than the one they requested, so the remedy points at
+# the fleet instead. The cause clauses are untouched.
+placement: Unpinned
+needed: 8
+found: 6
+gpuArch: gb200
+archExcluded:
+  - node-h100-a
+  - node-h100-b

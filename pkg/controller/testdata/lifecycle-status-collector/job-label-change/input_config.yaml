@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+mutate:
+  setLabels:
+    - kind: Job
+      name: train-nccl-job
+      namespace: default
+      labels:
+        nvcre.nvidia.com/workflow: train-nccl-retry

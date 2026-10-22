@@ -1,0 +1,24 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      },
+      "imagePullSecrets": [
+        null,
+        {
+          "name": "x"
+        },
+        {
+          "name": "nvcrectl-pull-secret"
+        }
+      ]
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)",
+    "[preflight] Image pull secrets: [<no name>, x, nvcrectl-pull-secret] (this run, --image-pull-secret)"
+  ]
+}

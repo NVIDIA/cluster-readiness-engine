@@ -44,6 +44,16 @@ nvcrectl setup init --version <chart-version>
 
 The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, `--skip-phases=helm` to run only dependency setup, and `--auto-approve` to skip the confirmation prompt in CI. Unknown phase names are rejected. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
 
+Chart values for the NVCRE release go through `setup init` with Helm's own flags, `--values`/`-f`, `--set` and `--set-json`, and are kept on later runs. That includes runs with no flags, such as an automation that re-runs `setup init` when `setup status` reports a missing component. Values set on the release with `helm upgrade` are kept the same way:
+
+```bash
+nvcrectl setup init \
+  --set manager.resources.requests.memory=4Gi \
+  --set manager.resources.limits.memory=8Gi
+```
+
+The controller image is the exception: it is worked out on every run, from this run's values, else `--image`, else the CLI version. `--reset-values` returns every value except `rbac.scope` and `rbac.runNamespaces` to the chart default. Preflight prints the paths of the values the release will be given, without their contents. See [Values across runs](../cli-reference/setup.md#values-across-runs).
+
 Before installing or upgrading Trainer, `setup init` checks the shared JobSet CRD and correlates the supported JobSet controller fingerprints with live resources and the exact Trainer release manifest. A verified external JobSet controller makes Trainer install with `jobset.install=false`; a bundled controller stays bundled. An orphaned JobSet CRD with no controller, supporting resources, release evidence, or JobSets keeps the CRD and installs the bundled controller without refreshing the CRD schema. An existing Trainer release with a missing JobSet CRD stops with repair guidance because Helm does not restore a chart CRD during upgrade. Ambiguous or unreadable ownership stops before Helm mutation and prints the manual Trainer installation followed by the `nvcrectl setup init --skip-phases=deps` path. The bounded fingerprint scan covers the published chart pattern, not arbitrary customized controllers; operators who cannot establish that assumption must manage the Trainer installation explicitly. Operator-managed Trainer and JobSet installations are responsible for compatible Trainer and JobSet CRD schemas, controllers, external consumers, and any required migrations. Automatic reconciliation of the shared JobSet CRD is deferred work that needs its own design, covering schema compatibility, stored-version migration, and coordination with external controllers and workloads.
 
 Check the installation at any time:
@@ -82,6 +92,9 @@ Key chart values:
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
 | `manager.affinity` | `{}` | Replace the complete controller affinity; when empty, the chart prefers spreading replicas across nodes |
+| `manager.namespaceAccessTimeout` | `10m` | How long a Workflow waits for the controller's write access in its namespace before it fails with `NamespacePermissionsMissing`. See [RBAC requirements](#rbac-requirements) |
+| `rbac.scope` | `cluster` | Where the controller may write: `cluster` grants every namespace, `namespaced` only namespaces with a RoleBinding. See [RBAC requirements](#rbac-requirements) |
+| `rbac.runNamespaces` | `[]` | Long-lived run namespaces to bind under `rbac.scope: namespaced`. Each must already exist |
 | `pdb.enabled` | `false` | Create a controller PodDisruptionBudget |
 | `pdb.minAvailable` | `1` | Minimum ready controller pods during voluntary eviction; integer or percentage |
 | `metrics.port` | `8443` | Controller metrics port |
@@ -109,7 +122,7 @@ nvcrectl setup init \
 For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its token and the secret it creates are scoped to `ghcr.io`, so they cannot authenticate pulls from the mirror. Authenticate the mirror pull one of two ways instead:
 
 - **Node-level registry credentials.** Configure the mirror credentials in the nodes' container runtime (containerd registry configuration or a kubelet credential provider). Nothing is bound to the controller pod, so `setup init` works exactly as shown above.
-- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value. `setup init` has no flag to bind a custom-named pull secret today (the only secret it wires into `manager.imagePullSecrets` is the `ghcr.io`-scoped `nvcrectl-pull-secret`), so this path means installing the chart directly with Helm, from the mirrored chart ref or from the in-repo chart described below:
+- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value with `setup init`:
 
   ```bash
   kubectl create namespace nvcre
@@ -117,14 +130,14 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
     --docker-server registry.example.com \
     --docker-username <user> --docker-password <password>
 
-  helm upgrade --install nvcre oci://registry.example.com/mirror/cluster-readiness-engine \
-    --version <version> --namespace nvcre \
+  nvcrectl setup init \
+    --chart-ref oci://registry.example.com/mirror/cluster-readiness-engine \
+    --trainer-chart-ref oci://registry.example.com/mirror/kubeflow-trainer \
     --set manager.image.repository=registry.example.com/mirror/manager \
-    --set manager.image.tag=<version> \
     --set 'manager.imagePullSecrets[0].name=mirror-pull-secret'
   ```
 
-  Installing the chart with Helm directly carries the same caveats as bypassing `setup init` below: install Kubeflow Trainer yourself, and re-apply the CRDs on upgrades.
+  Setting only `manager.image.repository` is enough: the chart takes the tag from its `appVersion`, which is the release version. Later `setup init` runs keep the binding. If you also pass `--image-pull-secret`, its `nvcrectl-pull-secret` is added after yours rather than replacing it.
 
 **When no registry is reachable at all.** The mirroring and credential paths above assume the cluster can reach *some* registry. A detached segment may have none, in which case preload the images into each node's container runtime instead of pulling them:
 
@@ -165,13 +178,23 @@ resources:
     memory: 1Gi
 ```
 
-Size it according to the number of nodes and concurrent workloads in the cluster:
+Size CPU according to the number of nodes and concurrent workloads in the cluster:
 
 | Cluster size | CPU request / limit | Memory request / limit | Notes |
 |--------------|---------------------|------------------------|-------|
 | Up to ~100 nodes | 10m / 500m | 1Gi / 1Gi | Shipped chart defaults |
 | ~100 – 500 nodes | 200m / 500m | 1Gi / 1Gi | Increase CPU if reconcile latency rises |
 | ~500 – 1000 nodes | 500m / 1000m | 1Gi / 2Gi | Raise both CPU and memory for heavier concurrency |
+
+Memory follows the number of GPU nodes and NVCRE's own workload pods, not the cluster's total Pod count. The controller caches GPU Nodes and only the Pods that carry the `nvcre.nvidia.com/job` label, the workload pods NVCRE creates ([ADR-102](../designs/102-scoped-pod-cache.md)). Those include the pods of finished runs: a finished Job keeps its workload and pods for log inspection until its Certification is deleted, so every Certification you keep holds its completed categories' pods in the controller's memory. Size memory for the GPU nodes, the runs in progress and the Certifications you keep; deleting finished Certifications releases their pods. Earlier releases cached every Pod in the cluster. On a 2,678-node cluster with about 80,000 Pods, mostly DaemonSet pods, such a controller peaked at 3.83 GiB during its initial cache sync and stayed at 3.1–3.8 GiB while idle, and at the 1Gi default it was OOMKilled about 15 seconds after every start ([issue #504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)). Pods were most of that memory.
+
+To raise the limit, set it through `setup init`, which keeps it on later runs:
+
+```bash
+nvcrectl setup init \
+  --set manager.resources.requests.memory=4Gi \
+  --set manager.resources.limits.memory=8Gi
+```
 
 ## High availability
 
@@ -234,28 +257,87 @@ More generally, voluntary eviction of a healthy controller pod is blocked while 
 
 ## RBAC requirements
 
-The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource types NVCRE actually manages — there are no wildcard rules. Review these before deploying to locked-down clusters:
+The controller's permissions are split between two ClusterRoles, and neither has wildcard rules ([ADR-092](../designs/092-per-namespace-controller-rbac.md)):
 
-| Resource | Verbs | Purpose |
-|----------|-------|---------|
-| `nvcre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | Reconcile the CRD hierarchy |
-| `nvcre.nvidia.com` LogProfiles | get, list, watch | Read log-parsing profiles |
-| `nodes`, `pods` | get, list, watch | Discover nodes for scheduling and health checks; track workload pod placement |
-| `pods/log` | get | Read training logs for goodput and bandwidth measurement |
-| `configmaps` | full lifecycle | Workflow dependencies and failed-node result records |
-| `persistentvolumeclaims` | create, delete, get, list | Checkpoint storage dependencies |
-| `persistentvolumes` | get, list, patch, watch | Checkpoint storage handling |
-| `events` | create, patch | Emit Kubernetes events |
-| `resource.k8s.io` ResourceClaimTemplates | create, delete, get, list, patch, update | RoCE/DRA network resources |
-| `resource.k8s.io` ResourceSlices | get, list, watch | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
-| `resource.nvidia.com` ComputeDomains | create, delete, get, list, patch, update | Multi-Node NVLink (MNNVL) domains |
-| `trainer.kubeflow.org` TrainingRuntimes, TrainJobs | create, delete, get, list, patch, update (TrainJobs also watch; `trainjobs/status` get) | Training workloads via Kubeflow Trainer |
+- **`nvcre-manager-role`** is always bound cluster-wide. It holds reads, cluster-scoped writes, writes to NVCRE's own CRDs, and event creation.
+- **`nvcre-run-role`** holds every write to a namespaced resource outside NVCRE's API group, plus pod log reads. `rbac.scope` decides where it is bound.
 
-The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes) before workloads start, so the role includes create/delete on exactly those types. Inspect the full ClusterRole:
+| Resource | `nvcre-manager-role` (cluster-wide) | `nvcre-run-role` (per `rbac.scope`) | Purpose |
+|----------|-------------------------------------|-------------------------------------|---------|
+| `nvcre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | — | Reconcile the CRD hierarchy |
+| `nvcre.nvidia.com` LogProfiles | get, list, watch | — | Read log-parsing profiles |
+| `nodes`, `pods` | get, list, watch | — | Discover nodes for scheduling and health checks; track workload pod placement |
+| `persistentvolumes` | get, list, patch, watch | — | Reclaim the volumes of checkpoint PVCs the Workflow created |
+| `namespaces` | get | — | Tell whether a run namespace is terminating during teardown |
+| `authorization.k8s.io` SelfSubjectAccessReviews | create | — | Check the controller's own access in a run namespace before writing there |
+| `events` | create, patch | — | Emit Kubernetes events, including in a namespace that lacks the RoleBinding |
+| `resource.k8s.io` ResourceSlices | get, list, watch | — | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
+| `trainer.kubeflow.org` TrainJobs | get, list, watch; `trainjobs/status` get | create, delete, patch, update | Training workloads via Kubeflow Trainer |
+| `configmaps` | — | create, delete, get, patch, update | Workflow dependencies and node-result records |
+| `persistentvolumeclaims` | — | create, delete, get, update | Checkpoint storage dependencies; `update` sets the Job owner reference on a job-scoped checkpoint PVC |
+| `trainer.kubeflow.org` TrainingRuntimes | — | create, delete, get, patch, update | Training runtime dependencies |
+| `resource.k8s.io` ResourceClaimTemplates | — | create, delete, get, patch, update | RoCE/DRA network resources |
+| `resource.nvidia.com` ComputeDomains | — | create, delete, get, patch, update | Multi-Node NVLink (MNNVL) domains |
+| `pods/log` | — | get | Read training logs for goodput and bandwidth measurement |
+
+The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes, ResourceClaimTemplates) before workloads start, so the run role includes create/delete on each dependency kind the catalog and platform overrides can render. The controller reads ConfigMaps and PVCs straight from the API server rather than caching them, so neither role lists or watches them. Inspect both roles:
 
 ```bash
-kubectl get clusterrole nvcre-manager-role -o yaml
+kubectl get clusterrole nvcre-manager-role nvcre-run-role -o yaml
 ```
+
+### Choosing `rbac.scope`
+
+| `rbac.scope` | Where the controller can write | What a run needs |
+|--------------|--------------------------------|------------------|
+| `cluster` (default) | Every namespace, through the ClusterRoleBinding `nvcre-run-rolebinding`. This is the grant earlier releases made. | Nothing |
+| `namespaced` | Only namespaces with a RoleBinding `nvcre-manager-run` to `nvcre-run-role` | A RoleBinding in the run namespace |
+
+**The default becomes `namespaced` in the next minor release.** Under `cluster`, the controller can overwrite any ConfigMap in the cluster (including `kube-system/aws-auth` on EKS), delete any PVC, and read any pod's logs. `namespaced` confines that to the namespaces runs actually use. Switch before the default flips if you apply Certifications or Workflows with `kubectl` or GitOps, and add the bindings below first.
+
+Under `namespaced`, a run namespace gets its RoleBinding in one of three ways:
+
+- **`nvcrectl`** creates it in a namespace it creates itself: the generated `nvcrectl-<timestamp>` namespace of `certification run`, or any `-n` namespace that did not exist yet. Deleting the namespace removes the binding with it. In a namespace that already existed, including `default` (where `workloadrun run` lands without `-n`), `nvcrectl` stops before submitting anything and prints the binding, so a shared namespace never becomes a standing grant by accident. Pass `--grant-run-access` to create it there on purpose; `--cleanup` deletes it once the run is gone, unless another Certification, WorkloadRun or Workflow is still in the namespace. If you cannot read the cluster-scoped `nvcre-run-rolebinding` and `nvcre-run-role`, `nvcrectl` cannot tell which scope is installed; it then submits with a warning instead of stopping, and a missing binding shows up as the controller's wait. Creating the binding takes the user's own permissions: every permission in `nvcre-run-role` within the namespace (a namespace admin has them), or `bind` on `clusterroles/nvcre-run-role`.
+- **`rbac.runNamespaces`** lists long-lived run namespaces, such as GitOps or Run:ai project namespaces, and the chart renders one RoleBinding per entry. The chart does not create these namespaces; a listed namespace that does not exist fails the install with `NotFound`.
+- **You** apply the binding next to your Certification or Workflow; see [Running without nvcrectl](#running-without-nvcrectl).
+
+A Workflow in a namespace without the binding does not fail at once. It stays `InProgress` with reason `NamespacePermissionsMissing`, emits a `NamespaceAccessDenied` Warning naming the binding, and proceeds on its own when the binding appears, so a GitOps sync that applies the Certification before the RoleBinding still runs. If the binding has not appeared after `manager.namespaceAccessTimeout` (default 10 minutes), the Workflow fails with the same reason and the RoleBinding manifest in its message. See [Troubleshooting](./troubleshooting.md#workflow-waits-with-namespacepermissionsmissing).
+
+**`nvcrectl setup init` keeps `rbac.*`.** Re-running it keeps the installed release's `rbac.scope` and `rbac.runNamespaces`, as it keeps every other value set on the release ([Values across runs](../cli-reference/setup.md#values-across-runs)). Even `--reset-values` keeps these two, so a re-run never widens a namespaced grant. Pass `--rbac-scope cluster|namespaced` to change the scope:
+
+```bash
+nvcrectl setup init --rbac-scope namespaced
+```
+
+`init` stops rather than upgrading if it cannot read the installed release's values, since upgrading without them would reset the scope. If you manage the release with Helm directly, `helm upgrade` with any `--set` or `-f` and without `--reuse-values` or `--reset-then-reuse-values` drops `rbac.*` back to the defaults the same way.
+
+### Running without nvcrectl
+
+Print the RoleBinding for a namespace and apply it, or commit it next to the Certification:
+
+```bash
+nvcrectl rbac print --namespace <run-namespace> | kubectl apply -f -
+```
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nvcre-manager-run
+  namespace: <run-namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvcre-run-role
+subjects:
+- kind: ServiceAccount
+  name: nvcre-manager
+  namespace: nvcre
+```
+
+The subject is the controller's ServiceAccount. `nvcrectl setup init` installs it as `nvcre-manager` in namespace `nvcre`. A Helm release with another name or namespace has another ServiceAccount; pass `--service-account` and `--controller-namespace` to `nvcrectl rbac print`, or copy the subject from `kubectl get clusterrolebinding nvcre-manager-rolebinding -o yaml`. A waiting Workflow's message names the ServiceAccount it needs.
+
+Delete the binding only after the Certification or WorkloadRun that needed it is fully deleted: the controller's finalizers write in the namespace until then. If the namespace itself is being deleted, the finalizers do not wait for the binding.
 
 ## Cluster scope and tenancy model
 
@@ -302,7 +384,7 @@ The controller has no external database, no admission webhook, and no sidecar in
 | Parameter | Default | Large cluster | Notes |
 |-----------|---------|---------------|-------|
 | Controller CPU limit | 500m | 1000m | CEL evaluation scales with node count |
-| Controller memory limit | 1Gi | 2Gi | Status objects grow with group count |
+| Controller memory limit | 1Gi | By GPU nodes and NVCRE's own pods | Follows the GPU node count and NVCRE's workload pods, from runs in progress and from Certifications still kept, not the cluster-wide Pod count ([Resource requirements](#resource-requirements)). Set with `setup init --set manager.resources.limits.memory=…` |
 | GoodputMeasurement `sampleInterval` | 60s | 120s | Reduces API server log fetch load |
 | Certification category concurrency | Unlimited | Partition by node groups | Use multiple Certifications for >500 nodes |
 
@@ -328,7 +410,7 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
    RUN git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /opt/megatron-lm
    ```
 
-   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. The entries have no image knob, so serve the extended image under the same `nvcr.io/nvidia/pytorch:25.08-py3` reference they use: pre-load it on the nodes or publish it through your registry mirror under that name.
+   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. Then either point the categories at the extended image with `categories[].options.image`, which also replaces the `megatron-clone` init container's image, or serve it under the reference the entries render on your platform: pre-load it on the nodes or publish it through your registry mirror under that name. That reference is `nvcr.io/nvidia/pytorch:25.08-py3` everywhere except GCP H100, where the training image follows the TCPXO plugin version detected on the nodes (`pytorch:25.06-py3` for plugin v1.0.15 and v1.0.16, and when detection finds no release); see [GCP H100 clusters](../concepts/platform-detection.md#gcp-h100-clusters). `nvcrectl certification render --dry-run` prints the reference it picked.
 
 2. **Pre-seed the workspace PVC.** Set `enableCheckpoint: true` (plus `storageClassName` if the cluster has no default StorageClass). The category then mounts a PersistentVolumeClaim named `<variant>-pvc` (for example `nemotron5-8b-pvc`) at `/mnt/workspace` instead of a memory-backed `emptyDir`. Pre-populate that volume with the Megatron-LM source at `megatron-lm/` before creating the Certification: the init container uses the workspace unchanged whenever `/mnt/workspace/megatron-lm` exists (a plain source export works; `.git` is not required). Without `enableCheckpoint` the workspace is an `emptyDir`, so this option does not apply and the source is resolved from the image or the network on every pod start.
 
@@ -442,7 +524,7 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | Item | Status | What to verify |
 |------|--------|----------------|
 | **Network policy** | Required | Restrict egress to the Kubernetes API server and DNS only. No NetworkPolicy ships with the chart — add one for your environment. |
-| **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
+| **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role nvcre-run-role -o yaml` and verify the permissions match your security requirements. Set `rbac.scope: namespaced` so the controller writes only in namespaces that have a RoleBinding; see [Choosing `rbac.scope`](#choosing-rbacscope). |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
 | **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using `manager.affinity`. This value replaces the chart's complete default affinity, so include pod anti-affinity in the override when running multiple replicas. |
 | **Image provenance** | Recommended | Verify the image signature and its SLSA provenance against the exact signing identity before deploying, then pin what you verified with `--set manager.image.digest=sha256:...` rather than deploying by tag — a tag can be repointed after you check it. The provenance names the commit, ref and workflow that built it. See [Verifying release artifacts](./verifying-artifacts.md). Scan images with your vulnerability tooling before deployment. |

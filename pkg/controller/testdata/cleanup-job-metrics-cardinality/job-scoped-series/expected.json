@@ -1,10 +1,5 @@
 [
   {
-    "name": "nvcre_job_status",
-    "grewAfterRecording": true,
-    "restoredToBaselineOnCleanup": true
-  },
-  {
     "name": "nvcre_job_failed_nodes",
     "grewAfterRecording": true,
     "restoredToBaselineOnCleanup": true

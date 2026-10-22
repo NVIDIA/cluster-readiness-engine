@@ -1,0 +1,24 @@
+{
+  "mpiArgs": [
+    "-x",
+    "NCCL_SOCKET_IFNAME=eth0",
+    "-x",
+    "NCCL_DEBUG",
+    "-x",
+    "NCCL_NVLS_ENABLE=1",
+    "-x",
+    "NCCL_CUMEM_ENABLE=1",
+    "-x",
+    "NCCL_P2P_NET_CHUNKSIZE=2097152",
+    "-x",
+    "NCCL_MNNVL_ENABLE=0",
+    "-x",
+    "NCCL_IB_PCI_RELAXED_ORDERING=0",
+    "-x",
+    "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+    "-x",
+    "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+    "-x",
+    "PMIX_MCA_gds=^ds12"
+  ]
+}

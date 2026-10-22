@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB300 exercises both the arch-only GB200/GB300 ComputeDomain block and the
+# nscale-specific block: the golden must show their claims coexisting
+# without a name collision.
+platform: nscale
+gpuArch: gb300

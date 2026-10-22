@@ -1,0 +1,8 @@
+{
+  "conditions": [],
+  "error": "configmaps \"node-results\" is forbidden: injected",
+  "events": [],
+  "orchestrationPersisted": false,
+  "requeueAfter": "0s",
+  "reviewsAskFresh": null
+}

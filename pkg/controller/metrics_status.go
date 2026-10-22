@@ -21,7 +21,7 @@ import (
 const statusMetricsListTimeout = 2 * time.Second
 
 // lifecyclePhaseTypes is the exclusive InProgress/Succeeded/Failed set shared
-// by Certification and Workflow. Terminal types are listed first so a dual-true
+// by Certification, Workflow and Job. Terminal types are listed first so a dual-true
 // leftover reports the verdict (ADR-086 decision A4).
 var lifecyclePhaseTypes = []string{
 	nvcrev1alpha1.CertificationFailed,
@@ -29,20 +29,22 @@ var lifecyclePhaseTypes = []string{
 	nvcrev1alpha1.CertificationInProgress,
 }
 
-// lifecycleStatusSource is the scrape-time view of Certifications and Workflows.
+// lifecycleStatusSource is the scrape-time view of Certifications, Workflows and Jobs.
 // reader is the manager cache; elected is mgr.Elected().
 type lifecycleStatusSource struct {
 	reader  client.Reader
 	elected <-chan struct{}
 }
 
-// lifecycleStatusCollector builds nvcre_certification_status and
-// nvcre_workflow_status from the informer cache on each scrape. Jobs stay
-// write-driven (nvcre_job_status) in this change.
+// lifecycleStatusCollector builds nvcre_certification_status,
+// nvcre_workflow_status and nvcre_job_status from the informer cache on each
+// scrape, so every writer, a restart and any deletion path show on the next
+// scrape without reconciler code (ADR-086 decision A).
 type lifecycleStatusCollector struct {
 	source   atomic.Pointer[lifecycleStatusSource]
 	certDesc *prometheus.Desc
 	wfDesc   *prometheus.Desc
+	jobDesc  *prometheus.Desc
 }
 
 func newLifecycleStatusCollector() *lifecycleStatusCollector {
@@ -59,6 +61,12 @@ func newLifecycleStatusCollector() *lifecycleStatusCollector {
 			[]string{labelNamespace, labelWorkflow, labelCertificationName, labelStatus},
 			nil,
 		),
+		jobDesc: prometheus.NewDesc(
+			"nvcre_job_status",
+			"Current status of NVCRE jobs (1 = current status, 0 = not current status)",
+			[]string{labelNamespace, labelJob, labelWorkflow, labelStatus},
+			nil,
+		),
 	}
 }
 
@@ -67,7 +75,7 @@ func newLifecycleStatusCollector() *lifecycleStatusCollector {
 // panic on MustRegister. SetupStatusMetrics installs the live source.
 var statusMetrics = newLifecycleStatusCollector()
 
-// SetupStatusMetrics points the Certification and Workflow status collector at
+// SetupStatusMetrics points the Certification, Workflow and Job status collector at
 // the manager's cache and elected channel. Collect emits nothing until
 // mgr.Elected() is closed, so a standby replica does not start informers or
 // double-report series.
@@ -83,6 +91,7 @@ func (c *lifecycleStatusCollector) setSource(reader client.Reader, elected <-cha
 func (c *lifecycleStatusCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.certDesc
 	ch <- c.wfDesc
+	ch <- c.jobDesc
 }
 
 // Collect implements prometheus.Collector. It lists from the cache with
@@ -106,6 +115,7 @@ func (c *lifecycleStatusCollector) Collect(ch chan<- prometheus.Metric) {
 
 	c.collectCertifications(ctx, src.reader, ch)
 	c.collectWorkflows(ctx, src.reader, ch)
+	c.collectJobs(ctx, src.reader, ch)
 }
 
 func (c *lifecycleStatusCollector) collectCertifications(ctx context.Context, reader client.Reader, ch chan<- prometheus.Metric) {
@@ -127,6 +137,19 @@ func (c *lifecycleStatusCollector) collectWorkflows(ctx context.Context, reader 
 	for i := range list.Items {
 		wf := &list.Items[i]
 		emitExclusiveStatus(ch, c.wfDesc, wf.Status.Conditions, wf.Namespace, wf.Name, wf.Labels[labelCertification])
+	}
+}
+
+// collectJobs reports each Job under its nvcre.nvidia.com/workflow label, the
+// same value every other job-scoped metric uses.
+func (c *lifecycleStatusCollector) collectJobs(ctx context.Context, reader client.Reader, ch chan<- prometheus.Metric) {
+	var list nvcrev1alpha1.JobList
+	if err := reader.List(ctx, &list, client.UnsafeDisableDeepCopy); err != nil {
+		return
+	}
+	for i := range list.Items {
+		job := &list.Items[i]
+		emitExclusiveStatus(ch, c.jobDesc, job.Status.Conditions, job.Namespace, job.Name, job.Labels[labelWorkflowTracking])
 	}
 }
 

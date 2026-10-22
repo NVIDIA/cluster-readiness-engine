@@ -1,0 +1,44 @@
+{
+  "pods": {
+    "node": {
+      "nodeAffinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/hostname",
+                  "operator": "In",
+                  "values": [
+                    "dry-node-01",
+                    "dry-node-02"
+                  ]
+                },
+                {
+                  "key": "nvcre.nvidia.com/testbed",
+                  "operator": "In",
+                  "values": [
+                    "burnin"
+                  ]
+                },
+                {
+                  "key": "nvidia.com/gpu.product",
+                  "operator": "In",
+                  "values": [
+                    "NVIDIA-H100-80GB-HBM3"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "tolerations": [
+        {
+          "operator": "Exists"
+        }
+      ]
+    }
+  },
+  "numNodes": 2
+}

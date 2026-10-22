@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale NKS GB300 running training/nemotron5-8b (ADR-085). Nodes carry
+# topology.nks.nscale.com/accelerator-domain and deliberately NO
+# nvidia.com/gpu.clique: the GB200/GB300 block sets the clique key and the
+# Nscale GB300 block must replace it, so if the override were missed the
+# Workflow would fail at partition instead of reaching JobRunning. The golden
+# also pins the ComputeDomain + gpu/rdma claims coexisting and the IB env
+# merged into the runtime container env.
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    topology.nks.nscale.com/accelerator-domain: domain-a
+    kubernetes.io/hostname: nscale-gb300-node-01
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000001"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    topology.nks.nscale.com/accelerator-domain: domain-a
+    kubernetes.io/hostname: nscale-gb300-node-02
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000002"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-02-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-02
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-02
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-g3-n5
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 2
+  enableMNNVL: true
+  categories:
+    - domain: training
+      variant: nemotron5-8b

@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale is identified by the nscale:// providerID alone. The rdmashare
+# allocatable pins that an openstack:// node stays on-prem whatever it
+# advertises, so allocatable-based Nscale detection cannot creep back.
+nodes:
+  - metadata:
+      name: node-1
+    spec:
+      providerID: "openstack:///00000000-0000-0000-0000-000000000001"
+    status:
+      allocatable:
+        nscale.com/rdmashare: "8"

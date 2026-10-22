@@ -118,9 +118,15 @@ type TemplateData struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// for the on-prem GB200/GB300 templates. Empty means omit the NIC resource
+	// for the on-prem GB200/GB300 and HGX B200/B300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
 	NicResourceName string
+
+	// RDMADeviceAccess selects how workload containers reach the host's RDMA
+	// devices. "hostPath" mounts /dev/infiniband and runs the workload
+	// container privileged; "devicePlugin" and empty render nothing extra.
+	// Templates use: {{- if eq .RDMADeviceAccess "hostPath" }}
+	RDMADeviceAccess string
 
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order (always
@@ -128,6 +134,18 @@ type TemplateData struct {
 	// DefaultGKETCPXONetworks). Templates use:
 	// {{ range $i, $n := .GKETCPXONetworks }} ... eth{{ add $i 1 }} ... {{ $n }}
 	GKETCPXONetworks []string
+
+	// GCPH100NCCLImage, GCPH100TrainingImage and TCPXODaemonImage are the
+	// images the GCP H100 TCPXO overrides render, selected by the detected
+	// TCPXO plugin version (always non-empty at Build time: from
+	// TCPXOPluginProfileFor, which falls back for unmapped versions). Templates use:
+	// {{ .GCPH100NCCLImage }}, {{ .GCPH100TrainingImage }}, {{ .TCPXODaemonImage }}.
+	// TCPXODaemonArgs are the daemon entrypoint flags for that daemon
+	// release: {{ .TCPXODaemonArgs }}
+	GCPH100NCCLImage     string
+	GCPH100TrainingImage string
+	TCPXODaemonImage     string
+	TCPXODaemonArgs      string
 
 	// TrainingCPULimit is the CPU limit for training containers
 	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
@@ -238,6 +256,13 @@ type TemplateData struct {
 	// user sets nothing; each entry supplies its own canonical fallback.
 	// Templates use: {{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}<entry default>{{ end }}
 	SourceRepo string
+
+	// DCGMHost is the DCGM hostengine address overriding the default
+	// `dcgmi diag --host` value. Stays empty when the user sets nothing; the
+	// entry supplies its own default, and platform overrides that repoint the
+	// default skip their patch when it is set.
+	// Templates use: {{ if .DCGMHost }}{{ .DCGMHost }}{{ else }}<entry default>{{ end }}
+	DCGMHost string
 
 	// TP is tensor-model-parallel size from meta.yaml for the resolved architecture.
 	// Templates use: {{ .TP }}
@@ -470,6 +495,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		GpusPerNode:                config.GpusPerNode,
 		MlnxPerNode:                config.MlnxPerNode,
 		NicResourceName:            config.NicResourceName,
+		RDMADeviceAccess:           config.RDMADeviceAccess,
 		GKETCPXONetworks:           config.GKETCPXONetworks,
 		EnableMNNVL:                config.EnableMNNVL,
 		EnableCheckpoint:           config.EnableCheckpoint,
@@ -492,10 +518,16 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		MeasurementTimeout:         config.MeasurementTimeout,
 		Thresholds:                 config.Thresholds,
 		SourceRepo:                 config.SourceRepo,
+		DCGMHost:                   config.DCGMHost,
 	}
 	if len(td.GKETCPXONetworks) == 0 {
 		td.GKETCPXONetworks = DefaultGKETCPXONetworks()
 	}
+	tcpxo, _, _ := TCPXOPluginProfileFor(config.TCPXOPluginVersion)
+	td.GCPH100NCCLImage = tcpxo.NCCLImage
+	td.GCPH100TrainingImage = tcpxo.TrainingImage
+	td.TCPXODaemonImage = tcpxo.DaemonImage
+	td.TCPXODaemonArgs = tcpxo.DaemonArgs
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
 	}
