@@ -26,8 +26,16 @@ const (
 	repoURL = "https://github.com/NVIDIA/cluster-readiness-engine/"
 )
 
-// inlineLink matches the target of an inline link or image: `](target)`.
-var inlineLink = regexp.MustCompile(`\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
+// inlineLink captures the destination of an inline link or image: the first
+// token after `](`, or a `<...>` destination. Whatever follows it, a title in
+// any of its three forms or padding before the `)`, is not matched, so a link
+// written in a form this pattern did not anticipate is still checked rather
+// than skipped.
+var inlineLink = regexp.MustCompile(`\]\(\s*(<[^>\n]*>|[^)\s]+)`)
+
+// htmlLink captures the href of a raw HTML anchor, which Fern renders as a link
+// like any other.
+var htmlLink = regexp.MustCompile(`(?i)<a\s[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 
 // refDefinition matches a reference-style link definition: `[label]: target`.
 var refDefinition = regexp.MustCompile(`(?m)^ {0,3}\[[^\]]+\]:\s+(\S+)`)
@@ -42,7 +50,7 @@ var repoLink = regexp.MustCompile(`^` + regexp.QuoteMeta(repoURL) + `(?:blob|tre
 // Fern resolves a relative `.md` link only when the target is itself in the
 // nav. Anything else, most often an ADR under docs/designs/, renders as a link
 // to a "Page Not Found" page that answers HTTP 200, so neither `fern check`
-// nor a link checker that looks at status codes notices. v0.7.0 shipped three
+// nor a link checker that looks at status codes notices. v0.7.0 shipped seven
 // of these and v0.8.0 eighteen. A page that is deliberately left out of the
 // nav is linked by its GitHub URL instead, and those URLs are checked here
 // against the tree so a typo in one does not trade a soft 404 for a hard one.
@@ -92,6 +100,14 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 			broken: 1,
 		},
 		{name: "two broken links on one line", body: "[a](../designs/1.md) and [b](../designs/2.md)", broken: 2},
+		{name: "broken link with a double-quoted title", body: `[a](../designs/x.md "T")`, broken: 1},
+		{name: "broken link with a single-quoted title", body: `[a](../designs/x.md 'T')`, broken: 1},
+		{name: "broken link with a parenthesized title", body: `[a](../designs/x.md (T))`, broken: 1},
+		{name: "broken link padded before the destination", body: `[a]( ../designs/x.md)`, broken: 1},
+		{name: "broken link padded after the destination", body: `[a](../designs/x.md )`, broken: 1},
+		{name: "broken link in an angle-bracket destination", body: `[a](<../designs/x.md>)`, broken: 1},
+		{name: "broken link in an HTML anchor", body: `<a href="../designs/x.md">ADR</a>`, broken: 1},
+		{name: "broken link in a single-quoted HTML anchor", body: `<A class="x" HREF='../designs/x.md'>ADR</A>`, broken: 1},
 		{name: "link after a fence closed by a longer run", body: "```\ncode\n````\n[a](../designs/x.md)", broken: 1},
 		{name: "link after a backtick a blank line leaves unclosed", body: "a ` b\n\n[a](../designs/x.md) `", broken: 1},
 		{name: "link after a fence indented four spaces", body: "    ~~~\n[a](../designs/x.md)", broken: 1},
@@ -102,9 +118,11 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "relative link to a nav page", body: "[deploy](../operations/deployment.md)"},
 		{name: "relative link to a nav page with an anchor", body: "[deploy](../operations/deployment.md#rbac-requirements)"},
 		{name: "relative link to the same directory", body: "[rbac](./rbac.md)"},
-		{name: "relative link with a title", body: `[deploy](../operations/deployment.md "Deployment")`},
+		{name: "relative link to a nav page with a title", body: `[deploy](../operations/deployment.md "Deployment")`},
 		{name: "anchor on the same page", body: "[below](#flags)"},
 		{name: "external link", body: "[k8s](https://kubernetes.io/docs/)"},
+		{name: "HTML anchor to a nav page", body: `<a href="../operations/deployment.md#rbac">deploy</a>`},
+		{name: "HTML anchor inside inline code", body: "`<a href=\"../designs/x.md\">`"},
 		{name: "link inside inline code", body: "pattern `[a](../designs/x.md)` is literal"},
 		{name: "link inside a double-backtick span", body: "``[a](../designs/`x`.md)`` is literal"},
 		{name: "link inside a fenced block", body: "```markdown\n[a](../designs/x.md)\n```\n"},
@@ -173,12 +191,16 @@ func brokenLinks(page, body string, nav map[string]bool, exists func(string) boo
 
 	inline := inlineLink.FindAllStringSubmatch(prose, -1)
 	refs := refDefinition.FindAllStringSubmatch(prose, -1)
-	targets := make([]string, 0, len(inline)+len(refs))
+	anchors := htmlLink.FindAllStringSubmatch(prose, -1)
+	targets := make([]string, 0, len(inline)+len(refs)+len(anchors))
 	for _, m := range inline {
 		targets = append(targets, m[1])
 	}
 	for _, m := range refs {
 		targets = append(targets, m[1])
+	}
+	for _, m := range anchors {
+		targets = append(targets, m[1]+m[2])
 	}
 
 	var out []string
