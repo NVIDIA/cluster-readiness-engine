@@ -165,7 +165,23 @@ jobTemplate:
                           - emptyDir:
                               medium: Memory
                             name: dshm
+                          {{- if .ImagePullSecrets }}
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                          {{- end }}
                 - name: launcher
+                  {{- if .ImagePullSecrets }}
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                  {{- end }}
         runtimeRef:
           kind: TrainingRuntime
           name: nccl-all-gather-runtime
@@ -588,6 +604,22 @@ overrides:
             args:
 {{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_gather_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Akamai + RTX PRO 6000 (LKE VMs; TCP over eth0, no RDMA) ---
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---

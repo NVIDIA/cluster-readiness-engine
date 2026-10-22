@@ -24,12 +24,13 @@ const (
 	Mistral    = "mistral"
 	Forge      = "forge"
 	NScale     = "nscale"
+	Akamai     = "akamai"
 )
 
 // Names returns every valid platform name, in the order used in flag help
 // and error messages.
 func Names() []string {
-	return []string{AWS, GCP, Azure, OCI, OnPrem, TogetherAI, Mistral, Forge, NScale}
+	return []string{AWS, GCP, Azure, OCI, OnPrem, TogetherAI, Mistral, Forge, NScale, Akamai}
 }
 
 // NamesList returns the valid platform names joined with ", " for flag help

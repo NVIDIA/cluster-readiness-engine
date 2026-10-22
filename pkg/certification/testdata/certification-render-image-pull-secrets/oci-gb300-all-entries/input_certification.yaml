@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every catalog entry on OCI GB300 with a pull secret set. The GB300 arm of
+# each communication entry ships the NCCL topology file through a dependency
+# patch on the node pod spec, the same pod spec the secrets land on, so this
+# is the arm most likely to collide with them. The golden pins that the list
+# survives it on every pod set.
+#
+# nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
+# below it. maxSteps keeps the two training renders small.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb300-pull-secrets-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  imagePullSecrets:
+    - name: cert-pull-secret
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch
+    - domain: diagnostics
+      variant: dcgm-level4
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 10
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 10

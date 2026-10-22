@@ -93,7 +93,7 @@ nvcrectl certification render [flags] <cert-file>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`, `akamai`) |
 | `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
 | `--dry-run` | `false` | Validate against the live API server without creating resources. Also discovers the target nodes, so NIC resource detection (on-prem GB200/GB300 and HGX B200/B300), GKE TCPXO network detection and TCPXO plugin version detection (GCP H100) run as they do in the controller and report what they found on stderr. Plugin version detection lists `kube-system` pods, so it needs that permission. |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
