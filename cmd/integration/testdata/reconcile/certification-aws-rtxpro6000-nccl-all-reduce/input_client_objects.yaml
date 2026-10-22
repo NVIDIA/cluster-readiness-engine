@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-rtx-node-1
+  labels:
+    node.kubernetes.io/instance-type: g7e.48xlarge
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+    kubernetes.io/hostname: aws-rtx-node-1
+spec:
+  providerID: aws://us-west-2a/i-template-1
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+  allocatable:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-rtx-node-2
+  labels:
+    node.kubernetes.io/instance-type: g7e.48xlarge
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+    kubernetes.io/hostname: aws-rtx-node-2
+spec:
+  providerID: aws://us-west-2a/i-template-2
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+  allocatable:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-rtx-ar
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-rtx-n5-training-nemot-24e6b
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-rtx-n5
+    namespace: default
+  - kind: Job
+    name: aws-rtx-n5-training-nemot-24e6b-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: nemotron5-8b-runtime-24e6b-job
+    namespace: default

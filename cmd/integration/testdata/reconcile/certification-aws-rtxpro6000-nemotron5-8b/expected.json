@@ -1,0 +1,517 @@
+{
+  "Certification/aws-rtx-n5": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-n5",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        }
+      },
+      "categories": [
+        {
+          "domain": "training",
+          "variant": "nemotron5-8b",
+          "options": {
+            "maxSteps": 50
+          }
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "training",
+          "variant": "nemotron5-8b",
+          "workflowRef": {
+            "name": "aws-rtx-n5-training-nemot-24e6b",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Job/aws-rtx-n5-training-nemot-24e6b-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-n5-training-nemot-24e6b-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "aws-rtx-n5-training-nemot-24e6b"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "aws-rtx-node-1,aws-rtx-node-2"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "aws-rtx-n5-training-nemot-24e6b",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "nemotron5-8b-runtime-24e6b-job",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+            "command": [
+              "/bin/bash"
+            ],
+            "args": [
+              "/config/train.sh"
+            ],
+            "env": [
+              {
+                "name": "FI_PROVIDER",
+                "value": "efa"
+              },
+              {
+                "name": "FI_EFA_USE_DEVICE_RDMA",
+                "value": "1"
+              },
+              {
+                "name": "FI_EFA_FORK_SAFE",
+                "value": "1"
+              },
+              {
+                "name": "NCCL_NET_PLUGIN",
+                "value": "ofi"
+              },
+              {
+                "name": "NCCL_NVLS_ENABLE",
+                "value": "0"
+              },
+              {
+                "name": "NCCL_MNNVL_ENABLE",
+                "value": "0"
+              },
+              {
+                "name": "NCCL_SOCKET_IFNAME",
+                "value": "eth0"
+              }
+            ],
+            "numNodes": 2,
+            "numProcPerNode": 8
+          },
+          "runtimePatches": [
+            {
+              "manager": "nvcre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "aws-rtx-node-1",
+                                                "aws-rtx-node-2"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      },
+      "stallMultiplier": 3,
+      "startupStallTimeoutSeconds": 1200,
+      "goodputMeasurement": {
+        "logProfileRef": "megatron-training",
+        "sampleInterval": "10s"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/aws-rtx-n5-training-nemot-24e6b-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "aws-rtx-n5-training-nemot-24e6b-job-workload",
+        "namespace": "default"
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
+    }
+  },
+  "TrainingRuntime/nemotron5-8b-runtime-24e6b-job": {
+    "apiVersion": "trainer.kubeflow.org/v1alpha1",
+    "kind": "TrainingRuntime",
+    "metadata": {
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "labels": {
+        "app": "nemotron5-8b-24e6b-job",
+        "nvcre.nvidia.com/workflow": "aws-rtx-n5-training-nemot-24e6b",
+        "trainer.kubeflow.org/framework": "torch"
+      },
+      "name": "nemotron5-8b-runtime-24e6b-job",
+      "namespace": "default",
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "aws-rtx-n5-training-nemot-24e6b-job",
+          "uid": ""
+        }
+      ]
+    },
+    "spec": {
+      "mlPolicy": {
+        "numNodes": 2,
+        "torch": {
+          "numProcPerNode": 8
+        }
+      },
+      "template": {
+        "spec": {
+          "replicatedJobs": [
+            {
+              "groupName": "default",
+              "name": "node",
+              "replicas": 1,
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                  }
+                },
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "env": [
+                            {
+                              "name": "NVTE_FWD_LAYERNORM_SM_MARGIN",
+                              "value": "16"
+                            },
+                            {
+                              "name": "NVTE_BWD_LAYERNORM_SM_MARGIN",
+                              "value": "16"
+                            },
+                            {
+                              "name": "TORCHINDUCTOR_WORKER_START",
+                              "value": "fork"
+                            },
+                            {
+                              "name": "NCCL_DEBUG",
+                              "value": "INFO"
+                            },
+                            {
+                              "name": "NCCL_DEBUG_SUBSYS",
+                              "value": "NET,INIT,GRAPH,NVLS"
+                            },
+                            {
+                              "name": "NCCL_SOCKET_IFNAME",
+                              "value": "eth0"
+                            },
+                            {
+                              "name": "NCCL_IB_TIMEOUT",
+                              "value": "19"
+                            },
+                            {
+                              "name": "NCCL_P2P_NET_CHUNKSIZE",
+                              "value": "2097152"
+                            },
+                            {
+                              "name": "NCCL_CUMEM_ENABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_C2C",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_MNNVL_ENABLE",
+                              "value": "0"
+                            },
+                            {
+                              "name": "CUDA_DEVICE_MAX_CONNECTIONS",
+                              "value": "1"
+                            },
+                            {
+                              "name": "TORCH_NCCL_AVOID_RECORD_STREAMS",
+                              "value": "1"
+                            },
+                            {
+                              "name": "TORCH_NCCL_HIGH_PRIORITY",
+                              "value": "1"
+                            },
+                            {
+                              "name": "PYTORCH_CUDA_ALLOC_CONF",
+                              "value": "expandable_segments:True"
+                            },
+                            {
+                              "name": "UCX_MEM_MMAP_HOOK_MODE",
+                              "value": "none"
+                            },
+                            {
+                              "name": "UCX_MEM_CUDA_HOOK_MODE",
+                              "value": "none"
+                            },
+                            {
+                              "name": "UCX_MEM_MALLOC_HOOKS",
+                              "value": "n"
+                            },
+                            {
+                              "name": "UCX_ERROR_SIGNALS",
+                              "value": ""
+                            },
+                            {
+                              "name": "EXIT_DURATION_MINS",
+                              "value": "30"
+                            },
+                            {
+                              "name": "ENABLE_CHECKPOINT",
+                              "value": "false"
+                            },
+                            {
+                              "name": "TRAIN_ITERS",
+                              "value": "50"
+                            },
+                            {
+                              "name": "SAVE_INTERVAL",
+                              "value": "250"
+                            },
+                            {
+                              "name": "SAVE_RETAIN_INTERVAL",
+                              "value": "1000"
+                            },
+                            {
+                              "name": "PYTHONPATH",
+                              "value": "/mnt/workspace/megatron-lm"
+                            }
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "node",
+                          "resources": {
+                            "limits": {
+                              "cpu": "128",
+                              "memory": "800Gi",
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            },
+                            "requests": {
+                              "cpu": "64",
+                              "memory": "500Gi",
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            }
+                          },
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/mnt/workspace",
+                              "name": "workspace"
+                            },
+                            {
+                              "mountPath": "/dev/shm",
+                              "name": "shmem"
+                            },
+                            {
+                              "mountPath": "/config",
+                              "name": "training-config"
+                            }
+                          ]
+                        }
+                      ],
+                      "initContainers": [
+                        {
+                          "args": [
+                            "set -e\nsrc=/mnt/workspace/megatron-lm\ntmp=/mnt/workspace/.megatron-lm.tmp\nrm -rf \"$tmp\"\nif [ -d \"$src\" ]; then\n  echo \"Using pre-seeded workspace at $src\"\nelif [ -d /opt/megatron-lm ]; then\n  mkdir -p \"$tmp\"\n  cp -a /opt/megatron-lm/. \"$tmp\"\n  mv \"$tmp\" \"$src\"\n  echo \"Copied Megatron-LM from image at /opt/megatron-lm\"\nelse\n  repo=\"https://github.com/NVIDIA/Megatron-LM.git\"\n  git clone --depth 1 -b core_v0.15.2 \"$repo\" \"$tmp\"\n  mv \"$tmp\" \"$src\"\n  echo \"Cloned Megatron-LM from the configured source repo\"\nfi\n"
+                          ],
+                          "command": [
+                            "/bin/bash",
+                            "-c"
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "megatron-clone",
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/mnt/workspace",
+                              "name": "workspace"
+                            }
+                          ]
+                        },
+                        {
+                          "args": [
+                            "import hashlib\nfrom pathlib import Path\n\npath = Path(\"/mnt/workspace/megatron-lm/megatron/training/training.py\")\nsource = path.read_text()\noriginal = \"a5cd6e9f0087ddc6d9cfa566fcda871a4b4ab8a3bb41f4923673a8bc76073ff6\"\npatched = \"3888d7ff3b58ecdc6ea67edce4c324ced46205f7340a149fbc18160f0da616a0\"\ndigest = hashlib.sha256(source.encode()).hexdigest()\nif digest == patched:\n    print(\"Megatron DDP stream ordering already applied\")\nelif digest != original:\n    raise RuntimeError(\"AWS RTX DDP stream patch requires the inspected core_v0.15.2 source\")\nelse:\n    before = \"        with torch.cuda.stream(torch.cuda.Stream()):\\n            model = [\\n\"\n    after = (\n        \"        # Order parameter initialization, DDP copies, and optimizer setup.\\n\"\n        \"        current_stream = torch.cuda.current_stream()\\n\"\n        \"        ddp_stream = torch.cuda.Stream()\\n\"\n        \"        ddp_stream.wait_stream(current_stream)\\n\"\n        \"        with torch.cuda.stream(ddp_stream):\\n\"\n        \"            model = [\\n\"\n    )\n    end = \"        # Broadcast params from data parallel src rank to other data parallel ranks.\\n\"\n    if source.count(before) != 1 or source.count(end) != 1:\n        raise RuntimeError(\"Unexpected Megatron DDP initialization structure\")\n    updated = source.replace(before, after).replace(\n        end, \"        current_stream.wait_stream(ddp_stream)\\n\\n\" + end\n    )\n    if hashlib.sha256(updated.encode()).hexdigest() != patched:\n        raise RuntimeError(\"Unexpected Megatron DDP patch result\")\n    path.write_text(updated)\n    print(\"Applied Megatron DDP stream ordering; integrity checks unchanged\")\n"
+                          ],
+                          "command": [
+                            "python3",
+                            "-c"
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "megatron-ddp-stream-order",
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/mnt/workspace",
+                              "name": "workspace"
+                            }
+                          ]
+                        }
+                      ],
+                      "schedulerName": "default-scheduler",
+                      "securityContext": {
+                        "seccompProfile": {
+                          "type": "RuntimeDefault"
+                        }
+                      },
+                      "terminationGracePeriodSeconds": 30,
+                      "topologySpreadConstraints": [
+                        {
+                          "labelSelector": {
+                            "matchLabels": {
+                              "app": "nemotron5-8b-24e6b-job"
+                            }
+                          },
+                          "maxSkew": 1,
+                          "topologyKey": "kubernetes.io/hostname",
+                          "whenUnsatisfiable": "DoNotSchedule"
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "emptyDir": {
+                            "medium": "Memory"
+                          },
+                          "name": "workspace"
+                        },
+                        {
+                          "emptyDir": {
+                            "medium": "Memory"
+                          },
+                          "name": "shmem"
+                        },
+                        {
+                          "configMap": {
+                            "defaultMode": 493,
+                            "name": "nemotron5-8b-training-config-24e6b-job"
+                          },
+                          "name": "training-config"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
