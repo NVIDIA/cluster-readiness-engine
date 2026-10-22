@@ -16,6 +16,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -119,7 +120,7 @@ func TestBackfillGroupNodes(t *testing.T) {
 
 		r := &WorkflowReconciler{Client: c, Scheme: scheme}
 		if !input.NoDiscoverer {
-			r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(c)
+			r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(c, podread.New(c, c))
 		}
 
 		changed := r.backfillGroupNodes(

@@ -1,0 +1,7 @@
+{
+  "platform": "akamai",
+  "domain": "communication",
+  "variant": "nccl-all-reduce",
+  "gpusPerNode": 8,
+  "nodesPerJob": 2
+}

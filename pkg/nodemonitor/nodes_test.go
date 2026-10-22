@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -67,7 +68,7 @@ func TestDiscoverNodes(t *testing.T) {
 		// path a controller takes before its index is ready, so it is worth
 		// being the path under test.
 		c := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
-		d := NewNodeDiscoverer(c)
+		d := NewNodeDiscoverer(c, podread.New(c, c))
 
 		ctx := context.Background()
 		live, err := d.DiscoverNodesForJob(ctx, input.Namespace, input.JobName)
