@@ -1612,7 +1612,10 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		log.V(1).Info("Failed to list launcher pods for failure log capture", "error", err)
 		return
 	}
-	pods := append(podList.Items, launchers...)
+	// Launchers first: FinishedAt has one-second precision, the workers' sshd
+	// usually exits in the same second as the launcher, and failedContainerOf
+	// keeps the first container on a tie.
+	pods := append(launchers, podList.Items...)
 
 	failedPod, failedContainer := failedContainerOf(pods)
 	// Record why there is no log rather than leaving the field unset. A Job whose

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 )
 
 // Every NCCL entry fails fast (issue #498). A launcher, or the one pod of a
@@ -105,7 +106,7 @@ func buildForRestartPolicy(t *testing.T, c CategoryInfo) nvcrev1alpha1.WorkflowS
 	}
 	var lastErr error
 	for _, s := range shapes {
-		selector := map[string]string{"nvidia.com/gpu.product": s.product}
+		selector := map[string]string{gpu.ProductLabel: s.product}
 		for _, nodes := range []int32{2, 1} {
 			spec, err := entry.Build(nvcrev1alpha1.TargetSpec{NodeSelector: selector}, BuildConfig{
 				NodesPerJob:     nodes,
