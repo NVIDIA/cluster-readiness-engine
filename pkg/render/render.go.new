@@ -1,0 +1,653 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+// workflow_render implements the "nvcrectl workflow render" subcommand.
+package render
+
+import (
+	"context"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
+
+	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	nvcreplatform "github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
+)
+
+//go:embed nodes/*.yaml
+var embeddedNodes embed.FS
+
+// nvcreAPIVersion is the apiVersion string used for rendered nvcre.nvidia.com
+// resources (Certification, Workflow, Job).
+const nvcreAPIVersion = "nvcre.nvidia.com/v1alpha1"
+
+// NewWorkflowCommand returns the "workflow" parent cobra command with
+// the "render" subcommand attached. This was previously newWorkflowCommand
+// in root.go.
+func NewWorkflowCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "workflow",
+		Short: "Workflow management commands",
+	}
+	cmd.AddCommand(newRenderCommand())
+	return cmd
+}
+
+// newRenderCommand configures offline workflow rendering and cluster dry-run validation.
+func newRenderCommand() *cobra.Command {
+	var platform string
+	var gpuArch string
+	var nodesFile string
+	var outputFormat string
+	var dryRun bool
+
+	configFlags := kubeconfig.NewConfigFlags(true)
+	*configFlags.Namespace = "default"
+
+	cmd := &cobra.Command{
+		Use:   "render [flags] <workflow.yaml>",
+		Short: "Render a Workflow with overrides applied (offline dry-run)",
+		Long: `Reads a Workflow YAML file, applies platform/GPU overrides,
+and prints the resolved jobTemplate and dependencies.
+
+Node context (required for override matching) can be provided in three
+mutually exclusive ways:
+
+  --platform + --gpu-arch   Generate a mock node from built-in templates.
+  --nodes-file <path>       Supply real or custom nodes from a YAML file.
+  --dry-run                 Discover real nodes from cluster and validate
+                            resolved resources via server-side dry-run.
+                            Requires cluster access (--kubeconfig).
+
+The first two modes are fully offline. --dry-run connects to a cluster
+to discover nodes and validates the resolved resources without persisting
+anything.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf(
+					"requires a workflow YAML file as argument\n\n" +
+						"Usage: nvcrectl workflow render [flags] <workflow.yaml>",
+				)
+			}
+			if err := validateFlags(dryRun, nodesFile, platform, gpuArch); err != nil {
+				return err
+			}
+			return run(args[0], platform, gpuArch, nodesFile, outputFormat,
+				configFlags, dryRun)
+		},
+	}
+
+	cmd.Flags().StringVar(&platform, "platform", "", "Target platform ("+nvcreplatform.NamesList()+")")
+	cmd.Flags().StringVar(&gpuArch, "gpu-arch", "", "Target GPU architecture (h100, h200, b200, b300, gb200, gb300, a100, l40s, l40, rtxpro6000; mock templates: h100, b200, b300, gb200, gb300, rtxpro6000)")
+	cmd.Flags().StringVar(&nodesFile, "nodes-file", "",
+		"Custom nodes YAML file (mutually exclusive with --platform/--gpu-arch)")
+	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
+		"Connect to cluster, discover real nodes, and validate via server-side dry-run")
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+// DryRunResult records the outcome of validating a single resource via server-side dry-run.
+type DryRunResult struct {
+	Resource string `json:"resource"`
+	Valid    bool   `json:"valid"`
+	Error    string `json:"error,omitempty"`
+	Warning  string `json:"warning,omitempty"`
+}
+
+// renderMetadata captures detection and override results from resolving a Workflow.
+type renderMetadata struct {
+	DetectedPlatform        string                          `json:"detectedPlatform"`
+	DetectedGPUArchitecture string                          `json:"detectedGPUArchitecture"`
+	AppliedOverrides        []nvcrev1alpha1.AppliedOverride `json:"appliedOverrides"`
+}
+
+// readWorkflow parses a Workflow YAML file from disk.
+func readWorkflow(path string) (*nvcrev1alpha1.Workflow, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
+
+	if err != nil {
+		return nil, fmt.Errorf("read workflow: %w", err)
+	}
+	var workflow nvcrev1alpha1.Workflow
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		return nil, fmt.Errorf("parse workflow: %w", err)
+	}
+	return &workflow, nil
+}
+
+// ResolveWorkflow applies overrides to a Workflow in-place and returns
+// detection metadata. The workflow's spec is mutated directly.
+func ResolveWorkflow(workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node) (*renderMetadata, error) {
+	return ResolveWorkflowForPlatform(workflow, nodes, "")
+}
+
+// ResolveWorkflowForPlatform is ResolveWorkflow with the platform forced when
+// platformName is non-empty: the dry-run paths pass --platform through here
+// so override matching and the recorded metadata honor the flag instead of
+// silently reverting to node-based detection. GPU architecture is always
+// detected from the nodes. An empty platformName detects the platform too.
+func ResolveWorkflowForPlatform(
+	workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node, platformName string,
+) (*renderMetadata, error) {
+	if platformName == "" {
+		platformName = controller.DetectPlatform(nodes)
+	}
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		DetectedPlatform:        platformName,
+		DetectedGPUArchitecture: controller.DetectGPUArchitecture(nodes),
+	}
+
+	octx := controller.BuildOverrideContext(&workflow.Spec, orch, nodes)
+
+	applied, err := controller.ApplyOverridesWithTracking(&workflow.Spec, octx)
+	if err != nil {
+		return nil, fmt.Errorf("apply overrides: %w", err)
+	}
+
+	// Placement is checked here and not earlier for the same reason the Workflow
+	// controller checks it after its own override pass: an override can
+	// introduce orchestration fields the user never wrote, so only the resolved
+	// spec is worth validating. Every render path reaches this helper, and the
+	// conflicting fields arrive before it does. Only a hand-written Workflow can
+	// carry placement: Unpinned into a render (a Certification has no placement
+	// option, see ADR-089), and without this check `workflow render` would
+	// preview an Unpinned diagnose run that the controller rejects on the first
+	// reconcile.
+	if err := controller.ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
+		return nil, err
+	}
+
+	// Ordinary offline render does not call DryRunCreate, so this resolution
+	// boundary is its only opportunity to reject overrides that leave the
+	// workload metadata or runtime scheduling inconsistent. Without this
+	// check, the command can successfully emit a Workflow whose persisted
+	// gang-scheduling intent says queue A while its resolved runtime uses
+	// queue B. Certification invokes additional transforms after this helper
+	// and validates again there; at this point its gang intent is not yet
+	// persisted, so this still provides the generic workload-label check
+	// without pre-empting those transforms.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		&workflow.Spec.JobTemplate.Spec,
+		workflow.Spec.Dependencies,
+		workflow.Spec.GangScheduler,
+		nvcreplatform.JobTemplateWorkloadLabelsPath,
+	); err != nil {
+		return nil, fmt.Errorf("validate resolved job template: %w", err)
+	}
+
+	// Clear overrides since they've been resolved.
+	workflow.Spec.Overrides = nil
+
+	return &renderMetadata{
+		DetectedPlatform:        orch.DetectedPlatform,
+		DetectedGPUArchitecture: orch.DetectedGPUArchitecture,
+		AppliedOverrides:        applied,
+	}, nil
+}
+
+// render resolves overrides and returns the full Workflow with metadata.
+func render(workflowFile, platform, gpuArch, nodesFile string) (*nvcrev1alpha1.Workflow, *renderMetadata, error) {
+	workflow, err := readWorkflow(workflowFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	nodes, err := resolveNodes(platform, gpuArch, nodesFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	workflow.TypeMeta = metav1.TypeMeta{
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Workflow",
+	}
+
+	meta, err := ResolveWorkflow(workflow, nodes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return workflow, meta, nil
+}
+
+// validateFlags checks for conflicting flag combinations.
+func validateFlags(dryRun bool, nodesFile, platform, gpuArch string) error {
+	if dryRun {
+		if nodesFile != "" || platform != "" || gpuArch != "" {
+			return fmt.Errorf(
+				"--dry-run discovers nodes from cluster; cannot combine with --nodes-file, --platform, or --gpu-arch")
+		}
+	}
+	if nodesFile != "" && (platform != "" || gpuArch != "") {
+		return fmt.Errorf("--nodes-file and --platform/--gpu-arch are mutually exclusive")
+	}
+	return nil
+}
+
+func run(workflowFile, platform, gpuArch, nodesFile, outputFormat string,
+	configFlags *kubeconfig.ConfigFlags, dryRun bool) error {
+
+	var workflow *nvcrev1alpha1.Workflow
+	var meta *renderMetadata
+	var dryRunResults []DryRunResult
+	var err error
+
+	if dryRun {
+		workflow, meta, dryRunResults, err = renderDryRun(workflowFile, configFlags)
+	} else {
+		workflow, meta, err = render(workflowFile, platform, gpuArch, nodesFile)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Store render metadata as annotations.
+	SetRenderAnnotations(workflow, meta)
+
+	switch outputFormat {
+	case "json":
+		data, err := json.MarshalIndent(workflow, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal json: %w", err)
+		}
+		fmt.Println(string(data))
+	default:
+		data, err := yaml.Marshal(workflow)
+		if err != nil {
+			return fmt.Errorf("marshal yaml: %w", err)
+		}
+		fmt.Print(string(data))
+	}
+
+	if len(dryRunResults) > 0 {
+		PrintDryRunSummary("Dry-run validation: "+workflow.Name, dryRunResults)
+	}
+
+	return nil
+}
+
+// SetRenderAnnotations stores detection metadata as annotations on the Workflow.
+func SetRenderAnnotations(workflow *nvcrev1alpha1.Workflow, meta *renderMetadata) {
+	if workflow.Annotations == nil {
+		workflow.Annotations = map[string]string{}
+	}
+	workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
+	workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
+	if len(meta.AppliedOverrides) > 0 {
+		overridesJSON, _ := json.Marshal(meta.AppliedOverrides)
+		workflow.Annotations["nvcrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
+	}
+}
+
+// renderDryRun connects to a cluster, discovers real nodes, applies overrides,
+// and validates the resolved resources via server-side dry-run.
+func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
+	*nvcrev1alpha1.Workflow, *renderMetadata, []DryRunResult, error) {
+
+	workflow, err := readWorkflow(workflowFile)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	c, err := NewK8sClient(configFlags)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build kubernetes client: %w", err)
+	}
+
+	ctx := context.Background()
+	nodes, synthesizedProducts, err := controller.DiscoverTargetNodesWithSynthesized(
+		ctx, c, workflow.Spec.Orchestration.Target)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("discover nodes: %w", err)
+	}
+
+	workflow.TypeMeta = metav1.TypeMeta{
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Workflow",
+	}
+
+	meta, err := ResolveWorkflow(workflow, nodes)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	results, err := DryRunCreate(ctx, c, *configFlags.Namespace, &workflow.Spec, nodes, synthesizedProducts)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return workflow, meta, results, nil
+}
+
+// NewK8sClient builds a controller-runtime client from the resolved ConfigFlags
+// (kubeconfig, context, and every other kubectl-standard connection/auth flag).
+func NewK8sClient(cf *kubeconfig.ConfigFlags) (client.Client, error) {
+	restConfig, err := cf.ToRESTConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig: %w", err)
+	}
+
+	s := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(s)
+	_ = nvcrev1alpha1.AddToScheme(s)
+	_ = trainerv1alpha1.AddToScheme(s)
+
+	return client.New(restConfig, client.Options{Scheme: s})
+}
+
+// NewK8sWatchClient builds a watch-capable controller-runtime client from the
+// resolved ConfigFlags.
+func NewK8sWatchClient(cf *kubeconfig.ConfigFlags) (client.WithWatch, error) {
+	restConfig, err := cf.ToRESTConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig: %w", err)
+	}
+
+	s := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(s)
+	_ = nvcrev1alpha1.AddToScheme(s)
+	_ = trainerv1alpha1.AddToScheme(s)
+
+	return client.NewWithWatch(restConfig, client.Options{Scheme: s})
+}
+
+// DryRunCreate validates the resolved Job, workload, and dependencies
+// via server-side dry-run without persisting anything.
+//
+// Validation order: Dependencies → Job → Workload. Dependencies are validated
+// first so that we can detect when a workload failure is caused by a missing
+// dependency that would be created at runtime (e.g. a TrainingRuntime referenced
+// by a TrainJob). Such failures are reported as warnings rather than errors.
+//
+// synthesizedProducts comes from the same discovery call that produced nodes
+// (controller.DiscoverTargetNodesWithSynthesized). It names the nodes whose
+// nvidia.com/gpu.product label was filled in from gpu.nvidia.com ResourceSlices
+// rather than read off the stored Node, which the affinity build below has to
+// know about. Pass nil when the caller has no such list; the only cost is that a
+// DRA-only fleet previews a term the reconcile will not emit.
+func DryRunCreate(ctx context.Context, c client.Client, namespace string,
+	spec *nvcrev1alpha1.WorkflowSpec, nodes []corev1.Node, synthesizedProducts []string) ([]DryRunResult, error) {
+
+	var results []DryRunResult
+
+	// Build a Job from the template.
+	specCopy := spec.JobTemplate.Spec.DeepCopy()
+
+	// Check the resolved spec against its persisted gang-scheduling intent
+	// before any API request, so a conflicting override is reported as the
+	// conflict it is rather than as whatever the API server makes of
+	// inconsistent manifests. Operates on the copy, like every other
+	// mutation here.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		specCopy, spec.Dependencies, spec.GangScheduler,
+		nvcreplatform.JobTemplateWorkloadLabelsPath); err != nil {
+		return nil, err
+	}
+
+	// Get the workload adapter.
+	adapter, err := workload.ForSpec(&specCopy.Workload)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workload type: %w", err)
+	}
+
+	// Set node affinity using the first N nodes (simulating group-0).
+	nodesRequired, err := adapter.NodesRequired(&specCopy.Workload)
+	if err != nil {
+		return nil, fmt.Errorf("determine nodes required: %w", err)
+	}
+	placement := spec.Orchestration.Placement
+	// Under Unpinned no group is formed and the scheduler picks the hosts, so
+	// there is no first-N slice to simulate. The dry-run must mirror that, or it
+	// would validate a pinned Job the controller will never create.
+	var nodeNames []string
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		groupNodes := nodes
+		if len(groupNodes) > nodesRequired {
+			groupNodes = groupNodes[:nodesRequired]
+		}
+		nodeNames = make([]string, len(groupNodes))
+		for i, n := range groupNodes {
+			nodeNames[i] = n.Name
+		}
+	}
+	// render has no OrchestrationStatus to read the recorded GPU products from,
+	// so they come from the nodes it just discovered. That is the same set the
+	// controller records at partition time. synthesizedProducts names the nodes
+	// whose gpu.product label was filled in from ResourceSlices rather than read
+	// off the Node; a term built from one of those matches nothing on a real API
+	// server, so the preview must refuse exactly where the reconcile would.
+	gpuProducts, ok := controller.GPUProductsForRender(placement, nodes, synthesizedProducts)
+	if !ok {
+		return nil, fmt.Errorf("%s",
+			controller.SynthesizedProductsMessage(synthesizedProducts, controller.ArchExcludedForRender(nodes)))
+	}
+	if affinity := controller.BuildNodeAffinity(
+		controller.PinnedHostnames(placement, nodeNames, spec.Orchestration.Target),
+		spec.Orchestration.Target,
+		gpuProducts,
+	); affinity != nil {
+		adapter.SetNodeAffinity(&specCopy.Workload, affinity)
+	}
+
+	// Tolerations. Pinned keeps the blanket Exists it has always had, which is
+	// safe there only because the job lands on hosts NVCRE chose. With that pin
+	// gone it would let the job onto any tainted node with free GPUs, so Unpinned
+	// narrows instead: an explicit target.taintSelectors if there is one, else the
+	// named GPU taints (ADR-089).
+	//
+	// Pinned is short-circuited ahead of controller.JobTolerations rather than run
+	// through it, so this path stays byte-identical to what render has always
+	// emitted. It is already broader than the controller there, which gates the
+	// blanket on HasLauncherTarget and lets target.taintSelectors win; narrowing
+	// render to match is a real change to Pinned previews and does not belong in
+	// this one.
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		adapter.SetTolerations(&specCopy.Workload, []corev1.Toleration{{
+			Operator: corev1.TolerationOpExists,
+		}})
+	} else if tolerations, apply := controller.JobTolerations(
+		spec.Orchestration.Target, true, workload.HasLauncherTarget(&specCopy.Workload),
+	); apply {
+		adapter.SetTolerations(&specCopy.Workload, tolerations)
+	}
+
+	// When taintSelectors targets the unschedulable taint, clear NodeHealthMonitor
+	// so the dry-run validates the same Job the controller actually creates.
+	if controller.TargetsCordonedNodes(spec.Orchestration.Target) {
+		specCopy.NodeHealthMonitor = nil
+	} else if specCopy.NodeHealthMonitor == nil {
+		specCopy.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
+			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
+				Expression: `node.spec.unschedulable == true`,
+			},
+		}
+	}
+
+	// --- 1. Validate dependencies first ---
+	var depNames []string
+	for i, dep := range spec.Dependencies {
+		depObj := &unstructured.Unstructured{}
+		if err := json.Unmarshal(dep.Raw, &depObj.Object); err != nil {
+			results = append(results, DryRunResult{
+				Resource: fmt.Sprintf("Dependency/%d", i),
+				Valid:    false,
+				Error:    fmt.Sprintf("unmarshal dependency: %v", err),
+			})
+			continue
+		}
+
+		if depObj.GetNamespace() == "" {
+			depObj.SetNamespace(namespace)
+		}
+
+		resourceName := fmt.Sprintf("%s/%s", depObj.GetKind(), depObj.GetName())
+		depResult := DryRunResult{Resource: resourceName, Valid: true}
+		if err := c.Create(ctx, depObj, client.DryRunAll); err != nil {
+			depResult.Valid = false
+			depResult.Error = err.Error()
+		} else {
+			depNames = append(depNames, depObj.GetName())
+		}
+		results = append(results, depResult)
+	}
+
+	// --- 2. Validate Job ---
+	job := &nvcrev1alpha1.Job{
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Job",
+		Name:       "dry-run-job",
+		Namespace:  namespace,
+		Spec:       *specCopy,
+	}
+
+	jobResult := DryRunResult{Resource: "Job/dry-run-job", Valid: true}
+	if err := c.Create(ctx, job, client.DryRunAll); err != nil {
+		jobResult.Valid = false
+		jobResult.Error = err.Error()
+	}
+	results = append(results, jobResult)
+
+	// --- 3. Validate workload ---
+	wlObj, err := workload.BuildObject(
+		adapter, "dry-run-workload", namespace, &specCopy.Workload, specCopy.WorkloadMetadata)
+	if err != nil {
+		results = append(results, DryRunResult{
+			Resource: fmt.Sprintf("%s/dry-run-workload", adapter.GVK().Kind),
+			Valid:    false,
+			Error:    err.Error(),
+		})
+	} else {
+		wlResult := DryRunResult{
+			Resource: fmt.Sprintf("%s/dry-run-workload", adapter.GVK().Kind),
+			Valid:    true,
+		}
+		if err := c.Create(ctx, wlObj, client.DryRunAll); err != nil {
+			errMsg := err.Error()
+			if isDependencyNotFoundError(errMsg, depNames) {
+				wlResult.Valid = true
+				wlResult.Warning = "references dependency created at runtime: " + errMsg
+			} else {
+				wlResult.Valid = false
+				wlResult.Error = errMsg
+			}
+		}
+		results = append(results, wlResult)
+	}
+
+	return results, nil
+}
+
+// isDependencyNotFoundError returns true if the error message indicates a
+// "not found" failure that references one of the known dependency names.
+// This detects cases where a workload (e.g. TrainJob) fails because its
+// dependency (e.g. TrainingRuntime) hasn't been created yet — which is
+// expected in dry-run mode since dependencies would be created at runtime.
+func isDependencyNotFoundError(errMsg string, depNames []string) bool {
+	if !strings.Contains(strings.ToLower(errMsg), "not found") {
+		return false
+	}
+	for _, name := range depNames {
+		if strings.Contains(errMsg, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// PrintDryRunSummary writes a human-readable summary table to stderr.
+// Output goes to stderr so that YAML on stdout remains pipeable.
+func PrintDryRunSummary(header string, results []DryRunResult) {
+	w := tabwriter.NewWriter(os.Stderr, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintf(w, "\n%s\n", header)
+	_, _ = fmt.Fprintln(w, "RESOURCE\tSTATUS\tMESSAGE")
+	for _, r := range results {
+		switch {
+		case !r.Valid:
+			_, _ = fmt.Fprintf(w, "%s\tINVALID\t%s\n", r.Resource, r.Error)
+		case r.Warning != "":
+			_, _ = fmt.Fprintf(w, "%s\tWARN\t%s\n", r.Resource, r.Warning)
+		default:
+			_, _ = fmt.Fprintf(w, "%s\tOK\t\n", r.Resource)
+		}
+	}
+	_ = w.Flush()
+}
+
+func resolveNodes(platform, gpuArch, nodesFile string) ([]corev1.Node, error) {
+	// Priority 1: custom nodes file
+	if nodesFile != "" {
+		return loadNodesFromFile(nodesFile)
+	}
+
+	// Priority 2: embedded mock node from --platform + --gpu-arch
+	if platform != "" && gpuArch != "" {
+		return LoadEmbeddedNodes(platform, gpuArch)
+	}
+
+	// No flags: list available combos
+	return nil, fmt.Errorf("specify --nodes-file <path> or --platform + --gpu-arch\navailable: %s",
+		strings.Join(listAvailable(), ", "))
+}
+
+func loadNodesFromFile(path string) ([]corev1.Node, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
+
+	if err != nil {
+		return nil, fmt.Errorf("read nodes file: %w", err)
+	}
+	var nodes []corev1.Node
+	if err := yaml.Unmarshal(data, &nodes); err != nil {
+		return nil, fmt.Errorf("parse nodes file: %w", err)
+	}
+	return nodes, nil
+}
+
+// LoadEmbeddedNodes loads a mock node from the embedded YAML templates for the
+// given platform and GPU architecture combination.
+func LoadEmbeddedNodes(platform, gpuArch string) ([]corev1.Node, error) {
+	filename := fmt.Sprintf("nodes/%s-%s.yaml", platform, gpuArch)
+	data, err := embeddedNodes.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("no mock nodes for %s-%s\navailable: %s",
+			platform, gpuArch, strings.Join(listAvailable(), ", "))
+	}
+	var node corev1.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, fmt.Errorf("parse embedded node template: %w", err)
+	}
+	if node.Name == "" {
+		node.Name = "mock-node-0"
+	}
+	return []corev1.Node{node}, nil
+}
+
+func listAvailable() []string {
+	entries, _ := embeddedNodes.ReadDir("nodes")
+	available := make([]string, 0, len(entries))
+	for _, e := range entries {
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		available = append(available, name)
+	}
+	return available
+}
