@@ -1,0 +1,24 @@
+{
+  "ncclEnv": {
+    "NCCL_DEBUG": "INFO",
+    "NCCL_IB_DISABLE": "1",
+    "NCCL_NET_PLUGIN": "none",
+    "NCCL_SOCKET_IFNAME": "eth0"
+  },
+  "gpuRequests": "1",
+  "gpuLimits": "1",
+  "extendedResources": {},
+  "executable": "/usr/local/bin/all_gather_perf_mpi",
+  "perfArgs": [
+    "-b",
+    "8",
+    "-e",
+    "1G",
+    "-f",
+    "2",
+    "-n",
+    "20",
+    "-N",
+    "1"
+  ]
+}
