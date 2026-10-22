@@ -154,7 +154,7 @@ exit 1`, log, store, realHelm, crdFile))
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
 			cmd.SilenceUsage, cmd.SilenceErrors = true, true
-			args := []string{"--kubeconfig", kubeconfigPath, "--skip-phases=deps", "--auto-approve"}
+			args := []string{"--kubeconfig", kubeconfigPath, flagSkipDeps, "--auto-approve"}
 			for _, arg := range run.Args {
 				// {case} names the case directory, for values files kept beside
 				// input.yaml.

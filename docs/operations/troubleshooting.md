@@ -46,7 +46,7 @@ transitions may no longer be present.
 
 **Symptoms:** `nvcrectl setup init` exits non-zero with `the NVCRE controller is crash-looping`, and `nvcrectl setup status` reports `nvcreController` missing.
 
-**Diagnosis:** the error names the controller pod, its restart count and its last exit reason. `OOMKilled` (exit code 137) means the controller ran out of memory, usually during its initial cache sync. The controller caches every Pod in the cluster, so a cluster with many Pods needs more than the 1Gi default. For any other reason, read the last run's log:
+**Diagnosis:** the error names the controller pod, its restart count and its last exit reason. `OOMKilled` (exit code 137) means the controller ran out of memory, usually during its initial cache sync. The controller's memory grows with the size of the cluster, so a large cluster can need more than the 1Gi default; see [Resource requirements](./deployment.md#resource-requirements). For any other reason, read the last run's log:
 
 ```bash
 kubectl -n nvcre logs <pod> -c manager --previous

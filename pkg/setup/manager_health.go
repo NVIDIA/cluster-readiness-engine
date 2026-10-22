@@ -97,42 +97,61 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 // failure by itself: a controller that restarted once days ago is healthy.
 // Only a restart seen during the check counts, and a pod that restarted
 // shortly before the check must still stay up for stableFor afterwards.
+//
+// A failed read is a poll that did not land, not a failure: Helm has already
+// installed the release, and client-go does not retry every transient API
+// error. The check fails on reads only when they are still failing at the
+// deadline.
 func (m managerStability) verify(ctx context.Context) error {
 	deadline := m.now().Add(m.timeout)
 	baseline := map[types.UID]int32{}
+	var pods []corev1.Pod
+	var readErr error
 	for {
-		pods, err := listManagerPods(ctx, m.c, m.readTimeout)
-		if err != nil {
-			return err
-		}
-		for i := range pods {
-			pod := &pods[i]
-			cs := managerContainerStatus(pod)
-			if cs == nil {
-				continue
+		pods, readErr = listManagerPods(ctx, m.c, m.readTimeout)
+		if readErr == nil {
+			if err := m.checkPods(pods, baseline); err != nil {
+				return err
 			}
-			before, seen := baseline[pod.UID]
-			if !seen {
-				baseline[pod.UID] = cs.RestartCount
-			}
-			// The kubelet reports an exited container as terminated for a few
-			// seconds before it restarts it; the controller never exits on its
-			// own, so that is already a crash.
-			if (seen && cs.RestartCount > before) || isCrashLoopBackOff(cs) || cs.State.Terminated != nil {
-				return managerCrashError(pod, cs)
+			if managerPodsStable(pods, m.now(), m.stableFor) {
+				return nil
 			}
 		}
 		now := m.now()
-		if managerPodsStable(pods, now, m.stableFor) {
-			return nil
-		}
 		if !now.Before(deadline) {
-			return managerNotStableError(pods, m.stableFor, m.timeout)
+			if readErr != nil {
+				return fmt.Errorf("could not confirm the NVCRE controller stays up within %s: %w", m.timeout, readErr)
+			}
+			return managerNotStableError(pods, now, m.stableFor, m.timeout)
 		}
 		if err := m.sleep(ctx, m.interval); err != nil {
 			return fmt.Errorf("waiting for the NVCRE controller: %w", err)
 		}
 	}
+}
+
+// checkPods returns a crash error for the first controller pod whose manager
+// container restarted since the check first saw it, sits in CrashLoopBackOff,
+// or has exited. baseline holds each pod's restart count when first seen.
+func (m managerStability) checkPods(pods []corev1.Pod, baseline map[types.UID]int32) error {
+	for i := range pods {
+		pod := &pods[i]
+		cs := managerContainerStatus(pod)
+		if cs == nil {
+			continue
+		}
+		before, seen := baseline[pod.UID]
+		if !seen {
+			baseline[pod.UID] = cs.RestartCount
+		}
+		// The kubelet reports an exited container as terminated for a few
+		// seconds before it restarts it; the controller never exits on its
+		// own, so that is already a crash.
+		if (seen && cs.RestartCount > before) || isCrashLoopBackOff(cs) || cs.State.Terminated != nil {
+			return managerCrashError(pod, cs)
+		}
+	}
+	return nil
 }
 
 // diagnoseManagerCrash reads the controller pods once, within readTimeout, and
@@ -172,8 +191,9 @@ func latestTermination(cs *corev1.ContainerStatus) *corev1.ContainerStateTermina
 }
 
 // listManagerPods returns the NVCRE release's controller pods that are not
-// being deleted, read within readTimeout. A rollout leaves the previous pod
-// terminating for a while; it is not the controller the release now runs.
+// being deleted and are not in a terminal phase, read within readTimeout. A
+// rollout leaves the previous pod terminating for a while, and an eviction
+// leaves a Failed pod behind; neither is the controller the release now runs.
 func listManagerPods(ctx context.Context, c client.Reader, readTimeout time.Duration) ([]corev1.Pod, error) {
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
@@ -186,9 +206,16 @@ func listManagerPods(ctx context.Context, c client.Reader, readTimeout time.Dura
 	}
 	pods := make([]corev1.Pod, 0, len(list.Items))
 	for i := range list.Items {
-		if list.Items[i].DeletionTimestamp.IsZero() {
-			pods = append(pods, list.Items[i])
+		if !list.Items[i].DeletionTimestamp.IsZero() {
+			continue
 		}
+		// A pod in a terminal phase, such as one the kubelet evicted, is
+		// not the controller the release runs: the ReplicaSet has replaced
+		// it, and nothing deletes it for a long time.
+		if phase := list.Items[i].Status.Phase; phase == corev1.PodSucceeded || phase == corev1.PodFailed {
+			continue
+		}
+		pods = append(pods, list.Items[i])
 	}
 	return pods, nil
 }
@@ -230,12 +257,6 @@ func managerPodsStable(pods []corev1.Pod, now time.Time, stableFor time.Duration
 		}
 	}
 	return true
-}
-
-// podReady reports whether the pod is Ready now, by the rule podReadySince applies.
-func podReady(pod *corev1.Pod) bool {
-	_, ready := podReadySince(pod)
-	return ready
 }
 
 // podReadySince returns when the pod last turned Ready and whether it is
@@ -291,7 +312,8 @@ func oomHint(pod *corev1.Pod) string {
 		return "It ran out of memory. Give it a memory request and limit that fit this cluster, for example:\n" +
 			"  nvcrectl setup init --set manager.resources.requests.memory=2Gi --set manager.resources.limits.memory=4Gi"
 	}
-	doubled := resource.NewQuantity(limit.Value()*2, resource.BinarySI)
+	// Keep the limit's own format: 1Gi becomes 2Gi and 1G becomes 2G.
+	doubled := resource.NewQuantity(limit.Value()*2, limit.Format)
 	return fmt.Sprintf("It ran out of memory at its %s limit. The controller's memory grows with the cluster's size; "+
 		"raise the limit, for example:\n  nvcrectl setup init --set manager.resources.limits.memory=%s",
 		limit.String(), doubled.String())
@@ -306,8 +328,10 @@ func terminationReason(t *corev1.ContainerStateTerminated) string {
 }
 
 // managerNotStableError explains why the controller pods did not settle in
-// time: missing, not Ready, or Ready for less than stableFor.
-func managerNotStableError(pods []corev1.Pod, stableFor, timeout time.Duration) error {
+// time: missing, without a container status, waiting, not Ready, or Ready for
+// less than stableFor, as after a readiness flap. An exited container never
+// reaches it: verify reports that as a crash first.
+func managerNotStableError(pods []corev1.Pod, now time.Time, stableFor, timeout time.Duration) error {
 	if len(pods) == 0 {
 		return fmt.Errorf("no NVCRE controller pod appeared in namespace %s within %s", nvcreNamespace, timeout)
 	}
@@ -316,15 +340,14 @@ func managerNotStableError(pods []corev1.Pod, stableFor, timeout time.Duration) 
 		pod := &pods[i]
 		state := "no container status"
 		if cs := managerContainerStatus(pod); cs != nil {
+			readySince, ready := podReadySince(pod)
 			switch {
 			case cs.State.Waiting != nil:
 				state = "waiting: " + cs.State.Waiting.Reason
-			case cs.State.Terminated != nil:
-				state = "terminated: " + terminationReason(cs.State.Terminated)
-			case !cs.Ready || !podReady(pod):
+			case !cs.Ready || !ready:
 				state = "running, not Ready"
 			default:
-				state = "Ready"
+				state = fmt.Sprintf("Ready for %s, needs %s", now.Sub(readySince).Round(time.Second), stableFor)
 			}
 		}
 		states = append(states, fmt.Sprintf("%s (%s)", pod.Name, state))

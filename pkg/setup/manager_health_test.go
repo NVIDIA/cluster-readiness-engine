@@ -24,6 +24,9 @@ import (
 // testManagerPod names the controller pod most cases use.
 const testManagerPod = "nvcre-manager-a"
 
+// testOldManagerPod names a pod a rollout or an eviction left behind.
+const testOldManagerPod = "nvcre-manager-old"
+
 // testLimit is the memory limit the newer cases give the controller.
 const testLimit = "1Gi"
 
@@ -58,6 +61,11 @@ type managerPod struct {
 	terminating bool
 	// instance is the pod's app.kubernetes.io/instance; empty means nvcre.
 	instance string
+	// phase sets the pod phase, such as Failed for an evicted pod; empty
+	// leaves it unset. noStatus drops the container statuses, as before the
+	// kubelet reports any.
+	phase    corev1.PodPhase
+	noStatus bool
 }
 
 func (p managerPod) build() corev1.Pod {
@@ -106,6 +114,10 @@ func (p managerPod) build() corev1.Pod {
 		cs.LastTerminationState.Terminated = &corev1.ContainerStateTerminated{Reason: p.lastReason, ExitCode: p.lastExit}
 	}
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{cs}
+	if p.noStatus {
+		pod.Status.ContainerStatuses = nil
+	}
+	pod.Status.Phase = p.phase
 	return pod
 }
 
@@ -225,7 +237,7 @@ func TestManagerStabilityVerify(t *testing.T) {
 		{
 			name: "the terminating pod of the previous rollout is ignored",
 			polls: [][]managerPod{{
-				{name: "nvcre-manager-old", waiting: reasonCrashLoopBackOff, restarts: 9, terminating: true},
+				{name: testOldManagerPod, waiting: reasonCrashLoopBackOff, restarts: 9, terminating: true},
 				stable,
 			}},
 			wantLists: 1,
@@ -290,6 +302,62 @@ func TestManagerStabilityVerify(t *testing.T) {
 			wantErr:   "no NVCRE controller pod appeared in namespace nvcre within 3m0s",
 			wantLists: 91,
 		},
+		{
+			name: "a leftover evicted pod with an exited container does not fail a healthy controller",
+			polls: [][]managerPod{{
+				{name: testOldManagerPod, phase: corev1.PodFailed, exitReason: "ContainerStatusUnknown", exitCode: 137},
+				stable,
+			}},
+			wantLists: 1,
+		},
+		{
+			name: "a leftover evicted pod without container statuses is ignored",
+			polls: [][]managerPod{{
+				{name: testOldManagerPod, phase: corev1.PodFailed, noStatus: true},
+				stable,
+			}},
+			wantLists: 1,
+		},
+		{
+			name: "a readiness flap with no restart times out saying how long the pod has been Ready",
+			// It turned Ready again 176s into the check, so the last read sees 4s.
+			polls: [][]managerPod{{{name: testManagerPod, ready: true, startedAgo: time.Hour,
+				readyAgo: -176 * time.Second}}},
+			wantErr: "the NVCRE controller did not stay Ready for 1m0s within 3m0s: " +
+				"nvcre-manager-a (Ready for 4s, needs 1m0s)",
+			wantLists: 91,
+		},
+		{
+			name:      "a pod still being created times out with its waiting reason",
+			polls:     [][]managerPod{{{name: testManagerPod, waiting: "ContainerCreating"}}},
+			wantErr:   "nvcre-manager-a (waiting: ContainerCreating)",
+			wantLists: 91,
+		},
+		{
+			name:      "a pod the kubelet has not reported on times out saying so",
+			polls:     [][]managerPod{{{name: testManagerPod, noStatus: true}}},
+			wantErr:   "nvcre-manager-a (no container status)",
+			wantLists: 91,
+		},
+		{
+			name: "a decimal memory limit is doubled in decimal units",
+			polls: [][]managerPod{
+				{{name: testManagerPod, ready: true, startedAgo: 5 * time.Second, limit: "1G"}},
+				{{name: testManagerPod, startedAgo: time.Second, restarts: 1, lastReason: reasonOOMKilled, lastExit: 137, limit: "1G"}},
+			},
+			wantErr: "It ran out of memory at its 1G limit. The controller's memory grows with the cluster's size; " +
+				"raise the limit, for example:\n  nvcrectl setup init --set manager.resources.limits.memory=2G",
+			wantLists: 2,
+		},
+		{
+			name: "a 500M limit is doubled to 1G",
+			polls: [][]managerPod{
+				{{name: testManagerPod, ready: true, startedAgo: 5 * time.Second, limit: "500M"}},
+				{{name: testManagerPod, startedAgo: time.Second, restarts: 1, lastReason: reasonOOMKilled, lastExit: 137, limit: "500M"}},
+			},
+			wantErr:   "--set manager.resources.limits.memory=1G",
+			wantLists: 2,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -304,6 +372,41 @@ func TestManagerStabilityVerify(t *testing.T) {
 			assert.Equal(t, tt.wantLists, lists)
 		})
 	}
+}
+
+// flakyClient answers like pollingClient, except that the Lists whose
+// zero-based index fail returns true return an error instead.
+func flakyClient(t *testing.T, polls [][]managerPod, lists *int, fail func(int) bool) client.Client {
+	t.Helper()
+	inner := pollingClient(t, polls, lists)
+	return fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(ctx context.Context, _ client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if fail(*lists) {
+				*lists++
+				return errors.New("etcdserver: request timed out")
+			}
+			return inner.List(ctx, list, opts...)
+		},
+	}).Build()
+}
+
+// TestManagerStabilityVerifyRetriesFailedReads pins that a failed read is a
+// missed poll: the check goes on, and fails on reads only when they are still
+// failing at the deadline.
+func TestManagerStabilityVerifyRetriesFailedReads(t *testing.T) {
+	newPod := [][]managerPod{{{name: testManagerPod, ready: true, startedAgo: 10 * time.Second}}}
+
+	lists := 0
+	err := fakeStability(flakyClient(t, newPod, &lists, func(n int) bool { return n == 1 })).verify(context.Background())
+	require.NoError(t, err, "one failed read in the middle of the check")
+	assert.Equal(t, 26, lists)
+
+	lists = 0
+	err = fakeStability(flakyClient(t, newPod, &lists, func(int) bool { return true })).verify(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "could not confirm the NVCRE controller stays up within 3m0s: "+
+		"list NVCRE controller pods: etcdserver: request timed out")
+	assert.Equal(t, 91, lists)
 }
 
 func TestManagerStabilityVerifyStopsOnCancel(t *testing.T) {
