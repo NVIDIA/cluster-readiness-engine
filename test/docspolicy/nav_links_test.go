@@ -33,9 +33,15 @@ const (
 // than skipped.
 var inlineLink = regexp.MustCompile(`\]\(\s*(<[^>\n]*>|[^)\s]+)`)
 
-// htmlLink captures the href of a raw HTML anchor, which Fern renders as a link
-// like any other.
-var htmlLink = regexp.MustCompile(`(?i)<a\s[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+// imageStart matches the `![alt](` that opens a Markdown image, so the
+// destination inlineLink captures after it can be told apart from a link's.
+var imageStart = regexp.MustCompile(`!\[[^\]]*\]\(`)
+
+// htmlAttr matches an HTML anchor's href or image's src, quoted either way or
+// unquoted, as Fern renders all three. Group 1 is the tag name; one of groups
+// 2 to 4 holds the value.
+var htmlAttr = regexp.MustCompile(
+	`(?i)<(a|img)\s[^>]*?\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'\x60=<]+))`)
 
 // refDefinition matches a reference-style link definition: `[label]: target`.
 var refDefinition = regexp.MustCompile(`(?m)^ {0,3}\[[^\]]+\]:\s+(\S+)`)
@@ -82,7 +88,10 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		"getting-started/install.md":  true,
 		"concepts/platform-detect.md": true,
 	}
-	exists := func(p string) bool { return p == "docs/designs/092-rbac.md" || p == "config/samples/policy" }
+	exists := func(p string) bool {
+		return p == "docs/designs/092-rbac.md" || p == "config/samples/policy" ||
+			p == "docs/cli-reference/img/arch.png" || p == "docs/README.md"
+	}
 
 	cases := []struct {
 		name   string
@@ -93,7 +102,12 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "relative link to an ADR in a reference definition", body: "[adr]: ../designs/092-rbac.md", broken: 1},
 		{name: "relative link to a page not in the nav", body: "[x](./not-in-nav.md)", broken: 1},
 		{name: "relative link that leaves docs/", body: "[readme](../../README.md)", broken: 1},
-		{name: "relative link to a non-page file", body: "![diagram](./diagram.png)", broken: 1},
+		{name: "image that does not exist", body: "![diagram](./diagram.png)", broken: 1},
+		{name: "image that leaves docs/", body: "![readme](../../README.md)", broken: 1},
+		{name: "link, not image, to an existing file", body: "[arch](./img/arch.png)", broken: 1},
+		{name: "broken link in an unquoted HTML anchor", body: `<a href=../designs/x.md>ADR</a>`, broken: 1},
+		{name: "HTML image that does not exist", body: `<img src=../designs/x.png alt=x>`, broken: 1},
+		{name: "quoted HTML image that does not exist", body: `<IMG alt="x" SRC="./missing.png">`, broken: 1},
 		{
 			name:   "GitHub link to a file that does not exist",
 			body:   "[ADR](" + repoURL + "blob/main/docs/designs/999-nope.md)",
@@ -121,6 +135,11 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "relative link to a nav page with a title", body: `[deploy](../operations/deployment.md "Deployment")`},
 		{name: "anchor on the same page", body: "[below](#flags)"},
 		{name: "external link", body: "[k8s](https://kubernetes.io/docs/)"},
+		{name: "image that exists under docs/", body: "![arch](./img/arch.png)"},
+		{name: "image with a title that exists under docs/", body: `![arch]( ./img/arch.png "Arch")`},
+		{name: "linked image to a nav page", body: "[![arch](./img/arch.png)](../operations/deployment.md)"},
+		{name: "HTML image that exists under docs/", body: `<img src="img/arch.png">`},
+		{name: "unquoted HTML anchor to a nav page", body: `<a href=../operations/deployment.md>deploy</a>`},
 		{name: "HTML anchor to a nav page", body: `<a href="../operations/deployment.md#rbac">deploy</a>`},
 		{name: "HTML anchor inside inline code", body: "`<a href=\"../designs/x.md\">`"},
 		{name: "link inside inline code", body: "pattern `[a](../designs/x.md)` is literal"},
@@ -183,29 +202,42 @@ func navPages(t *testing.T) map[string]bool {
 }
 
 // brokenLinks returns a description of each link on page that the published
-// site cannot follow. page is relative to docs/; nav holds the published
-// pages in the same form; exists reports whether a repository-relative path
-// is in the tree.
+// site cannot follow. A relative link must name a page in the nav. A relative
+// image must name a file under docs/, which Fern uploads with the page. page
+// is relative to docs/; nav holds the published pages in the same form; exists
+// reports whether a repository-relative path is in the tree.
 func brokenLinks(page, body string, nav map[string]bool, exists func(string) bool) []string {
 	prose := stripCode(body)
 
-	inline := inlineLink.FindAllStringSubmatch(prose, -1)
+	type ref struct {
+		target string
+		image  bool
+	}
+
+	// Index the `](` that closes each image's alt text, which is where
+	// inlineLink's match for that image begins.
+	images := map[int]bool{}
+	for _, loc := range imageStart.FindAllStringIndex(prose, -1) {
+		images[loc[1]-2] = true
+	}
+
+	inline := inlineLink.FindAllStringSubmatchIndex(prose, -1)
 	refs := refDefinition.FindAllStringSubmatch(prose, -1)
-	anchors := htmlLink.FindAllStringSubmatch(prose, -1)
-	targets := make([]string, 0, len(inline)+len(refs)+len(anchors))
-	for _, m := range inline {
-		targets = append(targets, m[1])
+	attrs := htmlAttr.FindAllStringSubmatch(prose, -1)
+	targets := make([]ref, 0, len(inline)+len(refs)+len(attrs))
+	for _, loc := range inline {
+		targets = append(targets, ref{prose[loc[2]:loc[3]], images[loc[0]]})
 	}
 	for _, m := range refs {
-		targets = append(targets, m[1])
+		targets = append(targets, ref{target: m[1]})
 	}
-	for _, m := range anchors {
-		targets = append(targets, m[1]+m[2])
+	for _, m := range attrs {
+		targets = append(targets, ref{m[2] + m[3] + m[4], strings.EqualFold(m[1], "img")})
 	}
 
 	var out []string
-	for _, target := range targets {
-		target = strings.TrimSuffix(strings.TrimPrefix(target, "<"), ">")
+	for _, r := range targets {
+		target := strings.TrimSuffix(strings.TrimPrefix(r.target, "<"), ">")
 
 		if m := repoLink.FindStringSubmatch(target); m != nil {
 			if !exists(strings.TrimSuffix(m[1], "/")) {
@@ -220,6 +252,12 @@ func brokenLinks(page, body string, nav map[string]bool, exists func(string) boo
 
 		file, _, _ := strings.Cut(target, "#")
 		resolved := path.Clean(path.Join(path.Dir(page), file))
+		if r.image {
+			if strings.HasPrefix(resolved, "../") || !exists("docs/"+resolved) {
+				out = append(out, target+" is not a file under docs/; Fern cannot upload it")
+			}
+			continue
+		}
 		if !nav[resolved] {
 			out = append(out, target+" is not a page in docs/"+navFile+
 				"; Fern renders it as Page Not Found. Link a page that is not published, "+
