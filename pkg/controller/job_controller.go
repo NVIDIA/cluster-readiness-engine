@@ -1660,6 +1660,13 @@ const (
 // current workload was created after it, and the old pods before the old
 // workload was deleted, at least the restart grace period earlier. A workload
 // that is already gone leaves nothing to compare against, so its pods are kept.
+//
+// A pod carrying the DisruptionTarget condition is left out as well. The
+// launcher Job's podFailurePolicy (launcherPodFailurePolicy in pkg/platform)
+// ignores such a failure and replaces the pod without counting it, so an
+// evicted or preempted launcher did not decide the run, and recording it would
+// keep it as the failure cause if the replacement later failed: neither
+// launcherFailureLog nor setJobFailed overwrites a record already present.
 func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job) ([]corev1.Pod, error) {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
@@ -1676,6 +1683,13 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 	}); err != nil {
 		return nil, err
 	}
+	counted := podList.Items[:0]
+	for i := range podList.Items {
+		if !isDisruptionTarget(&podList.Items[i]) {
+			counted = append(counted, podList.Items[i])
+		}
+	}
+	podList.Items = counted
 	if len(podList.Items) == 0 {
 		return nil, nil
 	}
@@ -1699,6 +1713,17 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 		}
 	}
 	return pods, nil
+}
+
+// isDisruptionTarget reports whether the pod carries DisruptionTarget=True,
+// the condition the launcher Job's podFailurePolicy ignores.
+func isDisruptionTarget(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.DisruptionTarget && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // launcherFailureLog returns the failure record of the workload's MPI launcher
@@ -2478,11 +2503,12 @@ func (r *JobReconciler) launcherPodToJob(ctx context.Context, obj client.Object)
 // launcherFailedPredicate passes the event in which an MPI launcher pod is
 // first seen with a container that exited non-zero. Create counts too, so a
 // launcher that failed while the controller was down is still read if the pod
-// remains.
+// remains. A launcher the launcher Job ignores (DisruptionTarget, see
+// launcherPods) does not pass.
 func launcherFailedPredicate() predicate.Predicate {
 	isFailedLauncher := func(obj client.Object) bool {
 		pod, ok := obj.(*corev1.Pod)
-		if !ok || pod.Labels[replicatedJobNameLabel] != workload.LauncherJobName {
+		if !ok || pod.Labels[replicatedJobNameLabel] != workload.LauncherJobName || isDisruptionTarget(pod) {
 			return false
 		}
 		failed, _ := failedContainerOf([]corev1.Pod{*pod})

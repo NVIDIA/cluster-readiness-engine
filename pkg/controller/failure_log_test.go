@@ -78,7 +78,9 @@ const stubContainer = "node"
 //
 // The workload named by workloadRef exists, created at workloadCreated
 // (seconds, like a pod's created), unless workloadGone is set. Pods created
-// before it belong to a generation a checkpoint restart replaced.
+// before it belong to a generation a checkpoint restart replaced. A pod with
+// disruptionTarget set carries DisruptionTarget=True, as an evicted or
+// preempted pod does.
 type failureLogInput struct {
 	WorkloadRef     string `yaml:"workloadRef"`
 	WorkloadCreated int64  `yaml:"workloadCreated"`
@@ -93,6 +95,8 @@ type failureLogInput struct {
 		Reason     string `yaml:"reason"`
 		FinishedAt int64  `yaml:"finishedAt"`
 		Log        string `yaml:"log"`
+		// DisruptionTarget marks the pod evicted or preempted.
+		DisruptionTarget bool `yaml:"disruptionTarget"`
 	} `yaml:"pods"`
 }
 
@@ -145,6 +149,11 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 				}},
 			}}
 		}
+		if sp.DisruptionTarget {
+			pod.Status.Conditions = []corev1.PodCondition{{
+				Type: corev1.DisruptionTarget, Status: corev1.ConditionTrue,
+			}}
+		}
 		logs[sp.Name] = sp.Log
 		objs = append(objs, pod)
 	}
@@ -175,7 +184,18 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		}).
 		Build()
 
-	// GET /api/v1/namespaces/ns/pods/<name>/log
+	cs, err := newPodLogClientset(t, logs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &JobReconciler{Client: c, Scheme: scheme, Clientset: cs}, job, nil
+}
+
+// newPodLogClientset returns a Clientset backed by an httptest server whose
+// pod log endpoint serves logs[pod name], in any namespace.
+func newPodLogClientset(t *testing.T, logs map[string]string) (*kubernetes.Clientset, error) {
+	t.Helper()
+	// GET /api/v1/namespaces/<ns>/pods/<name>/log
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
 		if len(parts) != 7 || parts[6] != "log" {
@@ -185,11 +205,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		_, _ = io.WriteString(w, logs[parts[5]])
 	}))
 	t.Cleanup(srv.Close)
-	cs, err := kubernetes.NewForConfig(&rest.Config{Host: srv.URL})
-	if err != nil {
-		return nil, nil, err
-	}
-	return &JobReconciler{Client: c, Scheme: scheme, Clientset: cs}, job, nil
+	return kubernetes.NewForConfig(&rest.Config{Host: srv.URL})
 }
 
 // A Job that fails after its pod is gone must still carry a record saying so.
@@ -369,7 +385,7 @@ func TestFailedContainerOf(t *testing.T) {
 // is first seen failed. Every other pod event in the cluster passes through
 // this predicate, so it must stay this narrow.
 func TestLauncherFailedPredicate(t *testing.T) {
-	pod := func(launcher bool, exitCode int32) *corev1.Pod {
+	pod := func(launcher bool, exitCode int32, conditions ...corev1.PodCondition) *corev1.Pod {
 		p := &corev1.Pod{Name: "p", Namespace: "ns", Labels: map[string]string{replicatedJobNameLabel: stubContainer}}
 		if launcher {
 			p.Labels[replicatedJobNameLabel] = workload.LauncherJobName
@@ -379,9 +395,11 @@ func TestLauncherFailedPredicate(t *testing.T) {
 			state = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: exitCode}}
 		}
 		p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: stubContainer, State: state}}
+		p.Status.Conditions = conditions
 		return p
 	}
 	const running = -1
+	evicted := corev1.PodCondition{Type: corev1.DisruptionTarget, Status: corev1.ConditionTrue}
 	pred := launcherFailedPredicate()
 	tests := []struct {
 		name     string
@@ -392,6 +410,9 @@ func TestLauncherFailedPredicate(t *testing.T) {
 		{name: "launcher already failed", old: pod(true, 1), new: pod(true, 1)},
 		{name: "launcher succeeds", old: pod(true, running), new: pod(true, 0)},
 		{name: "worker turns failed", old: pod(false, running), new: pod(false, 137)},
+		// The launcher Job's podFailurePolicy ignores this failure and
+		// replaces the pod, so it is not the run's failure.
+		{name: "evicted launcher turns failed", old: pod(true, running, evicted), new: pod(true, 137, evicted)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -400,6 +421,7 @@ func TestLauncherFailedPredicate(t *testing.T) {
 	}
 	require.True(t, pred.Create(event.CreateEvent{Object: pod(true, 1)}), "a failed launcher seen at startup")
 	require.False(t, pred.Create(event.CreateEvent{Object: pod(true, running)}))
+	require.False(t, pred.Create(event.CreateEvent{Object: pod(true, 137, evicted)}), "an evicted launcher seen at startup")
 	require.False(t, pred.Delete(event.DeleteEvent{Object: pod(true, 1)}))
 }
 
@@ -427,7 +449,7 @@ func TestLauncherPodToJob(t *testing.T) {
 // A failure log recorded from a launcher attempt is dropped when the run
 // succeeds after the launcher Job's retry, so a Succeeded Job never carries a
 // failure that did not decide the run. restartFromCheckpoint drops it with the
-// same clearFailureLog.
+// same clearFailureLog, which TestJobRestartDoesNotReAnnounceInProgress pins.
 func TestSucceededJobDropsLauncherFailureLog(t *testing.T) {
 	ctx := context.Background()
 	job := &nvcrev1alpha1.Job{Name: "j", Namespace: testNS, Status: nvcrev1alpha1.JobStatus{
