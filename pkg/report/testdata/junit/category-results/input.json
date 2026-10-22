@@ -62,6 +62,29 @@
     "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded"}]
   },
   {
+    "name": "cert-running-partial",
+    "result": "RUNNING",
+    "categories": [
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s"},
+      {"domain": "training", "variant": "nemotron5-8b", "status": "Running"}
+    ]
+  },
+  {
+    "name": "cert-failed-pending",
+    "result": "FAILED",
+    "failureReason": "category training/nemotron5-8b: no nodes match the target selector",
+    "categories": [
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s"},
+      {"domain": "training", "variant": "nemotron5-8b", "status": "Pending"}
+    ]
+  },
+  {
+    "name": "cert-failed-empty",
+    "result": "FAILED",
+    "failureReason": "workflow validation failed: unknown category",
+    "categories": []
+  },
+  {
     "name": "cert-empty",
     "result": "RUNNING",
     "categories": []

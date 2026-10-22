@@ -113,6 +113,10 @@ nvcrectl certification report <name> [<name>...] [flags]
 | `--results-file` | — | Write the report as JSON to this file path |
 | `--junit-file` | — | Write the report as JUnit XML to this file path |
 
+`--results-file` and `--junit-file` must name different files.
+
+The JUnit file has one suite per certification and one test case per category. A succeeded category passes and a failed one is a `<failure>` with its reason. An unfinished category is an `<error>` while the certification runs, and a `<failure>` carrying the certification's own failure reason once it has failed. A suite gets one extra `certification` case only when its categories do not show the result: a certification that failed before any category did, or one still finalizing after every category finished. An `INCOMPLETE` run, which exits 0, has no failures or errors; its suite lists `excludedNodes` and `exclusionReason` under `<properties>`. See [ADR-105](../designs/105-junit-certification-reports.md).
+
 Bandwidth from a measurement that is not final (its `Complete` condition reason is anything other than `JobSucceeded`, for example `LogsUnavailable` after its Job was deleted) is shown as `(provisional: <reason>)` with a `?` mark instead of `✓`, carries `provisional: true` and `provisionalReason` in the JSON, and is never shown as passing; clique and category bandwidth show the lowest value across their groups.
 
 ## nvcrectl certification list-categories

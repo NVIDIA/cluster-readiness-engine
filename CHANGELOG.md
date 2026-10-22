@@ -18,7 +18,12 @@ followed them.
 ### Added
 
 - Native JUnit XML certification reports through `--junit-file` on
-  `nvcrectl certification run --wait` and `certification report` (#446).
+  `nvcrectl certification run --wait` and `certification report`. Each category is
+  a test case that reports its own outcome, and the XML agrees with the exit code:
+  an `INCOMPLETE` run has no failures or errors and lists its excluded nodes as suite
+  properties. `results.json` gains `failureReason`, the Certification's own Failed
+  condition message, which also explains a certification that failed before any
+  category did ([ADR-105](docs/designs/105-junit-certification-reports.md), #446).
 
 ### Changed
 

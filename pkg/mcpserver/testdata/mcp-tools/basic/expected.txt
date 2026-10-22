@@ -143,6 +143,7 @@
       "node001",
       "node002"
     ],
+    "failureReason": "1 of 2 certification categories failed",
     "gpu": "h100",
     "name": "cert-mcp",
     "platform": "onprem",

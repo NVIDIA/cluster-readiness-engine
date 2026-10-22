@@ -80,5 +80,6 @@
       "message": "Threshold \"goodputRatio\" violated: measured 0.8800, expression: value \u003e= 0.95"
     }
   ],
-  "result": "FAILED"
+  "result": "FAILED",
+  "failureReason": "1 of 1 certification categories failed"
 }

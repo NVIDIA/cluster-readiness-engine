@@ -864,6 +864,9 @@ Use --cleanup to teardown installed components after completion.`,
 			if junitFile != "" && !doWait {
 				return fmt.Errorf("--junit-file requires --wait")
 			}
+			if err := validateReportPaths(resultsFile, junitFile); err != nil {
+				return err
+			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
@@ -1486,6 +1489,9 @@ func handleReport(
 		}
 	}
 	if junitFile != "" {
+		if err := validateReportPaths(resultsFile, junitFile); err != nil {
+			return err
+		}
 		if err := report.WriteJUnit(junitFile, []*report.CertReport{r}); err != nil {
 			return fmt.Errorf("write JUnit file: %w", err)
 		}
@@ -1508,10 +1514,20 @@ func validateReportPaths(resultsFile, junitFile string) error {
 		return fmt.Errorf("resolve JUnit file path: %w", err)
 	}
 	if resultsPath == junitPath {
-		return fmt.Errorf("--results-file and --junit-file must use different paths")
+		return errSameReportPaths
+	}
+	// Two spellings can still name one file, on a case-insensitive filesystem
+	// or through a symlinked directory. That shows only once a file exists, so
+	// callers check again after writing the JSON and before writing the XML.
+	resultsInfo, resultsErr := os.Stat(resultsPath)
+	junitInfo, junitErr := os.Stat(junitPath)
+	if resultsErr == nil && junitErr == nil && os.SameFile(resultsInfo, junitInfo) {
+		return errSameReportPaths
 	}
 	return nil
 }
+
+var errSameReportPaths = errors.New("--results-file and --junit-file must use different paths")
 
 // discoverGPUProduct is replaced by discoverGPUNodes in run_common.go.
 
@@ -1918,6 +1934,9 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile,
 		_, _ = fmt.Fprintf(os.Stderr, "Results written to %s\n", resultsFile)
 	}
 	if junitFile != "" {
+		if err := validateReportPaths(resultsFile, junitFile); err != nil {
+			return err
+		}
 		if err := report.WriteJUnit(junitFile, reports); err != nil {
 			return fmt.Errorf("write JUnit file: %w", err)
 		}

@@ -148,5 +148,6 @@
     }
   ],
   "failedNodes": [],
-  "result": "FAILED"
+  "result": "FAILED",
+  "failureReason": "1 of 1 certification categories failed"
 }

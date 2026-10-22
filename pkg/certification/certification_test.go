@@ -47,6 +47,8 @@ const (
 	testCertTimeoutCert       = "timeout-cert"
 	testCertNamespace         = "test-ns"
 	testStartupStallFlag      = "--startup-stall-timeout-seconds"
+	testCertFileFlag          = "--cert-file"
+	testWaitFlag              = "--wait"
 )
 
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
@@ -1011,7 +1013,7 @@ func TestNewRunCommandValidation(t *testing.T) {
 	t.Run("cert-file and category are mutually exclusive", func(t *testing.T) {
 		cmd := newRunCommand("dev")
 		cmd.SetArgs([]string{
-			"--cert-file", "cert.yaml",
+			testCertFileFlag, "cert.yaml",
 			testCategoryFlag, testCategoryNCCLAllReduce,
 		})
 		err := cmd.Execute()
@@ -1053,12 +1055,12 @@ func TestNewRunCommandValidation(t *testing.T) {
 		t.Run("cert-file conflicts with startup-stall window "+value, func(t *testing.T) {
 			cmd := newRunCommand("dev")
 			cmd.SetArgs([]string{
-				"--cert-file", filepath.Join(t.TempDir(), "missing.yaml"),
+				testCertFileFlag, filepath.Join(t.TempDir(), "missing.yaml"),
 				testStartupStallFlag, value,
 			})
 			err := cmd.Execute()
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "--cert-file")
+			assert.Contains(t, err.Error(), testCertFileFlag)
 			assert.Contains(t, err.Error(), testStartupStallFlag)
 			var pathErr *os.PathError
 			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
@@ -1307,14 +1309,14 @@ func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
 	}
 	// Valid combinations reach the existing configuration loader unchanged.
 	for _, args := range [][]string{
-		{"--wait", junitFlag, "results.xml"},
-		{"--wait", junitFlag, ""},
+		{testWaitFlag, junitFlag, "results.xml"},
+		{testWaitFlag, junitFlag, ""},
 		{},
 	} {
 		missing := filepath.Join(t.TempDir(), "missing-cert.yaml")
 		cmd := newRunCommand("dev")
 		cmd.SilenceUsage, cmd.SilenceErrors = true, true
-		cmd.SetArgs(append(args, "--cert-file", missing))
+		cmd.SetArgs(append(args, testCertFileFlag, missing))
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), missing)
@@ -1341,4 +1343,31 @@ func TestFinishCertificationWaitReportErrorGuidance(t *testing.T) {
 		assert.Equal(t, timedOut, strings.Contains(out.String(), "Monitor its progress:"))
 		assert.Equal(t, timedOut, strings.Contains(out.String(), "Stop it:"))
 	}
+}
+
+// TestReportPathsRejectAliasedFile checks that two spellings of one file are
+// caught after the JSON write, before the XML overwrites it.
+func TestReportPathsRejectAliasedFile(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(dir, link))
+	jsonPath, junitPath := filepath.Join(dir, "report"), filepath.Join(link, "report")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	require.ErrorIs(t, err, errSameReportPaths)
+	data, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	assert.True(t, json.Valid(data), "JSON report must survive")
+}
+
+// TestNewRunCommandRejectsSameReportPaths checks that a path collision fails
+// before the certification is created, not after it has run.
+func TestNewRunCommandRejectsSameReportPaths(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-cert.yaml")
+	cmd := newRunCommand("dev")
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	cmd.SetArgs([]string{testWaitFlag, testCertFileFlag, missing,
+		"--results-file", "out/report", "--junit-file", "out/report"})
+	require.ErrorIs(t, cmd.Execute(), errSameReportPaths)
 }
