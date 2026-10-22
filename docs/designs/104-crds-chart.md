@@ -61,7 +61,7 @@ Out of scope: the CRDs' content, nvcrectl's apply for CRDs no release owns, Trai
 
    On Helm 4, CRDs that nvcrectl, AICR's script or a manual `kubectl apply --server-side` also applied need `--force-conflicts` too. It goes on the takeover and again on the first CRDs-chart upgrade that changes the schema: when that writer's schema matched the chart's, forcing the takeover alone leaves it a co-owner. The writer must be stopped first, or the conflict returns. The flag only reaches the seven CRDs in the CRDs chart's release.
 
-7. **nvcrectl skips its CRD apply when a Helm release owns the CRDs.** If any NVCRE CRD carries `meta.helm.sh/release-name`, `setup init` does not apply the CRDs and prints which release manages them. It also passes `--skip-crds` to `helm upgrade --install`, so a first install of the main release does not re-apply the subchart's CRDs, which on Helm 4 would strip the CRDs chart's ownership. Otherwise it applies them as today. This keeps `nvcrectl-setup` from re-taking `spec.versions` on clusters that use the CRDs chart. `--skip-crds` is a flag, not a value, so it does not persist in the release's values across runs (ADR-098). nvcrectl does not install or version-check the CRDs chart (Alternatives, 10).
+7. **nvcrectl skips its CRD apply when a Helm release owns the CRDs.** When all seven NVCRE CRDs carry the same `meta.helm.sh/release-name` and `meta.helm.sh/release-namespace`, and that release exists, `setup init` does not apply the CRDs and prints which release manages them. Both checks are needed, because `crds.keep` (decision 2) leaves the annotations on the CRDs after `helm uninstall`, so annotations alone can name a release that is gone. In every other case nvcrectl applies the CRDs as today and omits `--skip-crds`: no annotations, a release that no longer exists, or ownership split across CRDs or releases. A stale schema is the failure this record prevents, and keeping the CRDs current outranks avoiding a later Helm 4 conflict, which decision 6 recovers from. For split ownership it prints a warning naming each CRD's owner. When it does skip, it also passes `--skip-crds` to `helm upgrade --install`, so a first install of the main release does not re-apply the subchart's CRDs, which on Helm 4 would strip the CRDs chart's ownership. Otherwise it applies them as today. This keeps `nvcrectl-setup` from re-taking `spec.versions` on clusters that use the CRDs chart. `--skip-crds` is a flag, not a value, so it does not persist in the release's values across runs (ADR-098). nvcrectl does not install or version-check the CRDs chart (Alternatives, 10).
 
 8. **Sign and attest the CRDs chart like the main chart**, in the same `helm-publish` job, through `attest.yml`, and verify both charts at the release gate (ADR-074).
 
@@ -107,7 +107,7 @@ nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, s
 
 ### nvcrectl
 
-`installHelmRelease` checks the seven CRDs for `meta.helm.sh/release-name` before `fetchChartCRDs`, When it finds one, it skips `applyChartCRDs` and `nvcreHelmUpgradeArgs` adds `--skip-crds`. The annotation parsing is shared with `jobset_ownership.go`.
+Before `fetchChartCRDs`, `installHelmRelease` reads the seven CRDs' `meta.helm.sh/release-name` and `meta.helm.sh/release-namespace`. When all seven name the same release, it confirms the release exists with `helm status`. Only then does it skip `applyChartCRDs`, and `nvcreHelmUpgradeArgs` add `--skip-crds`. The annotation parsing is shared with `jobset_ownership.go`.
 
 ### Documentation
 
@@ -168,7 +168,7 @@ The details belong in AICR's tracker ([NVIDIA/aicr#2525](https://github.com/NVID
   - the CRDs chart with `crds.keep` true and false;
   - the main chart with `crds.enabled` true and false.
 - **`test/helm`, assertion:** the CRDs chart's CRDs are identical, by name and `spec`, to the subchart's.
-- **`pkg/setup`, golden cases:** `setup init` with release-owned and unowned CRDs, including the Helm arguments in `testdata/helm-chart-args`: `--skip-crds` only when the CRDs are release-owned, on both a first install and an upgrade of the main release.
+- **`pkg/setup`, golden cases:** `setup init` with CRDs that are unowned, owned by an existing release, annotated for a release that was uninstalled, partly owned, and owned by two releases. Each case covers whether the CRDs are applied and the Helm arguments in `testdata/helm-chart-args`: `--skip-crds` only when the CRDs are release-owned, on both a first install and an upgrade of the main release.
 
 ## Rationale
 
