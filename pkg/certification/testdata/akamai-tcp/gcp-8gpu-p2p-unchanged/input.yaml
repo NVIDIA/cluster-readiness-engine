@@ -1,0 +1,7 @@
+{
+  "platform": "gcp",
+  "domain": "communication",
+  "variant": "nccl-all-reduce",
+  "gpusPerNode": 8,
+  "nodesPerJob": 2
+}

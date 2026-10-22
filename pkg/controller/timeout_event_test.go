@@ -56,7 +56,7 @@ func testTimeoutEventPersistence(t *testing.T, mode string) {
 			return []string{obj.GetLabels()[nodemonitor.NVCREJobLabel]}
 		}).Build()
 	recorder := events.NewFakeRecorder(10)
-	r := &WorkflowReconciler{Client: c, Scheme: c.Scheme(), Recorder: recorder}
+	r := &WorkflowReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Recorder: recorder}
 	if mode != "success" {
 		attempts := 0
 		r.Client = interceptor.NewClient(c, interceptor.Funcs{

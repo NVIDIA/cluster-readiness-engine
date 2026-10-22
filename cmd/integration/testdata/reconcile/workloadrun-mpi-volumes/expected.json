@@ -1500,6 +1500,16 @@
         {
           "when": {
             "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "akamai"
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
               "in": [
                 "b200",
                 "gb300"

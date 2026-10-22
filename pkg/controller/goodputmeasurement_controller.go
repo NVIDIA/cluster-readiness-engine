@@ -52,6 +52,10 @@ type cachedProfileParser struct {
 // GoodputMeasurementReconciler reconciles a GoodputMeasurement object.
 type GoodputMeasurementReconciler struct {
 	client.Client
+	// APIReader reads worker pods past the cache. The cache holds only pods
+	// with the NVCRE job label (ADR-102), and an MPI WorkloadRun's launcher,
+	// where its rank-0 output is, has none. SetupWithManager defaults it.
+	APIReader  client.Reader
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
 	Recorder   events.EventRecorder
@@ -240,7 +244,7 @@ func (r *GoodputMeasurementReconciler) collectFinalSample(ctx context.Context, m
 	state.Lock()
 	defer state.Unlock()
 
-	discoverer := podutil.NewWorkerDiscoverer(r.Client)
+	discoverer := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader))
 	worker0, lastWorker, err := discoverer.GetWorkerPods(ctx, measurement.Namespace, job.Status.WorkloadRef.Name, job.Status.WorkloadRef.Kind)
 	if err != nil {
 		log.V(1).Info("Final log read skipped: worker pods not found", "measurement", key, "error", err)
@@ -489,7 +493,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 	workloadName := job.Status.WorkloadRef.Name
 
 	// Discover worker pods.
-	discoverer := podutil.NewWorkerDiscoverer(r.Client)
+	discoverer := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader))
 	worker0, lastWorker, err := discoverer.GetWorkerPods(ctx, measurement.Namespace, workloadName, workloadKind)
 	if err != nil {
 		log.V(1).Info("Worker pods not found yet", "error", err)
@@ -919,7 +923,7 @@ func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measure
 		terminationTime = state.ApplicationStopTime
 	} else if job.Status.WorkloadRef != nil {
 		// Fallback: try to get the termination time from the worker pod.
-		discoverer := podutil.NewWorkerDiscoverer(r.Client)
+		discoverer := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader))
 		worker0, _, _ := discoverer.GetWorkerPods(ctx, measurement.Namespace, job.Status.WorkloadRef.Name, job.Status.WorkloadRef.Kind)
 		if worker0 != nil {
 			containerName := ""
@@ -1537,6 +1541,11 @@ func (r *GoodputMeasurementReconciler) warnf(obj runtime.Object, reason, message
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *GoodputMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Default the uncached reader, so a manager-backed reconciler never reads
+	// worker pods through the job-scoped cache (ADR-102).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.GoodputMeasurement{}).
 		Named("goodputmeasurement").

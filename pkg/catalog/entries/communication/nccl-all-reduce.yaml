@@ -630,6 +630,22 @@ overrides:
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Akamai + RTX PRO 6000 (LKE VMs; TCP over eth0, no RDMA) ---
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
 # Ordered after the GB200/GB300 ComputeDomain block so this block's
 # trainer.args replacement wins; on Nscale GB300 both blocks fire and their

@@ -166,7 +166,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 				return nil
 			}).
 			Build()
-		r := &WorkflowReconciler{Client: c, Scheme: scheme}
+		r := &WorkflowReconciler{Client: c, APIReader: c, Scheme: scheme}
 
 		g := &workflow.Status.Orchestration.Groups[0]
 		ts := getJobTerminalState(job)

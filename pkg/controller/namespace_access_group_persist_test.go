@@ -106,7 +106,7 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 		if input.ReviewError != "" {
 			reviewer.err = errors.New(input.ReviewError)
 		}
-		r := &WorkflowReconciler{Client: c, Scheme: c.Scheme(), Recorder: events.NewFakeRecorder(20), AccessReviewer: reviewer}
+		r := &WorkflowReconciler{Client: c, APIReader: c, Scheme: c.Scheme(), Recorder: events.NewFakeRecorder(20), AccessReviewer: reviewer}
 		if _, err := r.requeueAfterForbiddenWrite(ctx, workflow)(r.updateStatusFromJobs(ctx, workflow)); err != nil {
 			return err
 		}

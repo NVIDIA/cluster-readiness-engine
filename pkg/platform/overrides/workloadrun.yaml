@@ -429,6 +429,31 @@
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | indent 12 }}
 {{- end }}
 
+# --- Akamai + RTX PRO 6000 (LKE VMs; TCP over eth0, no RDMA) ---
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  mpiArgs:
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: akamai
+    gpuArchitecture:
+      equals: rtxpro6000
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/akamai-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+{{- end }}
+
 # --- Nscale NKS (GPU+RDMA DRA claims runtime patch; ADR-085) ---
 - when:
     platform:
