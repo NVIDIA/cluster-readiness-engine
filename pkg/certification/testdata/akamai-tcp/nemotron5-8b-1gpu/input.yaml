@@ -1,0 +1,7 @@
+{
+  "platform": "akamai",
+  "domain": "training",
+  "variant": "nemotron5-8b",
+  "gpusPerNode": 1,
+  "nodesPerJob": 8
+}

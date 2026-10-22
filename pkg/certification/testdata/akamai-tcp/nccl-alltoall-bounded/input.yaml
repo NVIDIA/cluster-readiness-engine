@@ -1,0 +1,10 @@
+{
+  "platform": "akamai",
+  "domain": "communication",
+  "variant": "nccl-alltoall",
+  "gpusPerNode": 1,
+  "nodesPerJob": 2,
+  "maxBytes": "1G",
+  "numIterations": 20,
+  "numCycles": 1
+}
