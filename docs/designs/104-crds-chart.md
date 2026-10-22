@@ -55,7 +55,7 @@ Out of scope: the CRDs' content, nvcrectl's apply for CRDs no release owns, Trai
 
 4. **One source.** `make manifests` writes to the subchart. `make helm-package` copies those files into the CRDs chart, so both charts always carry identical CRDs.
 
-5. **Order: CRDs first on upgrade, controller first on rollback.** Both charts release at the same version. Newer CRDs with an older controller are safe, because new fields are optional. The reverse is the failure this record prevents.
+5. **Order: CRDs first on upgrade, controller first on rollback.** Both charts release at the same version. Newer CRDs with an older controller are safe while schema changes are additive, because new fields are optional. A release that removes a field the previous controller still writes would have those writes pruned in this window, on upgrade and on rollback alike. So a field is removed from the CRDs only once the controller of the previous release no longer writes it. The reverse, an older schema under a newer controller, is the failure this record prevents.
 
 6. **Adopt existing CRDs once with `--take-ownership`** (Helm 3.17 or later). Existing CRDs carry no release metadata, so without it `helm install` fails with `invalid ownership metadata`.
 
@@ -138,7 +138,7 @@ Nothing changes for an operator who does nothing. The CRDs chart is opt-in, and 
 |---|---|
 | Direct Helm or Helmfile | Install it per decision 6, set `crds.enabled=false` on the main chart, then upgrade CRDs first. Helmfile orders the two with `needs:` |
 | Flux | The same, with `dependsOn`. Remove `upgrade.crds: CreateReplace` |
-| Argo CD | Two steps. First add the CRDs Application and let it sync; the main chart still renders identical CRDs. Then set `crds.enabled=false`. Reversing the order lets the main Application prune the CRDs, and every NVCRE object with them |
+| Argo CD | Two steps. First add the CRDs Application and let it sync. Then disable automated pruning on the main Application, set `crds.enabled=false`, confirm that the CRDs Application is the one tracking the CRDs, and re-enable pruning. While both Applications render the CRDs, either may hold Argo CD's tracking for them, whatever the tracking mode, and a main Application that still tracks them when they leave its desired state prunes them, and every NVCRE object with them |
 | nvcrectl users | Upgrade nvcrectl to a version with decision 7, then adopt per decision 6 |
 | Tooling reading `crds/` from the unpacked chart | Switch to `helm show crds` |
 
@@ -201,7 +201,7 @@ The details belong in AICR's tracker ([NVIDIA/aicr#2525](https://github.com/NVID
 6. **Remove the CRDs from the main chart now,** as #357 literally asks. Deferred: it breaks main-chart-only installs. The subchart makes this a later default flip.
 7. **Keep top-level `crds/` and have users skip it.** This was the first draft. Rejected: AICR cannot skip per component, and on Helm 4 a missed skip strips ownership.
 8. **Argo CD `Prune=false,Delete=false` on the CRDs.** Rejected:
-   - they arrive too late to protect the migration; the two-step order does that;
+   - shipping them in the chart is not needed to protect the migration; disabling pruning on the main Application for the switch does that;
    - cascade deletion is the Argo CD operator's choice.
 9. **Reset `managedFields` before adoption instead of forcing.** Rejected: the API server records the existing fields under `before-first-apply`, which conflicts the same way (Notes).
 10. **nvcrectl installs the CRDs chart, or checks its version against the controller.** Deferred: no known cluster runs nvcrectl together with the CRDs chart. Decision 7 is enough to keep the two from conflicting.
@@ -228,7 +228,8 @@ The prototype used both charts built from the CRDs at `3e78eef2`, on throwaway K
 - **#357 says Flux upgrades CRDs on its own.** It does so only with `CreateReplace`.
 - **Not tested:**
   - Flux `CreateReplace` as a prior writer;
-  - mixing Helm versions on one CRDs-chart release.
+  - mixing Helm versions on one CRDs-chart release;
+  - the Argo CD migration with automated pruning enabled, which the `deployment.md` guidance is validated against before it ships.
 
 ## References
 
