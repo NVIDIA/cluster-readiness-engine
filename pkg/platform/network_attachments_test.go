@@ -99,8 +99,9 @@ type applyNetworkAttachmentsOverridesInput struct {
 // runtime's sum. The cases cover a requested resource raised in limits and
 // requests (a limit alone included), a patch that does not request the
 // resource left byte for byte (it would otherwise shrink the request), the MPI
-// launcher left alone, a networks annotation a patch renders replaced, and an
-// empty list as a no-op.
+// launcher left alone, a networks annotation a patch renders replaced, the
+// worker container picked as on the runtime path (named "node", else the
+// first), and an empty list as a no-op.
 func TestApplyNetworkAttachmentsToOverrides(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "apply-network-attachments-overrides",

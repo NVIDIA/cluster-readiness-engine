@@ -178,7 +178,10 @@ func applyNetworkAttachmentsToJob(job map[string]any, annotation string, resourc
 	res := ensureMap(worker, keyResources)
 	limits := ensureMap(res, keyLimits)
 	requests := ensureMap(res, keyRequests)
-	// Compute every sum before writing any, so an error leaves the job as it was.
+	// Compute every sum before writing any limit or request. An error can still
+	// leave this decoded job partly changed (the resources maps above may have
+	// been created), but the caller then returns without re-marshalling, so the
+	// dependency's Raw bytes are left as they were.
 	sums := make(map[string]string, len(resources))
 	for name, qty := range resources {
 		// An extended resource's request must equal its limit, and an omitted
@@ -239,8 +242,13 @@ func addResourceQuantity(existing any, present bool, qty int64) (string, error) 
 }
 
 // workerContainer returns the container named "node", or the first container
-// when none carries that name.
+// when none carries that name. Both the runtime path and the override path pick
+// the worker this way, so an override raises the same container the runtime
+// wrote to. It returns nil for an empty list.
 func workerContainer(containers []any) map[string]any {
+	if len(containers) == 0 {
+		return nil
+	}
 	for _, c := range containers {
 		m, ok := c.(map[string]any)
 		if !ok {
@@ -263,9 +271,10 @@ func workerContainer(containers []any) map[string]any {
 // would replace the summed request on the runtime with its own count, and the
 // pod would ask for fewer devices than it has interfaces.
 //
-// So on the worker container (named "node") of every replicatedJob other than
-// the MPI launcher, each attachment resource the patch already requests is
-// raised by the attachments' count, in both limits and requests. A patch that
+// So on the worker container (the one named "node", else the first, as on
+// the runtime path) of every replicatedJob other than the MPI launcher, each
+// attachment resource the patch already requests is raised by the
+// attachments' count, in both limits and requests. A patch that
 // does not request the resource is left alone, so it cannot shrink the request
 // the runtime carries, and a networks annotation a patch renders is replaced
 // with the list's. The user's own spec.overrides are not passed here and stay
@@ -328,8 +337,8 @@ func ApplyNetworkAttachmentsToOverrides(
 }
 
 // applyNetworkAttachmentsToPatchJob raises, on one replicatedJob of an
-// override patch, every attachment resource the "node" container already
-// requests, and replaces a networks annotation the patch renders.
+// override patch, every attachment resource the worker container (named
+// "node", else the first) already requests, and replaces a networks annotation the patch renders.
 func applyNetworkAttachmentsToPatchJob(job map[string]any, annotation string, resources map[string]int64) (bool, error) {
 	podTemplate, ok := nestedMap(job, keyTemplate, keySpec, keyTemplate)
 	if !ok {
@@ -344,24 +353,20 @@ func applyNetworkAttachmentsToPatchJob(job map[string]any, annotation string, re
 	}
 
 	containers, _ := nestedSlice(podTemplate, keySpec, keyContainers)
-	var worker map[string]any
-	for _, c := range containers {
-		m, isMap := c.(map[string]any)
-		if !isMap {
-			continue
-		}
-		if name, _ := m[keyName].(string); name == workerContainerName {
-			worker = m
-			break
-		}
+	worker := workerContainer(containers)
+	if worker == nil {
+		return changed, nil
 	}
 	res, found := worker[keyResources].(map[string]any)
-	if worker == nil || !found {
+	if !found {
 		return changed, nil
 	}
 	limits, _ := res[keyLimits].(map[string]any)
 	requests, _ := res[keyRequests].(map[string]any)
-	// Compute every sum before writing any, so an error leaves the job as it was.
+	// Compute every sum before writing any limit or request. An error can still
+	// leave this decoded job partly changed (the annotation above may already be
+	// replaced), but the caller then returns without re-marshalling, so the
+	// override's Raw bytes are left as they were.
 	sums := make(map[string]string, len(resources))
 	for name, qty := range resources {
 		base, present := limits[name]
