@@ -80,7 +80,9 @@ var (
 func TestReaderSources(t *testing.T) {
 	ctx := context.Background()
 	r := New(
-		indexedClient(worker, other),
+		// daemon carries no job label: the real cache would never hold it,
+		// so JobPodsOnNode's label requirement must keep it out.
+		indexedClient(worker, other, daemon),
 		indexedClient(worker, liveOnly, launcher, daemon),
 	)
 
@@ -166,6 +168,45 @@ func TestActiveJobPods(t *testing.T) {
 			assert.Equal(t, tt.liveReads, liveReads)
 		})
 	}
+}
+
+// TestActiveJobPodsLiveReadError pins the routing of a failed API server
+// read: when the cache leaves no active pod and the live read fails,
+// ActiveJobPods returns the error and counts it against the live source.
+func TestActiveJobPodsLiveReadError(t *testing.T) {
+	failedOld := withPhase(pod("worker-old", "node-a", map[string]string{JobLabel: testJob}), corev1.PodFailed)
+	failingLive := fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+			return errors.New("etcdserver: request timed out")
+		},
+	}).Build()
+	before := testutil.ToFloat64(podReadsTotal.WithLabelValues("ActiveJobPods", sourceLive, resultError))
+
+	pods, err := New(indexedClient(failedOld), failingLive).ActiveJobPods(context.Background(), testNamespace, testJob)
+	assert.Nil(t, pods)
+	require.Error(t, err)
+	assert.Equal(t, "podread ActiveJobPods ns/"+testJob+": etcdserver: request timed out", err.Error())
+	assert.Equal(t, before+1, testutil.ToFloat64(podReadsTotal.WithLabelValues("ActiveJobPods", sourceLive, resultError)))
+}
+
+// TestMissingLiveReaderFailsLiveReads pins that a Reader built without an API
+// server reader does not answer its live reads from the cache: the live
+// check in ActiveJobPods would otherwise quietly become a second cached read.
+func TestMissingLiveReaderFailsLiveReads(t *testing.T) {
+	failedOld := withPhase(pod("worker-old", "node-a", map[string]string{JobLabel: testJob}), corev1.PodFailed)
+	r := New(indexedClient(failedOld), nil)
+	ctx := context.Background()
+
+	_, err := r.ActiveJobPods(ctx, testNamespace, testJob)
+	assert.ErrorIs(t, err, errNoLiveReader, "ActiveJobPods must not confirm against the cache")
+	_, err = r.WorkloadPods(ctx, testNamespace, "w", "")
+	assert.ErrorIs(t, err, errNoLiveReader)
+	_, err = r.NamespacePods(ctx, testNamespace)
+	assert.ErrorIs(t, err, errNoLiveReader)
+
+	pods, err := r.JobPods(ctx, testNamespace, testJob)
+	require.NoError(t, err, "cached reads need no live reader")
+	assert.Equal(t, []string{"worker-old"}, names(pods))
 }
 
 func TestJobPodsFallsBackToTheLabel(t *testing.T) {

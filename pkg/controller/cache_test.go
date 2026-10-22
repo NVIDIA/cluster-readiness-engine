@@ -63,12 +63,23 @@ func newTestScopedCache() (*scopedCache, *recordingCache) {
 	return &scopedCache{Cache: inner, scheme: clientgoscheme.Scheme}, inner
 }
 
-// TestCacheOptionsScopesPodsToJobLabel pins the Pod cache selector (ADR-102).
+// TestCacheOptionsScopesPodsToJobLabel pins the Pod cache selector (ADR-102),
+// and that the label is the only thing that scopes Pods. The guard models
+// label scope only: a Pod cache also narrowed by namespace or field, here or
+// through a cache-wide default, would let a job-label read across that
+// boundary pass the guard and miss pods. Adding one means changing the guard
+// first.
 func TestCacheOptionsScopesPodsToJobLabel(t *testing.T) {
-	for obj, byObject := range CacheOptions().ByObject {
+	opts := CacheOptions()
+	assert.Empty(t, opts.DefaultNamespaces, "a cache-wide namespace scope also scopes Pods")
+	assert.Nil(t, opts.DefaultLabelSelector, "a cache-wide label selector also scopes Pods")
+	assert.Nil(t, opts.DefaultFieldSelector, "a cache-wide field selector also scopes Pods")
+	for obj, byObject := range opts.ByObject {
 		if _, ok := obj.(*corev1.Pod); ok {
 			require.NotNil(t, byObject.Label)
 			assert.Equal(t, podread.JobLabel, byObject.Label.String())
+			assert.Nil(t, byObject.Field, "the guard does not model a field scope on Pods")
+			assert.Empty(t, byObject.Namespaces, "the guard does not model a namespace scope on Pods")
 			assert.Nil(t, byObject.Transform, "a Pod Transform would replace the managedFields strip")
 			return
 		}
@@ -77,11 +88,14 @@ func TestCacheOptionsScopesPodsToJobLabel(t *testing.T) {
 }
 
 // TestEveryScopedCacheKindIsGuardedOrExempt fails when a kind is cached under
-// a selector without being in guardedScopes or exemptScopes, so a kind scoped
+// a label, field or namespace scope without being in guardedScopes or
+// exemptScopes, so a kind scoped
 // later cannot skip the guard silently (ADR-102).
 func TestEveryScopedCacheKindIsGuardedOrExempt(t *testing.T) {
 	for obj, byObject := range CacheOptions().ByObject {
-		if byObject.Label == nil {
+		// Label, Field and Namespaces each scope a kind (controller-runtime
+		// pkg/cache ByObject); an entry with none of them caches it whole.
+		if byObject.Label == nil && byObject.Field == nil && len(byObject.Namespaces) == 0 {
 			continue
 		}
 		gvk, err := apiutil.GVKForObject(obj, clientgoscheme.Scheme)

@@ -11,11 +11,9 @@ import (
 
 // newPodReader returns the Pod reader for a reconciler (ADR-102): cached is
 // its client, which reads through the job-scoped cache, and live its
-// APIReader. Every SetupWithManager defaults APIReader from the manager; a
-// unit test that leaves it nil reads both sources from its fake client.
+// APIReader. Every SetupWithManager defaults APIReader from the manager. A
+// nil APIReader is not replaced by the cache: podread fails its live reads
+// instead, so a reconciler or a unit test that needs them must set it.
 func newPodReader(cached, live client.Reader) *podread.Reader {
-	if live == nil {
-		live = cached
-	}
 	return podread.New(cached, live)
 }

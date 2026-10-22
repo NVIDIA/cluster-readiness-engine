@@ -119,10 +119,23 @@ func TestIntegration(t *testing.T) {
 		// Ensure cleanup always runs, even on test failure/timeout.
 		// Without this, a timed-out test leaks objects (e.g., cluster-scoped
 		// LogProfiles) into subsequent subtests, causing cascade failures.
+		//
+		// The refused-read check runs here, after the manager has stopped,
+		// so reads made while the case winds down, such as the drain
+		// barrier's, are charged to this case rather than lost or charged
+		// to the next one (ADR-102).
 		defer func() {
 			cancel()
-			time.Sleep(200 * time.Millisecond)
+			select {
+			case <-stopped:
+			case <-time.After(30 * time.Second):
+				tt.Errorf("manager did not stop within 30s")
+			}
 			deleteTestObjects(tt, suite.Client, objs)
+			if got := controller.UnscopedCacheReads(); got != refusedBefore {
+				tt.Errorf("the cache refused %d read(s) during this case; its log names the caller (ADR-102)",
+					got-refusedBefore)
+			}
 		}()
 
 		for _, step := range cfg.Steps {
@@ -203,8 +216,6 @@ func TestIntegration(t *testing.T) {
 			require.Equal(tt, 1, checkpoint.recorder.count(checkpoint.jobUID), "restart emitted another InProgress Event")
 		}
 		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), suite.Client, cfg, deadline, frozenGoodput, specImmutability)
-		require.Equal(tt, refusedBefore, controller.UnscopedCacheReads(),
-			"the cache refused a read during this case; its log names the caller (ADR-102)")
 		return nil
 	})
 }

@@ -147,8 +147,11 @@ func init() {
 
 // NewCache builds the manager's cache: cache.New with the guardedScopes rule
 // on top (ADR-102). The manager's client reads through this cache, so the rule
-// covers reads through the client, through mgr.GetCache(), metadata-only and
-// unstructured reads, and informers, which Watches and Owns start. A refused
+// covers reads through the client, through mgr.GetCache(), metadata-only reads,
+// unstructured reads through mgr.GetCache() (the client sends its unstructured
+// reads to the API server), and informers, which Watches and Owns start; a
+// refused informer is retried by controller-runtime every 10 seconds and fails
+// the controller at the cache-sync timeout. A refused
 // read returns errUnscopedCacheRead, is logged at error level with the calling
 // code's location, and is counted; the integration harness fails a case that
 // causes one. Field indexes are unaffected: the inner cache starts an indexed

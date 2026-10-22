@@ -75,8 +75,33 @@ type Reader struct {
 // New returns a Reader. cached is the manager's client, which reads through
 // the job-scoped cache; live reads the API server, normally the manager's
 // APIReader. A unit test may pass the same fake client for both.
+//
+// A nil live is not replaced by cached: the live reads exist because the
+// cache cannot answer them, and ActiveJobPods' check against the API server
+// would quietly become a second cached read. Every live read then fails
+// with errNoLiveReader instead, logged and counted like any failed read.
 func New(cached, live client.Reader) *Reader {
+	if live == nil {
+		live = noLiveReader{}
+	}
 	return &Reader{cached: cached, live: live}
+}
+
+// errNoLiveReader is returned by every live read of a Reader built without an
+// API server reader.
+var errNoLiveReader = errors.New("no API server reader configured; set the reconciler's APIReader")
+
+// noLiveReader stands in for a missing live reader and fails every read.
+type noLiveReader struct{}
+
+// Get fails: there is no API server reader.
+func (noLiveReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	return errNoLiveReader
+}
+
+// List fails: there is no API server reader.
+func (noLiveReader) List(context.Context, client.ObjectList, ...client.ListOption) error {
+	return errNoLiveReader
 }
 
 // JobPods returns a Job's workload pods from the cache: the pods carrying

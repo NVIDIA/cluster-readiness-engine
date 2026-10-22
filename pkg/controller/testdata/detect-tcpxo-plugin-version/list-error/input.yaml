@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The installer pods cannot be listed, on the first try or the retry. The
+# minimum profile renders, and the Warning names the API error once, without
+# the read's internal wrapper (ADR-102).
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+listError: 'pods is forbidden: User "system:serviceaccount:nvcre:nvcre-manager" cannot list resource "pods" in API group "" in the namespace "kube-system"'

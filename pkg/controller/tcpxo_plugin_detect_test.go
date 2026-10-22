@@ -48,6 +48,30 @@ func (r podReader) Get(_ context.Context, _ client.ObjectKey, _ client.Object, _
 	return nil
 }
 
+// flakyPodReader fails its first *failures Lists with err, then serves like
+// its podReader.
+type flakyPodReader struct {
+	podReader
+	failures *int
+	err      error
+}
+
+func (r flakyPodReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if *r.failures > 0 {
+		*r.failures--
+		return r.err
+	}
+	return r.podReader.List(ctx, list, opts...)
+}
+
+// noTCPXORetryDelay makes detection retry a failed List at once.
+func noTCPXORetryDelay(t *testing.T) {
+	t.Helper()
+	saved := tcpxoListRetryDelay
+	tcpxoListRetryDelay = 0
+	t.Cleanup(func() { tcpxoListRetryDelay = saved })
+}
+
 // The GCP H100 workload and tcpxo-daemon images follow the TCPXO plugin
 // release GKE installed (issues #438, #439). These cases pin the detection
 // rule: the gate (gcp + h100) keeps other platforms untouched; only Running,
@@ -63,12 +87,18 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 		Subdir:         "detect-tcpxo-plugin-version",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
+	noTCPXORetryDelay(t)
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
 			Platform        string   `yaml:"platform"`
 			GPUArchitecture string   `yaml:"gpuArchitecture"`
 			Nodes           []string `yaml:"nodes"`
-			Pods            []struct {
+			// ListError makes every List of the installer pods fail with it.
+			ListError string `yaml:"listError"`
+			// FailFirstLists makes that many Lists fail before the pods are
+			// served, to exercise the retry.
+			FailFirstLists int `yaml:"failFirstLists"`
+			Pods           []struct {
 				Name        string   `yaml:"name"`
 				Namespace   string   `yaml:"namespace"`
 				NodeName    string   `yaml:"nodeName"`
@@ -115,7 +145,15 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 			pods = append(pods, pod)
 		}
 
-		d := resolveTCPXOPluginVersion(context.Background(), podread.New(podReader{pods: pods}, podReader{pods: pods}),
+		var reader client.Reader = podReader{pods: pods}
+		switch {
+		case input.ListError != "":
+			reader = podReader{listErr: errors.New(input.ListError)}
+		case input.FailFirstLists > 0:
+			failures := input.FailFirstLists
+			reader = flakyPodReader{podReader{pods: pods}, &failures, errors.New("etcdserver: request timed out")}
+		}
+		d := resolveTCPXOPluginVersion(context.Background(), podread.New(reader, reader),
 			input.Platform, input.GPUArchitecture, nodes)
 
 		out := struct {
@@ -142,6 +180,7 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 // A failed List is a refusal, never an error: the Certification still renders
 // with the catalog default images.
 func TestResolveTCPXOPluginVersionListError(t *testing.T) {
+	noTCPXORetryDelay(t)
 	listErr := errors.New(`pods is forbidden: cannot list resource "pods" in namespace "kube-system"`)
 	d := resolveTCPXOPluginVersion(context.Background(), podread.New(podReader{listErr: listErr}, podReader{listErr: listErr}),
 		"gcp", "h100", []corev1.Node{{Name: testNodeA}})

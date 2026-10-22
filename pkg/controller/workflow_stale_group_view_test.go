@@ -160,7 +160,7 @@ func TestStaleGroupViewDoesNotFailRetriedGroup(t *testing.T) {
 			return err
 		}
 
-		r := &WorkflowReconciler{Client: c, Scheme: scheme, JobRequeueInterval: time.Second}
+		r := &WorkflowReconciler{Client: c, APIReader: c, Scheme: scheme, JobRequeueInterval: time.Second}
 		res, err := r.updateStatusFromJobs(ctx, cached)
 		if err != nil {
 			return err
