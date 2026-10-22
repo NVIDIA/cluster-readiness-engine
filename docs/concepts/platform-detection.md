@@ -130,7 +130,7 @@ The live controller tracks which overrides matched in `status.orchestration.appl
 
 ### Akamai RTX PRO 6000 TCP
 
-See [ADR-101](../designs/101-akamai-rtxpro6000-tcp.md) for the transport and qualification decisions.
+See [ADR-101](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/101-akamai-rtxpro6000-tcp.md) for the transport and qualification decisions.
 
 Akamai RTX PRO 6000 overlays configure NCCL for TCP over `eth0`, disable InfiniBand and the external network plugin, and request standard `nvidia.com/gpu` resources. They do not request RDMA devices or add a GPU taint toleration: the inspected LKE GPU nodes have no GPU taint. The same transport settings apply to the three NCCL collectives, Nemotron 5 8B, and MPI or Torch WorkloadRuns.
 
