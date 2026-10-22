@@ -1,0 +1,610 @@
+{
+  "Job/aws-rtx-mpi-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-mpi-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "aws-rtx-mpi"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "aws-rtx-node-1,aws-rtx-node-2"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "aws-rtx-mpi",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "aws-rtx-mpi-runtime-839f9-job",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+            "command": [
+              "timeout",
+              "3600",
+              "/usr/local/mpi/bin/mpirun"
+            ],
+            "args": [
+              "-N",
+              "8",
+              "--allow-run-as-root",
+              "--mca",
+              "plm_rsh_args",
+              "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+              "-x",
+              "NCCL_DEBUG=INFO",
+              "-x",
+              "NCCL_CUMEM_ENABLE=1",
+              "-x",
+              "NCCL_NET_GDR_C2C=1",
+              "-x",
+              "NCCL_NET_GDR_LEVEL=PHB",
+              "-x",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "-x",
+              "NCCL_SHM_DISABLE=1",
+              "-x",
+              "NCCL_MNNVL_ENABLE=0",
+              "-x",
+              "NCCL_SOCKET_IFNAME=eth0",
+              "-x",
+              "USER_SETTING=preserved",
+              "--mca",
+              "pml",
+              "ob1",
+              "--mca",
+              "btl",
+              "tcp,self",
+              "--mca",
+              "btl_tcp_if_include",
+              "eth0",
+              "--mca",
+              "oob",
+              "tcp",
+              "--mca",
+              "oob_tcp_if_include",
+              "eth0",
+              "--mca",
+              "coll_ucc_enable",
+              "0",
+              "--mca",
+              "coll_hcoll_enable",
+              "0",
+              "-x",
+              "FI_PROVIDER=efa",
+              "-x",
+              "FI_EFA_USE_DEVICE_RDMA=1",
+              "-x",
+              "FI_EFA_FORK_SAFE=1",
+              "-x",
+              "NCCL_NET_PLUGIN=ofi",
+              "-x",
+              "NCCL_NVLS_ENABLE=0",
+              "--tag-output",
+              "/usr/local/bin/all_reduce_perf_mpi",
+              "-b",
+              "8",
+              "-e",
+              "1G",
+              "-f",
+              "2"
+            ],
+            "numNodes": 2,
+            "numProcPerNode": 8
+          },
+          "runtimePatches": [
+            {
+              "manager": "nvcre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "aws-rtx-node-1",
+                                                "aws-rtx-node-2"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "tolerations": [
+                                  {
+                                    "operator": "Exists"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "launcher",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "aws-rtx-node-1",
+                                                "aws-rtx-node-2"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "tolerations": [
+                                  {
+                                    "operator": "Exists"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/aws-rtx-mpi-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "aws-rtx-mpi-job-workload",
+        "namespace": "default"
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
+    }
+  },
+  "TrainingRuntime/aws-rtx-mpi-runtime-839f9-job": {
+    "apiVersion": "trainer.kubeflow.org/v1alpha1",
+    "kind": "TrainingRuntime",
+    "metadata": {
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "labels": {
+        "app": "aws-rtx-mpi",
+        "nvcre.nvidia.com/workflow": "aws-rtx-mpi",
+        "trainer.kubeflow.org/framework": "mpi"
+      },
+      "name": "aws-rtx-mpi-runtime-839f9-job",
+      "namespace": "default",
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "aws-rtx-mpi-job",
+          "uid": ""
+        }
+      ]
+    },
+    "spec": {
+      "mlPolicy": {
+        "mpi": {
+          "mpiImplementation": "OpenMPI",
+          "numProcPerNode": 8,
+          "runLauncherAsNode": false,
+          "sshAuthMountPath": "/tmp/mpi-ssh-raw"
+        },
+        "numNodes": 1
+      },
+      "template": {
+        "spec": {
+          "network": {
+            "publishNotReadyAddresses": true
+          },
+          "replicatedJobs": [
+            {
+              "groupName": "default",
+              "name": "node",
+              "replicas": 1,
+              "template": {
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "args": [
+                            "set -x \u0026\u0026 if ! test -x /usr/sbin/sshd; then\n  if ! command -v apt-get \u003e/dev/null 2\u003e\u00261 || ! command -v timeout \u003e/dev/null 2\u003e\u00261; then\n    echo \"sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd\" \u003e\u00262\n    exit 1\n  fi\n  apt=\"-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0\"\n  for attempt in 1 2 3; do\n    [ \"$attempt\" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a\n    timeout -s KILL 120 apt-get $apt update \u0026\u0026\n      timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server \u0026\u0026 break\n    echo \"sshd install attempt $attempt of 3 failed or timed out\" \u003e\u00262\n    [ \"$attempt\" -lt 3 ] || exit 1\n  done\nfi \u0026\u0026 mkdir -p /var/run/sshd \u0026\u0026 chmod 0755 /var/run/sshd \u0026\u0026 mkdir -p /root/.ssh \u0026\u0026 chmod 700 /root/.ssh \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026 chmod 600 /root/.ssh/id_rsa \u0026\u0026 chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026 /usr/sbin/sshd -De"
+                          ],
+                          "command": [
+                            "sh",
+                            "-c"
+                          ],
+                          "env": [
+                            {
+                              "name": "NCCL_DEBUG",
+                              "value": "INFO"
+                            },
+                            {
+                              "name": "NCCL_CUMEM_ENABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_C2C",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_LEVEL",
+                              "value": "PHB"
+                            },
+                            {
+                              "name": "NCCL_P2P_NET_CHUNKSIZE",
+                              "value": "2097152"
+                            },
+                            {
+                              "name": "NCCL_SHM_DISABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_MNNVL_ENABLE",
+                              "value": "0"
+                            },
+                            {
+                              "name": "NCCL_SOCKET_IFNAME",
+                              "value": "eth0"
+                            },
+                            {
+                              "name": "USER_SETTING",
+                              "value": "preserved"
+                            }
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "node",
+                          "readinessProbe": {
+                            "exec": {
+                              "command": [
+                                "sh",
+                                "-c",
+                                "command -v ssh \u003e/dev/null 2\u003e\u00261 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6\nset -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true\ncommand -v timeout \u003e/dev/null 2\u003e\u00261 \u0026\u0026 set -- timeout 8 \"$@\"\nexec \"$@\""
+                              ]
+                            },
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 30,
+                            "timeoutSeconds": 10
+                          },
+                          "resources": {
+                            "limits": {
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            },
+                            "requests": {
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            }
+                          },
+                          "securityContext": {
+                            "capabilities": {
+                              "add": [
+                                "IPC_LOCK",
+                                "SYS_CHROOT"
+                              ]
+                            }
+                          },
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/tmp/mpi-ssh-raw",
+                              "name": "mpi-ssh-auth",
+                              "readOnly": true
+                            },
+                            {
+                              "mountPath": "/dev/shm",
+                              "name": "dshm"
+                            }
+                          ]
+                        }
+                      ],
+                      "restartPolicy": "OnFailure",
+                      "volumes": [
+                        {
+                          "emptyDir": {
+                            "medium": "Memory"
+                          },
+                          "name": "dshm"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "dependsOn": [
+                {
+                  "name": "node",
+                  "status": "Ready"
+                }
+              ],
+              "groupName": "default",
+              "name": "launcher",
+              "replicas": 1,
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                  }
+                },
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "env": [
+                            {
+                              "name": "NCCL_DEBUG",
+                              "value": "INFO"
+                            },
+                            {
+                              "name": "NCCL_CUMEM_ENABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_C2C",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_LEVEL",
+                              "value": "PHB"
+                            },
+                            {
+                              "name": "NCCL_P2P_NET_CHUNKSIZE",
+                              "value": "2097152"
+                            },
+                            {
+                              "name": "NCCL_SHM_DISABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_MNNVL_ENABLE",
+                              "value": "0"
+                            },
+                            {
+                              "name": "NCCL_SOCKET_IFNAME",
+                              "value": "eth0"
+                            },
+                            {
+                              "name": "USER_SETTING",
+                              "value": "preserved"
+                            }
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "node",
+                          "resources": {
+                            "limits": {
+                              "cpu": "2",
+                              "memory": "1Gi"
+                            }
+                          },
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/tmp/mpi-ssh-raw",
+                              "name": "mpi-ssh-auth",
+                              "readOnly": true
+                            },
+                            {
+                              "mountPath": "/root/.ssh",
+                              "name": "ssh-keys"
+                            }
+                          ]
+                        }
+                      ],
+                      "initContainers": [
+                        {
+                          "args": [
+                            "set -x \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026 chmod 600 /root/.ssh/id_rsa \u0026\u0026 chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
+                          ],
+                          "command": [
+                            "sh",
+                            "-c"
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "fix-ssh-permissions",
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/tmp/mpi-ssh-raw",
+                              "name": "mpi-ssh-auth",
+                              "readOnly": true
+                            },
+                            {
+                              "mountPath": "/root/.ssh",
+                              "name": "ssh-keys"
+                            }
+                          ]
+                        }
+                      ],
+                      "restartPolicy": "OnFailure",
+                      "volumes": [
+                        {
+                          "emptyDir": {},
+                          "name": "ssh-keys"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "successPolicy": {
+            "operator": "All",
+            "targetReplicatedJobs": [
+              "launcher"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "WorkloadRun/aws-rtx-mpi": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-mpi",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        }
+      },
+      "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+      "framework": {
+        "mpi": {
+          "binary": "/usr/local/bin/all_reduce_perf_mpi",
+          "args": [
+            "-b",
+            "8",
+            "-e",
+            "1G",
+            "-f",
+            "2"
+          ],
+          "mpiArgs": [
+            "--tag-output"
+          ],
+          "mpiImplementation": "OpenMPI",
+          "mpirunPath": "/usr/local/mpi/bin/mpirun"
+        }
+      },
+      "numNodes": 2,
+      "env": [
+        {
+          "name": "USER_SETTING",
+          "value": "preserved"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkflowCreated",
+          "message": "Workflow aws-rtx-mpi created"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        }
+      ],
+      "workflowRef": {
+        "name": "aws-rtx-mpi",
+        "namespace": "default"
+      },
+      "detectedPlatform": "aws",
+      "detectedGPUArchitecture": "rtxpro6000"
+    }
+  }
+}

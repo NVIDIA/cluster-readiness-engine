@@ -489,3 +489,25 @@
             env:
 {{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}
 {{- end }}
+# --- AWS + RTX PRO 6000 (g7e EFA; preserve caller workload images) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/aws-rtxpro6000-efa-resources.yaml" . | indent 2 }}
+{{- if eq .FrameworkType "mpi" }}
+  mpiArgs:
+{{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . | indent 4 }}
+{{ lib "nccl/mpi-disable-ucc-hcoll-args.yaml" . | indent 4 }}
+{{ lib "nccl/aws-rtxpro6000-efa-env.yaml" . | toMpiArgs | indent 4 }}
+{{- else }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-rtxpro6000-efa-env.yaml" . | indent 12 }}
+{{- end }}

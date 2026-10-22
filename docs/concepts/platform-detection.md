@@ -87,6 +87,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | RTX PRO 6000 Blackwell | Akamai LKE | TCP over `eth0` | Standard `nvidia.com/gpu` resources; inspected GPU nodes are untainted; no RDMA request; set `gpusPerNode` to the VM GPU count |
+| RTX PRO 6000 Blackwell | AWS g7e.48xlarge | EFA, PCIe GPU peer-to-peer | Eight GPUs and `vpc.amazonaws.com/efa: 4` per worker; no ComputeDomain or multi-node NVLink |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
 | B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
 | GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
@@ -125,6 +126,51 @@ configuration. The live controller applies the capacity filter.
 The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
 `NCCL_IB_DISABLE=1`. The PyTorch image includes an external RDMA plugin that
 otherwise attempts to initialize even on this TCP-only network.
+
+### AWS RTX PRO 6000
+
+The AWS RTX cell targets `g7e.48xlarge`: eight RTX PRO 6000 Blackwell Server
+Edition GPUs and four EFA interfaces per node. Its override matches **both**
+`platform: aws` and `gpuArchitecture: rtxpro6000`. The H100 fallback explicitly
+excludes RTX, so a g7e worker never inherits the p5 request for 32 EFA devices.
+The global RTX defaults and the GCP TCP profile are unchanged.
+
+Install the AWS EFA device plugin and confirm each target node advertises
+`nvidia.com/gpu: 8` and `vpc.amazonaws.com/efa: 4`. Requesting the EFA resource
+provides device access; installing a host driver alone does not advertise the
+resource or make it available to a pod. Do not use GCP's `NCCL_NET_PLUGIN=none`
+profile: the AWS cell selects the OFI plugin and the EFA provider. Multi-node
+NVLink and NVLS are disabled because g7e GPUs communicate through PCIe and EFA.
+
+The NCCL all-reduce, all-gather, all-to-all, EFA loopback and Nemotron 5 8B
+entries pin NVIDIA PyTorch 26.03 with EFA 1.46.0 and NCCL 2.29.7 by digest.
+Its CUDA 13.2 stack needs a compatible host driver. SM120 kernels are required;
+the rejected AWS NCCL candidate compiled only for SM80–SM103 could not run
+these RTX GPUs (see ADR-103).
+The two-node validation used host driver 580.173.02 with the image's CUDA
+compatibility libraries. The catalog forwards PATH and LD_LIBRARY_PATH to
+SSH-launched MPI ranks so those image paths remain available. These overrides do not
+claim support for the NVSwitch loopback or Nemotron 5 56B entries.
+
+The AWS RTX 8B runtime includes a guarded Megatron core_v0.15.2 DDP stream
+ordering backport after the clone init container. It prevents parameter-buffer
+copies racing initialization and optimizer setup; the original parameter
+integrity checks stay enabled. An unexpected training.py source hash fails
+startup instead of applying the patch to another version. Two-node validation
+passes all sixteen ranks and ten training steps. This is a smoke test;
+training qualification and thresholds remain separate work. See ADR-103 for
+the upstream references, source guards and CUDA graph limitation.
+
+WorkloadRun applies the same four-device request and EFA transport settings
+while preserving the caller's workload image. The caller must supply an
+EFA-capable image with compatible CUDA, libfabric and aws-ofi-nccl libraries;
+the overlay does not install userspace libraries into arbitrary images. MPI
+transport settings reach worker ranks through `mpirun -x`, while torch and
+exec workloads receive container environment variables.
+
+Bandwidth thresholds are specific to the node count, software and topology;
+collect live baselines before setting them. Offline rendering checks the
+selected configuration, not the physical fabric or its performance.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
 

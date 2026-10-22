@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-rtx-exec
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: aws-rtx-exec
+    namespace: default
+  - kind: Job
+    name: aws-rtx-exec-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: aws-rtx-exec-runtime-e2379-job
+    namespace: default

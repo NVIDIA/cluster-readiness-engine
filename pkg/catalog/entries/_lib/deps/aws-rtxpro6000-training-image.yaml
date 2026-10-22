@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                  initContainers:
+                  - name: megatron-clone
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                  # Megatron core_v0.15.2 copies model parameters on a side
+                  # stream without ordering it against initialization or the
+                  # optimizer. See NVIDIA/Megatron-LM#2044 and ADR-103.
+                  - name: megatron-ddp-stream-order
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                    command: [python3, -c]
+                    args:
+                    - |
+                      import hashlib
+                      from pathlib import Path
+
+                      path = Path("/mnt/workspace/megatron-lm/megatron/training/training.py")
+                      source = path.read_text()
+                      original = "a5cd6e9f0087ddc6d9cfa566fcda871a4b4ab8a3bb41f4923673a8bc76073ff6"
+                      patched = "3888d7ff3b58ecdc6ea67edce4c324ced46205f7340a149fbc18160f0da616a0"
+                      digest = hashlib.sha256(source.encode()).hexdigest()
+                      if digest == patched:
+                          print("Megatron DDP stream ordering already applied")
+                      elif digest != original:
+                          raise RuntimeError("AWS RTX DDP stream patch requires the inspected core_v0.15.2 source")
+                      else:
+                          before = "        with torch.cuda.stream(torch.cuda.Stream()):\n            model = [\n"
+                          after = (
+                              "        # Order parameter initialization, DDP copies, and optimizer setup.\n"
+                              "        current_stream = torch.cuda.current_stream()\n"
+                              "        ddp_stream = torch.cuda.Stream()\n"
+                              "        ddp_stream.wait_stream(current_stream)\n"
+                              "        with torch.cuda.stream(ddp_stream):\n"
+                              "            model = [\n"
+                          )
+                          end = "        # Broadcast params from data parallel src rank to other data parallel ranks.\n"
+                          if source.count(before) != 1 or source.count(end) != 1:
+                              raise RuntimeError("Unexpected Megatron DDP initialization structure")
+                          updated = source.replace(before, after).replace(
+                              end, "        current_stream.wait_stream(ddp_stream)\n\n" + end
+                          )
+                          if hashlib.sha256(updated.encode()).hexdigest() != patched:
+                              raise RuntimeError("Unexpected Megatron DDP patch result")
+                          path.write_text(updated)
+                          print("Applied Megatron DDP stream ordering; integrity checks unchanged")
+                    volumeMounts:
+                    - name: workspace
+                      mountPath: /mnt/workspace

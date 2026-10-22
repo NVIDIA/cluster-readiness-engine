@@ -136,7 +136,7 @@ overrides:
     platform:
       equals: aws
     gpuArchitecture:
-      notIn: [gb200, gb300]
+      notIn: [gb200, gb300, rtxpro6000]
   dependencies:
 {{ lib "deps/aws-efa-runtime-patch-comm.yaml" . | indent 2 }}
   jobTemplate:

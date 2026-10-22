@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-rtx-ag-communication-768e7
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-rtx-ag
+    namespace: default
+  - kind: Job
+    name: aws-rtx-ag-communication-768e7-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: nccl-all-gather-runtime-768e7-job
+    namespace: default
