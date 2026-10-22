@@ -42,6 +42,24 @@ current state in `.status.conditions`. Kubernetes retains Events according to
 the API server's `--event-ttl` setting, which defaults to one hour, so older
 transitions may no longer be present.
 
+## setup init fails with a crash-looping controller
+
+**Symptoms:** `nvcrectl setup init` exits non-zero with `the NVCRE controller is crash-looping`, and `nvcrectl setup status` reports `nvcreController` missing.
+
+**Diagnosis:** the error names the controller pod, its restart count and its last exit reason. `OOMKilled` (exit code 137) means the controller ran out of memory, usually during its initial cache sync. The controller's memory grows with the size of the cluster, so a large cluster can need more than the 1Gi default; see [Resource requirements](./deployment.md#resource-requirements). For any other reason, read the last run's log:
+
+```bash
+kubectl -n nvcre logs <pod> -c manager --previous
+```
+
+**Fix:** for an OOMKill, raise the limit the error names and re-run `setup init`. Later runs keep the value:
+
+```bash
+nvcrectl setup init --set manager.resources.limits.memory=<limit>
+```
+
+See [Resource requirements](./deployment.md#resource-requirements) for sizing.
+
 ## Job not progressing
 
 **Symptoms:** Job stays in `InProgress` for longer than expected. No `Succeeded` or `Failed` condition appears.
