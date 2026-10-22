@@ -13,6 +13,7 @@ NVCRE is for platform and infrastructure teams that bring up, validate, or resel
 
 - A certification catalog with NCCL communication tests and multi-node training workloads
 - Platform detection (AWS, GCP, Azure, OCI, Akamai, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, H200, B200, B300, A100, L40S, L40, RTX PRO 6000 Blackwell)
+- AWS RTX PRO 6000 Blackwell (`g7e.48xlarge`) overlays for NCCL, EFA loopback, Nemotron 5 8B, and WorkloadRun, with eight GPUs and four EFA devices per node ([configuration](docs/concepts/platform-detection.md#aws-rtx-pro-6000))
 - Goodput measurement parsed from training logs with configurable LogProfile patterns
 - Per-bus bandwidth measurement parsed from NCCL logs
 - Node health monitoring with CEL expressions while workloads run
