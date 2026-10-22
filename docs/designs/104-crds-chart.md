@@ -239,7 +239,7 @@ The prototype used both charts built from the CRDs at `3e78eef2`, on throwaway K
 - **Not tested:**
   - Flux `CreateReplace` as a prior writer;
   - mixing Helm versions on one CRDs-chart release;
-  - the Argo CD migration with automated pruning enabled, which the `deployment.md` guidance is validated against before it ships.
+  - the Argo CD migration with automated pruning enabled. Before the `deployment.md` guidance ships, it is run end to end on a cluster with existing NVCRE objects. It passes only if all seven CRDs and every existing object survive the handoff and the re-enabling of pruning.
 
 ## References
 
