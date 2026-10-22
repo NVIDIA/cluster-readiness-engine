@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-nc-gb-ps-communicatio-5ad61
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-nc-gb-ps
+    namespace: default
+  - kind: Workflow
+    name: aws-nc-gb-ps-communicatio-5ad61
+    namespace: default
+  # The Job and the TrainJob are what this case adds over
+  # TestCertificationRenderImagePullSecrets, which already covers the
+  # Certification and the Workflow through the same entry.Build. Only the
+  # controller path can show that the catalog's secrets survive the Workflow
+  # controller appending its own nvcre.nvidia.com/controller patch for
+  # affinity and tolerations, and that both lists reach the TrainJob the Job
+  # creates. A regression there is silent in the rendered Workflow.
+  - kind: Job
+    name: aws-nc-gb-ps-communicatio-5ad61-job
+    namespace: default
+  - kind: TrainJob
+    name: aws-nc-gb-ps-communicatio-5ad61-job-workload
+    namespace: default

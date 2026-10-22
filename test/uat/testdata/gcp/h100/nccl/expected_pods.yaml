@@ -335,7 +335,20 @@ spec:
   - args:
     - |-
       set -x &&
-      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
+      if ! test -x /usr/sbin/sshd; then
+        if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+          echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+          exit 1
+        fi
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
+        for attempt in 1 2 3; do
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+          [ "$attempt" -lt 3 ] || exit 1
+        done
+      fi &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&
@@ -577,7 +590,20 @@ spec:
   - args:
     - |-
       set -x &&
-      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
+      if ! test -x /usr/sbin/sshd; then
+        if ! command -v apt-get >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then
+          echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
+          exit 1
+        fi
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
+        for attempt in 1 2 3; do
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          echo "sshd install attempt $attempt of 3 failed or timed out" >&2
+          [ "$attempt" -lt 3 ] || exit 1
+        done
+      fi &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&

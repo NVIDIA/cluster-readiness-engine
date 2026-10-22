@@ -28,17 +28,7 @@ dependencies:
                 spec:
                   containers:
                   - args:
-                    - |-
-                      set -x &&
-                      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
-                      mkdir -p /var/run/sshd  &&
-                      chmod 0755 /var/run/sshd  &&
-                      mkdir -p /root/.ssh &&
-                      chmod 700 /root/.ssh &&
-                      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
-                      chmod 600 /root/.ssh/id_rsa &&
-                      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys &&
-                      /usr/sbin/sshd -De
+{{ lib "nccl/mpi-worker-sshd-args.yaml" . | indent 20 }}
                     command:
                     - sh
                     - -c
@@ -193,7 +183,23 @@ jobTemplate:
                           - emptyDir:
                               medium: Memory
                             name: dshm
+                          {{- if .ImagePullSecrets }}
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                          {{- end }}
                 - name: launcher
+                  {{- if .ImagePullSecrets }}
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                  {{- end }}
         runtimeRef:
           kind: TrainingRuntime
           name: nccl-all-reduce-runtime

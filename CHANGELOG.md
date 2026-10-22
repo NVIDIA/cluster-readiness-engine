@@ -13,6 +13,16 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [Unreleased]
+
+### Fixed
+
+- Certification `spec.imagePullSecrets` reached only the two training categories;
+  the five communication categories and `diagnostics/dcgm-level4` rendered no pull
+  secret on any pod, so against a private registry those categories failed at
+  image pull. Every catalog entry now renders them on its `node` pods and, for the
+  MPI entries, on the `launcher` pod too (#534)
+
 ## [0.8.0] - 2026-10-19
 
 ### Deprecated

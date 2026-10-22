@@ -85,6 +85,12 @@ jobTemplate:
                           - emptyDir:
                               medium: Memory
                             name: dshm
+                          {{- if .ImagePullSecrets }}
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+                          {{- end }}
         runtimeRef:
           kind: TrainingRuntime
           name: nccl-loopback-nvswitch-runtime
