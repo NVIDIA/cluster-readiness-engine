@@ -128,6 +128,8 @@ Table tests remain fine in any package for nil-safety pins, concurrency guards, 
 
 The full testing guide is in `.claude/skills/cre-test/SKILL.md`: golden file rules, the integration test input format, and the canonical example. Read that file directly. It is plain Markdown and needs no particular tool.
 
+**Review checklist for Pod reads**: for any new or changed `podread` method, state which pods it must return and confirm every one carries the job label if it reads from the cache. A new integration case for the read must use pods labelled as production labels them (launchers have no job label).
+
 Release-path workflows are tested in `test/releasepolicy/`. `attest.yml`'s input validation is shell embedded in YAML — nothing type-checks it, and a weakened guard would not break a build, it would just stop rejecting things. The tests extract that step from the workflow and execute it against a table of accept and reject cases, so the test cannot drift from the validation it covers:
 
 ```bash
@@ -144,6 +146,7 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
 - **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.
+- **Pods are read only through `pkg/podread` (ADR-102)**: The manager's cache holds only Pods with the `nvcre.nvidia.com/job` label. MPI launchers, `kube-system` pods and other components' pods are not in it. Never list or get Pods through `r.Client`, `mgr.GetCache()` or a `Watches`/`Owns` on Pods. The cache guard refuses those, and `test/readpolicy` fails on a `corev1.PodList` outside `pkg/podread`. A new kind of Pod read is a new `podread` method, and that method decides cache or live: cache only when every pod it needs carries the job label (selected by the label or `JobIndexField`); otherwise live (`WorkloadPods`, `NamespacePods`). A cached read that expects launchers returns empty without an error.
 
 ## Development Workflow (MANDATORY)
 
@@ -319,6 +322,7 @@ Nothing in CI inspects commit authorship, so these rules hold by convention. The
 - Change CRD schemas (`api/v1alpha1/*_types.go`).
 - Create an ADR in `docs/designs/`.
 - Push branches or open pull requests.
+- Change `guardedScopes`, `exemptScopes` or the scoped-read rule in `pkg/controller/cache.go`; add a `ByObject` selector to `CacheOptions()`; add a `podread` method that reads from the cache.
 
 **Never do**:
 - Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.

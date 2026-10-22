@@ -2076,7 +2076,7 @@ func (r *WorkflowReconciler) observeRunningGroup(
 		// pods, so it records what it finds, partial or not (terminal=true),
 		// and the write goes out even though the group stays Running.
 		backfilled := r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
-		if shouldWaitForPodDrain(ctx, r.Client, job) {
+		if shouldWaitForPodDrain(ctx, newPodReader(r.Client, r.APIReader), job) {
 			if backfilled {
 				return groupChanged, "", nil
 			}
@@ -2372,7 +2372,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 		// Delete the workload to free GPUs and stop hanging pods. This happens
 		// before the retry/terminal decision so pods start draining either way.
 		r.deleteWorkloadForJob(ctx, job)
-		if shouldWaitForPodDrain(ctx, r.Client, job) {
+		if shouldWaitForPodDrain(ctx, newPodReader(r.Client, r.APIReader), job) {
 			return groupStillRunning, nil
 		}
 	}
@@ -3647,11 +3647,10 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		return
 	}
 
-	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList,
-		client.InNamespace(job.Namespace),
-		client.MatchingLabels{labelJobKey: job.Name},
-	); err != nil {
+	// The Job's workload pods. Launchers carry no job label, so the launcher
+	// branch below cannot match yet (ADR-102, Notes).
+	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
+	if err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
 	}
@@ -3660,8 +3659,8 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	// 1. Prefer the launcher pod (MPI tests — has the actual test output)
 	// 2. Fall back to the first running node pod
 	var targetPod *corev1.Pod
-	for i := range podList.Items {
-		pod := &podList.Items[i]
+	for i := range pods {
+		pod := &pods[i]
 		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			continue
 		}
@@ -4536,7 +4535,8 @@ func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.APIReader = mgr.GetAPIReader()
 	}
 	if r.NodeDiscoverer == nil {
-		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
+		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient(),
+			newPodReader(mgr.GetClient(), mgr.GetAPIReader()))
 	}
 	if r.AccessReviewer == nil {
 		r.AccessReviewer = NewAccessReviewer(mgr.GetClient())

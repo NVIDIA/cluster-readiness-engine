@@ -10,25 +10,29 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 const (
 	// NVCREJobLabel is the label used to identify pods belonging to an NVCRE Job.
-	NVCREJobLabel = "nvcre.nvidia.com/job"
+	NVCREJobLabel = podread.JobLabel
 
 	// PodNVCREJobIndexField is the field index for pod lookups by NVCRE job label.
 	// This enables efficient cache-based queries when discovering nodes for a Job.
-	PodNVCREJobIndexField = "metadata.labels.nvcre.nvidia.com/job"
+	PodNVCREJobIndexField = podread.JobIndexField
 )
 
 // NodeDiscoverer finds nodes running pods for a given workload.
 type NodeDiscoverer struct {
 	client client.Client
+	pods   *podread.Reader
 }
 
-// NewNodeDiscoverer creates a new node discoverer.
-func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
-	return &NodeDiscoverer{client: c}
+// NewNodeDiscoverer creates a new node discoverer. c reads Nodes; pods reads
+// the Job's pods (ADR-102).
+func NewNodeDiscoverer(c client.Client, pods *podread.Reader) *NodeDiscoverer {
+	return &NodeDiscoverer{client: c, pods: pods}
 }
 
 // DiscoverNodesForJob finds all nodes running pods associated with an NVCRE Job.
@@ -59,8 +63,8 @@ func (d *NodeDiscoverer) DiscoverPlacedNodesForJob(ctx context.Context, namespac
 }
 
 // discoverNodes lists a Job's pods and returns the distinct nodes they are bound
-// to, in sorted order. Callers supply the phase filter; the index lookup, the
-// label-selector fallback, the binding check and the dedupe are shared.
+// to, in sorted order. Callers supply the phase filter; the read, the binding
+// check and the dedupe are shared.
 //
 // The result is sorted rather than returned in map order, because callers
 // persist it into status and compare it against goldens. Go randomizes map
@@ -69,25 +73,14 @@ func (d *NodeDiscoverer) DiscoverPlacedNodesForJob(ctx context.Context, namespac
 func (d *NodeDiscoverer) discoverNodes(
 	ctx context.Context, namespace, jobName string, keep func(*corev1.Pod) bool,
 ) ([]string, error) {
-	podList := &corev1.PodList{}
-
-	// Use field index if available, fall back to label selector
-	listOpts := []client.ListOption{
-		client.InNamespace(namespace),
-		client.MatchingFields{PodNVCREJobIndexField: jobName},
-	}
-
-	if err := d.client.List(ctx, podList, listOpts...); err != nil {
-		// Fall back to label selector if field index is not available
-		labelSelector := client.MatchingLabels{NVCREJobLabel: jobName}
-		if err := d.client.List(ctx, podList, client.InNamespace(namespace), labelSelector); err != nil {
-			return nil, fmt.Errorf("failed to list pods for Job %s: %w", jobName, err)
-		}
+	pods, err := d.pods.JobPods(ctx, namespace, jobName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods for Job %s: %w", jobName, err)
 	}
 
 	nodeSet := make(map[string]struct{})
-	for i := range podList.Items {
-		pod := &podList.Items[i]
+	for i := range pods {
+		pod := &pods[i]
 		if pod.Spec.NodeName == "" || !keep(pod) {
 			continue
 		}
