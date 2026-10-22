@@ -1,4 +1,4 @@
-# ADR-104: Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart
+# ADR-107: Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart
 
 > **Status:** Proposed
 >
