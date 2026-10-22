@@ -37,11 +37,13 @@ var inlineLink = regexp.MustCompile(`\]\(\s*(<[^>\n]*>|[^)\s]+)`)
 // destination inlineLink captures after it can be told apart from a link's.
 var imageStart = regexp.MustCompile(`!\[[^\]]*\]\(`)
 
-// htmlAttr matches an HTML anchor's href or image's src, quoted either way or
-// unquoted, as Fern renders all three. Group 1 is the tag name; one of groups
-// 2 to 4 holds the value.
-var htmlAttr = regexp.MustCompile(
-	`(?i)<(a|img)\s[^>]*?\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'\x60=<]+))`)
+// htmlAttr matches an anchor's href or an image's src, quoted either way or
+// unquoted, as Fern renders all three. The attribute name must follow
+// whitespace, so data-href is not read as href, and each tag is paired with
+// its own attribute, so an anchor's src cannot stand in for its href. Group 2
+// is set for an image; one of groups 3 to 5 holds the value.
+var htmlAttr = regexp.MustCompile(`(?i)<(?:(a)\s(?:[^>]*?\s)?href|(img)\s(?:[^>]*?\s)?src)` +
+	`\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'\x60=<]+))`)
 
 // refDefinition matches a reference-style link definition: `[label]: target`.
 var refDefinition = regexp.MustCompile(`(?m)^ {0,3}\[[^\]]+\]:\s+(\S+)`)
@@ -109,6 +111,12 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "HTML image that does not exist", body: `<img src=../designs/x.png alt=x>`, broken: 1},
 		{name: "quoted HTML image that does not exist", body: `<IMG alt="x" SRC="./missing.png">`, broken: 1},
 		{
+			name:   "broken href after a data-href",
+			body:   `<a data-href="../operations/deployment.md" href="../designs/x.md">ADR</a>`,
+			broken: 1,
+		},
+		{name: "missing image after a data-src", body: `<img data-src="./img/arch.png" src="./missing.png">`, broken: 1},
+		{
 			name:   "GitHub link to a file that does not exist",
 			body:   "[ADR](" + repoURL + "blob/main/docs/designs/999-nope.md)",
 			broken: 1,
@@ -139,6 +147,7 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "image with a title that exists under docs/", body: `![arch]( ./img/arch.png "Arch")`},
 		{name: "linked image to a nav page", body: "[![arch](./img/arch.png)](../operations/deployment.md)"},
 		{name: "HTML image that exists under docs/", body: `<img src="img/arch.png">`},
+		{name: "anchor src is not its href", body: `<a src="../designs/x.md" href="../operations/deployment.md">deploy</a>`},
 		{name: "unquoted HTML anchor to a nav page", body: `<a href=../operations/deployment.md>deploy</a>`},
 		{name: "HTML anchor to a nav page", body: `<a href="../operations/deployment.md#rbac">deploy</a>`},
 		{name: "HTML anchor inside inline code", body: "`<a href=\"../designs/x.md\">`"},
@@ -232,7 +241,7 @@ func brokenLinks(page, body string, nav map[string]bool, exists func(string) boo
 		targets = append(targets, ref{target: m[1]})
 	}
 	for _, m := range attrs {
-		targets = append(targets, ref{m[2] + m[3] + m[4], strings.EqualFold(m[1], "img")})
+		targets = append(targets, ref{m[3] + m[4] + m[5], m[2] != ""})
 	}
 
 	var out []string
