@@ -12,6 +12,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 // Field index names. Reads that filter on these fields must use
@@ -19,8 +20,10 @@ import (
 // listing and filtering in Go walks every cached object of that kind on every
 // call, which is what these indexes exist to avoid.
 const (
-	// podNodeNameIndexField indexes Pods by spec.nodeName (node health monitoring).
-	podNodeNameIndexField = "spec.nodeName"
+	// podNodeNameIndexField indexes Pods by spec.nodeName (node health
+	// monitoring). It is podread's constant, because podread.JobPodsOnNode
+	// reads the index by that name (ADR-102).
+	podNodeNameIndexField = podread.NodeNameIndexField
 
 	// pvClaimRefIndexField indexes PersistentVolumes by the "namespace/name" of
 	// the PVC they are bound to, so PV lookup during PVC cleanup is a keyed read

@@ -1,0 +1,11 @@
+# The cache holds only the Job's finished pod while the API server already
+# has a newer one that is still running. Filtering the cached pods leaves
+# none active, so the barrier must check the API server and wait (ADR-102).
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: worker-old
+    phase: Failed
+liveOnlyPods:
+  - name: worker-new
+    phase: Running
