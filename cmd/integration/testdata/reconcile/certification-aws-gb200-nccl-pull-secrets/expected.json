@@ -568,6 +568,11 @@
                     "template": {
                       "spec": {
                         "template": {
+                          "metadata": {
+                            "labels": {
+                              "nvcre.nvidia.com/launcher": "aws-nc-gb-ps-communicatio-5ad61-job"
+                            }
+                          },
                           "spec": {
                             "affinity": {
                               "nodeAffinity": {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,6 +30,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
@@ -73,8 +75,11 @@ func TestFailureLogTail(t *testing.T) {
 const stubContainer = "node"
 
 // failureLogInput is a Job's pods as captureFailureLog and launcherFailureLog
-// see them. A launcher pod carries the JobSet labels of the MPI launcher and,
-// as in a real run, not the nvcre.nvidia.com/job label the workers carry.
+// see them. A launcher pod carries the JobSet labels of the MPI launcher and
+// the nvcre.nvidia.com/launcher label and, as in a real run, not the
+// nvcre.nvidia.com/job label the workers carry. The manager's cache does not
+// hold launchers (ADR-102), so the reconciler's cached client never sees them:
+// only its APIReader does, and a launcher is found only by a live read.
 //
 // The workload named by workloadRef exists, created at workloadCreated
 // (seconds, like a pod's created), unless workloadGone is set. Pods created
@@ -123,12 +128,14 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 
 	logs := map[string]string{}
 	objs := make([]client.Object, 0, len(in.Pods))
+	liveObjs := make([]client.Object, 0, len(in.Pods))
 	for _, sp := range in.Pods {
 		labels := map[string]string{"nvcre.nvidia.com/job": "j"}
 		if sp.Launcher {
 			labels = map[string]string{
 				jobSetNameLabel:        in.WorkloadRef,
 				replicatedJobNameLabel: workload.LauncherJobName,
+				podread.LauncherLabel:  "j",
 			}
 		}
 		pod := &corev1.Pod{Name: sp.Name, Namespace: "ns", Labels: labels, CreationTimestamp: at(sp.Created)}
@@ -155,7 +162,10 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 			}}
 		}
 		logs[sp.Name] = sp.Log
-		objs = append(objs, pod)
+		liveObjs = append(liveObjs, pod)
+		if !sp.Launcher {
+			objs = append(objs, pod.DeepCopy())
+		}
 	}
 
 	job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
@@ -183,12 +193,13 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 			return nil
 		}).
 		Build()
+	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(liveObjs...).Build()
 
 	cs, err := newPodLogClientset(t, logs)
 	if err != nil {
 		return nil, nil, err
 	}
-	return &JobReconciler{Client: c, Scheme: scheme, Clientset: cs}, job, nil
+	return &JobReconciler{Client: c, APIReader: live, Scheme: scheme, Clientset: cs}, job, nil
 }
 
 // newPodLogClientset returns a Clientset backed by an httptest server whose
@@ -425,25 +436,24 @@ func TestLauncherFailedPredicate(t *testing.T) {
 	require.False(t, pred.Delete(event.DeleteEvent{Object: pod(true, 1)}))
 }
 
-// A launcher pod names its JobSet, which is named after the TrainJob; the
-// TrainJob names the Job in its nvcre.nvidia.com/job label.
+// A launcher pod names its Job in the nvcre.nvidia.com/launcher label, so the
+// watch maps it with no read: the workload is created in the Job's namespace.
+// A launcher without the label is not one NVCRE labelled, and the JobSet name
+// alone does not name a Job.
 func TestLauncherPodToJob(t *testing.T) {
-	scheme := newWorkflowScheme(t)
-	require.NoError(t, trainerv1alpha1.AddToScheme(scheme))
-	trainJob := &trainerv1alpha1.TrainJob{Name: "j-workload", Namespace: "ns",
-		Labels: map[string]string{labelJobKey: "j"}}
-	unlabelled := &trainerv1alpha1.TrainJob{Name: "other-workload", Namespace: "ns"}
-	r := &JobReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(trainJob, unlabelled).Build()}
-	launcher := func(jobSet string) *corev1.Pod {
-		return &corev1.Pod{Name: jobSet + "-launcher-0-0", Namespace: "ns",
-			Labels: map[string]string{jobSetNameLabel: jobSet, replicatedJobNameLabel: workload.LauncherJobName}}
+	launcher := func(labels map[string]string) *corev1.Pod {
+		base := map[string]string{jobSetNameLabel: "j-workload", replicatedJobNameLabel: workload.LauncherJobName}
+		maps.Copy(base, labels)
+		return &corev1.Pod{Name: "j-workload-launcher-0-0", Namespace: "ns", Labels: base}
 	}
 	ctx := context.Background()
 
-	require.Equal(t, []reconcile.Request{{Namespace: "ns", Name: "j"}}, r.launcherPodToJob(ctx, launcher("j-workload")))
-	require.Empty(t, r.launcherPodToJob(ctx, launcher("other-workload")), "a TrainJob NVCRE did not create")
-	require.Empty(t, r.launcherPodToJob(ctx, launcher("missing")), "no TrainJob")
-	require.Empty(t, r.launcherPodToJob(ctx, &corev1.Pod{Name: "bare", Namespace: "ns"}), "not a JobSet pod")
+	require.Equal(t, []reconcile.Request{{Namespace: "ns", Name: "j"}},
+		launcherPodToJob(ctx, launcher(map[string]string{podread.LauncherLabel: "j"})))
+	require.Empty(t, launcherPodToJob(ctx, launcher(nil)), "a launcher NVCRE did not label")
+	require.Empty(t, launcherPodToJob(ctx, launcher(map[string]string{labelJobKey: "j"})),
+		"the worker label does not name a launcher's Job")
+	require.Empty(t, launcherPodToJob(ctx, &corev1.Pod{Name: "bare", Namespace: "ns"}), "not a JobSet pod")
 }
 
 // A failure log recorded from a launcher attempt is dropped when the run

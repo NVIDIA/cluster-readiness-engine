@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache/informertest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -245,9 +246,13 @@ func TestJobSetupDefaultsAPIReader(t *testing.T) {
 		Controller: config.Controller{SkipNameValidation: new(true)},
 	})
 	require.NoError(t, err)
-	r := &JobReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
+	// The launcher pod cache resolves the Pod REST mapping when it is built,
+	// which needs an API server; the integration suite builds the default.
+	launchers := &informertest.FakeInformers{}
+	r := &JobReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), LauncherPodCache: launchers}
 	require.NoError(t, r.SetupWithManager(mgr))
 	require.Same(t, mgr.GetAPIReader(), r.APIReader)
+	require.Same(t, launchers, r.LauncherPodCache, "a cache the caller built is kept")
 }
 
 // TestJobWorkloadLookup pins what updateStatusFromWorkload does when the

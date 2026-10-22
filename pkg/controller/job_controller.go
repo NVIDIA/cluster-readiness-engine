@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -31,6 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
@@ -40,6 +42,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor/cel"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
@@ -127,6 +130,13 @@ type JobReconciler struct {
 	// retried before the Job fails. If zero, defaults to
 	// DefaultWorkloadCreationDeadline (10m).
 	WorkloadCreationDeadline time.Duration
+
+	// LauncherPodCache holds only MPI launcher pods, those labelled
+	// podread.LauncherLabel, and backs the launcher pod watch and nothing else
+	// (ADR-102, amendment). The manager's cache refuses every Pod informer.
+	// cmd/manager builds it with NewLauncherPodCache and adds it to the
+	// manager; if nil, SetupWithManager does both.
+	LauncherPodCache cache.Cache
 
 	// AccessReviewer tells an RBAC denial of the workload create from an
 	// admission or quota rejection (ADR-092). The manager shares one with the
@@ -430,6 +440,10 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 	// Deep-copy the spec and inject the NVCRE pod label automatically
 	specCopy := job.Spec.Workload.DeepCopy()
 	adapter.InjectPodLabel(specCopy, labelJobKey, job.Name)
+	// The MPI launcher gets a label of its own, which the launcher pod cache
+	// selects on, so the launcher stays out of every read of the job label
+	// (ADR-102, amendment).
+	workload.InjectLauncherPodLabel(specCopy, podread.LauncherLabel, job.Name)
 
 	workloadName := r.getWorkloadName(job)
 	obj, err := workload.BuildObject(
@@ -1635,7 +1649,9 @@ const (
 // lookup of their own: the nvcre.nvidia.com/job label is injected only into
 // the worker replicatedJob (see workerTargetJob in pkg/workload), so the
 // launcher, whose log is the diagnosis when an MPI run fails, is not among the
-// pods that label selects.
+// pods that label selects, and the manager's cache does not hold it. They are
+// read live through podread.WorkloadPods (ADR-102). The launcher pod cache
+// backs only the watch.
 //
 // Only pods of the current workload are returned. restartFromCheckpoint
 // deletes the workload and creates its replacement under the same name, and
@@ -1664,21 +1680,17 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 	if ns == "" {
 		ns = job.Namespace
 	}
-	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList, client.InNamespace(ns), client.MatchingLabels{
-		jobSetNameLabel:        ref.Name,
-		replicatedJobNameLabel: workload.LauncherJobName,
-	}); err != nil {
+	launchers, err := newPodReader(r.Client, r.APIReader).WorkloadPods(ctx, ns, ref.Name, workload.LauncherJobName)
+	if err != nil {
 		return nil, err
 	}
-	counted := podList.Items[:0]
-	for i := range podList.Items {
-		if !isDisruptionTarget(&podList.Items[i]) {
-			counted = append(counted, podList.Items[i])
+	counted := launchers[:0]
+	for i := range launchers {
+		if !isDisruptionTarget(&launchers[i]) {
+			counted = append(counted, launchers[i])
 		}
 	}
-	podList.Items = counted
-	if len(podList.Items) == 0 {
+	if len(counted) == 0 {
 		return nil, nil
 	}
 
@@ -1689,15 +1701,15 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 	current := adapter.NewObject()
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, current); err != nil {
 		if apierrors.IsNotFound(err) {
-			return podList.Items, nil
+			return counted, nil
 		}
 		return nil, err
 	}
 	created := current.GetCreationTimestamp()
-	pods := podList.Items[:0]
-	for i := range podList.Items {
-		if !podList.Items[i].CreationTimestamp.Before(&created) {
-			pods = append(pods, podList.Items[i])
+	pods := counted[:0]
+	for i := range counted {
+		if !counted[i].CreationTimestamp.Before(&created) {
+			pods = append(pods, counted[i])
 		}
 	}
 	return pods, nil
@@ -2383,6 +2395,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.AccessReviewer == nil {
 		r.AccessReviewer = NewAccessReviewer(mgr.GetClient())
 	}
+	if r.LauncherPodCache == nil {
+		launcherPodCache, err := NewLauncherPodCache(mgr)
+		if err != nil {
+			return err
+		}
+		r.LauncherPodCache = launcherPodCache
+	}
 
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Job{}).
@@ -2407,12 +2426,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		// A failed MPI launcher pod is deleted with its Job within about a
 		// second, before the workload reports the failure; this watch lets
-		// launcherFailureLog read its log first.
-		Watches(
-			&corev1.Pod{},
-			handler.EnqueueRequestsFromMapFunc(r.launcherPodToJob),
-			builder.WithPredicates(launcherFailedPredicate()),
-		).
+		// launcherFailureLog read its log first. It runs on the launcher pod
+		// cache, since the manager's cache refuses every Pod informer
+		// (ADR-102).
+		WatchesRawSource(source.Kind(r.LauncherPodCache, client.Object(&corev1.Pod{}),
+			handler.EnqueueRequestsFromMapFunc(launcherPodToJob),
+			launcherFailedPredicate(),
+		)).
 		// Watch Nodes for health changes - maps node events to jobs via pod lookups
 		Watches(
 			&corev1.Node{},
@@ -2468,25 +2488,15 @@ func (r *JobReconciler) nodeToJobRequests(ctx context.Context, obj client.Object
 	return result
 }
 
-// launcherPodToJob maps an MPI launcher pod to the Job that owns its workload.
-// The pod names its JobSet, which is named after the TrainJob, and the
-// TrainJob carries the Job's name in its nvcre.nvidia.com/job label.
-func (r *JobReconciler) launcherPodToJob(ctx context.Context, obj client.Object) []reconcile.Request {
-	name := obj.GetLabels()[jobSetNameLabel]
-	if name == "" {
-		return nil
-	}
-	trainJob := &trainerv1alpha1.TrainJob{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: name}, trainJob); err != nil {
-		logf.FromContext(ctx).V(1).Info("Failed to map launcher pod to its Job, skipping enqueue",
-			"pod", obj.GetName(), "error", err)
-		return nil
-	}
-	jobName := trainJob.Labels[labelJobKey]
+// launcherPodToJob maps an MPI launcher pod to its Job, which the pod names
+// in podread.LauncherLabel. The workload is created in the Job's namespace,
+// so the pod's namespace is the Job's.
+func launcherPodToJob(_ context.Context, obj client.Object) []reconcile.Request {
+	jobName := obj.GetLabels()[podread.LauncherLabel]
 	if jobName == "" {
 		return nil
 	}
-	return []reconcile.Request{{Namespace: trainJob.Namespace, Name: jobName}}
+	return []reconcile.Request{{Namespace: obj.GetNamespace(), Name: jobName}}
 }
 
 // launcherFailedPredicate passes the event in which an MPI launcher pod is
