@@ -89,7 +89,7 @@ Key chart values:
 | `manager.image.repository` | `ghcr.io/nvidia/cluster-readiness-engine/manager` | Controller image |
 | `manager.image.tag` | `""` (uses chart `appVersion`) | Controller image tag |
 | `manager.image.digest` | `""` | Pin the controller image by digest. Wins over `tag`; the only form that names the exact bytes you verified |
-| `manager.image.pullPolicy` | `""` | Controller image pull policy; empty omits `imagePullPolicy` so Kubernetes defaults it from the image tag or digest |
+| `manager.image.pullPolicy` | `""` | Controller image pull policy: `Always`, `IfNotPresent`, or `Never`. Empty omits `imagePullPolicy` so Kubernetes defaults it from the image tag or digest; any other value fails the render |
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
 | `manager.affinity` | `{}` | Replace the complete controller affinity; when empty, the chart prefers spreading replicas across nodes |
@@ -466,11 +466,7 @@ readinessProbe:
      --namespace nvcre
    ```
 
-   `--reuse-values` can retain the old `IfNotPresent` chart default, which is now rendered;
-   a `:latest` image may therefore switch from `Always` to `IfNotPresent`. To retain other release values while omitting
-   the field from the rendered manifest, use `--reuse-values --set-string manager.image.pullPolicy=`.
-   Helm 3.14+ also supports `--reset-then-reuse-values`, which uses new chart defaults
-   but preserves explicitly set values.
+   With `--reuse-values`, Helm keeps the chart defaults stored with the installed release. Charts through v0.8.2 defaulted `manager.image.pullPolicy` to `IfNotPresent` without rendering it, so a `--reuse-values` upgrade from one of them renders `imagePullPolicy: IfNotPresent`; only a `:latest` controller image behaves differently, switching from `Always` to `IfNotPresent`. Add `--set-string manager.image.pullPolicy=` to omit the field, or use `--reset-then-reuse-values` (Helm 3.14 and later), which takes the new chart's defaults and keeps the values set on the release. Those charts also ignored the value itself, while later charts accept only an empty value, `Always`, `IfNotPresent`, or `Never`: clear any other value set on the release with `--set-string manager.image.pullPolicy=`, or with `nvcrectl setup init --reset-values`.
 
 4. Verify the rollout:
    ```bash
