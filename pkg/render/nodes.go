@@ -21,6 +21,8 @@ func SyntheticProviderID(platform string) string {
 		return "metal3://synthetic/render"
 	case "nscale":
 		return "nscale://synthetic/render"
+	case "akamai":
+		return "linode://synthetic/render"
 	default:
 		return ""
 	}

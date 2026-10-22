@@ -62,6 +62,8 @@ func nodePlatform(n corev1.Node) string {
 		return platformOnPrem
 	case strings.HasPrefix(providerID, "nscale://"):
 		return platform.NScale
+	case strings.HasPrefix(providerID, "linode://"):
+		return platform.Akamai
 	case strings.HasPrefix(providerID, "kubevirt://"):
 		if _, ok := n.Labels["node-role.together.ai/worker"]; ok {
 			return platform.TogetherAI
