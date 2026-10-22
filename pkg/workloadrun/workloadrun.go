@@ -354,13 +354,7 @@ func BuildWorkflowSpec(
 		runtimeDep = platform.BuildExecRuntime(rtCfg)
 	}
 
-	// The attachments go on the runtime before any override, as in the
-	// controller: platform overrides never render a networks annotation, and
-	// the user's spec.overrides, applied later, replace what is written here.
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
-	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
-		return nil, err
-	}
 
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
 		deps = append(deps, buildWRCLIConfigMapDep(run.Name, spec.Config.Inline))
@@ -411,6 +405,19 @@ func BuildWorkflowSpec(
 		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
+
+	// networkAttachments go on the runtime and into every platform override
+	// patch that requests the same resource, as in the controller, so the
+	// overrides applied after this (here with --platform, or by the Workflow
+	// controller) add to the request instead of replacing it. The user's
+	// spec.overrides are appended untouched and still win.
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, err
+	}
+	if err := platform.ApplyNetworkAttachmentsToOverrides(wrOverrides, spec.NetworkAttachments); err != nil {
+		return nil, err
+	}
+
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
@@ -672,10 +679,8 @@ func runWorkloadRunRenderDryRun(
 	// is injected and the printed note matches the controllers'
 	// NICResourceDetection event. The offline render (no --dry-run) has no
 	// cluster and stays field-only. An explicit networkAttachments list owns
-	// the NIC wiring (issue #400), so then there is nothing to detect.
-	if len(run.Spec.NetworkAttachments) == 0 {
-		applyWRNICDetection(run, effectivePlatform, gpuArch, nodes, mlnxPerNode)
-	}
+	// the NIC wiring (issue #400), so then applyWRNICDetection does nothing.
+	applyWRNICDetection(run, effectivePlatform, gpuArch, nodes, mlnxPerNode)
 
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
@@ -1930,10 +1935,15 @@ func validateWRNetworkAttachments(spec *nvcrev1alpha1.WorkloadRunSpec) error {
 
 // applyWRNICDetection fills run.Spec.NicResourceName from node allocatable
 // on the dry-run path, printing the controllers' NICResourceDetection note
-// when detection refuses.
+// when detection refuses. An explicit networkAttachments list owns the NIC
+// wiring (issue #400), so with one set there is nothing to detect, as in the
+// controller and in the Certification dry-run's applyNICDetection.
 func applyWRNICDetection(
 	run *nvcrev1alpha1.WorkloadRun, platformName, gpuArch string, nodes []corev1.Node, mlnxPerNode int32,
 ) {
+	if len(run.Spec.NetworkAttachments) > 0 {
+		return
+	}
 	name, refusalMessage, ran := controller.ResolveNICResourceName(
 		run.Spec.NicResourceName, platformName, gpuArch, nodes, mlnxPerNode)
 	if !ran {

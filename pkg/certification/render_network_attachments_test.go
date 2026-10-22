@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -42,7 +43,9 @@ type netAttachWorkflow struct {
 // TogetherAI's non-Multus mlnxnics request kept beside the list unless
 // mlnxPerNode: 0 drops it, a per-category list replacing a spec-level
 // nicResourceName, and two categories differing only in their attachments
-// rendering under distinct Workflow names.
+// rendering under distinct Workflow names. A case with nodes runs the dry-run
+// NIC detection first, so a spec-level list that skips detection on nodes
+// advertising a single NIC candidate is pinned too.
 func TestCertificationRenderNetworkAttachments(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-network-attachments",
@@ -52,6 +55,10 @@ func TestCertificationRenderNetworkAttachments(t *testing.T) {
 		var cfg struct {
 			Platform string `json:"platform"`
 			GPUArch  string `json:"gpuArch"`
+			// Nodes, when set, are the target nodes the --dry-run path
+			// discovers; NIC detection runs against them before render, as
+			// in runCertificationRender.
+			Nodes []corev1.Node `json:"nodes"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -67,6 +74,9 @@ func TestCertificationRenderNetworkAttachments(t *testing.T) {
 		gpuArch, err := catalog.ParseGPUArchFlag(cfg.GPUArch)
 		if err != nil {
 			return err
+		}
+		if len(cfg.Nodes) > 0 {
+			applyNICDetection(cert, cfg.Nodes, cfg.Platform)
 		}
 		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "")
 		if err != nil {

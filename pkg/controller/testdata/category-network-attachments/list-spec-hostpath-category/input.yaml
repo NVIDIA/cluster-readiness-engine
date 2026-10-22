@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The reverse: the list at the spec level and hostPath in one category. That
-# category fails; one that sets its own nicResourceName drops the inherited
-# list in ResolveOptions and may use hostPath.
+# category fails the check, which fails the whole Certification; one that sets
+# its own nicResourceName drops the inherited list in ResolveOptions and may
+# use hostPath.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

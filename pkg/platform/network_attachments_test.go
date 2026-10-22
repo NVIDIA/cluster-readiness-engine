@@ -83,6 +83,72 @@ func TestApplyNetworkAttachmentsToDependencies(t *testing.T) {
 	})
 }
 
+// applyNetworkAttachmentsOverridesInput is the shape of each case's
+// input.yaml for the override helper: a networkAttachments list and the
+// dependency patches of the platform overrides it is carried into.
+type applyNetworkAttachmentsOverridesInput struct {
+	NetworkAttachments []nvcrev1alpha1.NetworkAttachment `json:"networkAttachments,omitempty"`
+	Overrides          []struct {
+		Dependencies []nvcrev1alpha1.DependencySpec `json:"dependencies"`
+	} `json:"overrides"`
+}
+
+// TestApplyNetworkAttachmentsToOverrides drives the helper both WorkloadRun
+// paths call on their platform overrides, so an override that requests a
+// resource an attachment also names adds to it rather than replacing the
+// runtime's sum. The cases cover a requested resource raised in limits and
+// requests (a limit alone included), a patch that does not request the
+// resource left byte for byte (it would otherwise shrink the request), the MPI
+// launcher left alone, a networks annotation a patch renders replaced, and an
+// empty list as a no-op.
+func TestApplyNetworkAttachmentsToOverrides(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "apply-network-attachments-overrides",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in applyNetworkAttachmentsOverridesInput
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+		overrides := make([]WorkloadRunOverride, len(in.Overrides))
+		before := make([][][]byte, len(in.Overrides))
+		for i := range in.Overrides {
+			overrides[i].Dependencies = in.Overrides[i].Dependencies
+			for _, dep := range in.Overrides[i].Dependencies {
+				before[i] = append(before[i], bytes.Clone(dep.Raw))
+			}
+		}
+		if err := ApplyNetworkAttachmentsToOverrides(overrides, in.NetworkAttachments); err != nil {
+			return err
+		}
+		out := [][]networkAttachmentsDependency{}
+		for i := range overrides {
+			deps := []networkAttachmentsDependency{}
+			for j, dep := range overrides[i].Dependencies {
+				var obj map[string]any
+				if err := json.Unmarshal(dep.Raw, &obj); err != nil {
+					return err
+				}
+				kind, _ := obj[keyKind].(string)
+				deps = append(deps, networkAttachmentsDependency{
+					Index:        j,
+					Kind:         kind,
+					RawUnchanged: bytes.Equal(before[i][j], dep.Raw),
+					Resource:     obj,
+				})
+			}
+			out = append(out, deps)
+		}
+		b, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
 // TestAddResourceQuantity covers the quantity forms a rendered limits or
 // requests map can hold after JSON decoding, and the values it refuses rather
 // than guess at.

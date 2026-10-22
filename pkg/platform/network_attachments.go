@@ -253,3 +253,138 @@ func workerContainer(containers []any) map[string]any {
 	m, _ := containers[0].(map[string]any)
 	return m
 }
+
+// ApplyNetworkAttachmentsToOverrides carries the attachments into the
+// TrainingRuntime patches of WorkloadRun platform overrides. Those overrides
+// are applied after the runtime is built (by the Workflow controller, or by
+// nvcrectl render once it knows the platform), and an override merges a
+// scalar quantity by replacing it. Without this, an override that requests a
+// resource an attachment also names, such as nvidia.com/mlnxnics on Azure,
+// would replace the summed request on the runtime with its own count, and the
+// pod would ask for fewer devices than it has interfaces.
+//
+// So on the worker container (named "node") of every replicatedJob other than
+// the MPI launcher, each attachment resource the patch already requests is
+// raised by the attachments' count, in both limits and requests. A patch that
+// does not request the resource is left alone, so it cannot shrink the request
+// the runtime carries, and a networks annotation a patch renders is replaced
+// with the list's. The user's own spec.overrides are not passed here and stay
+// the last word, as on every other WorkloadRun field. It is a no-op for an
+// empty list.
+func ApplyNetworkAttachmentsToOverrides(
+	overrides []WorkloadRunOverride, atts []nvcrev1alpha1.NetworkAttachment,
+) error {
+	if len(atts) == 0 {
+		return nil
+	}
+	annotation := NetworkAttachmentsAnnotationValue(atts)
+	resources := networkAttachmentResources(atts)
+
+	for oi := range overrides {
+		for di := range overrides[oi].Dependencies {
+			dep := &overrides[oi].Dependencies[di]
+			if len(dep.Raw) == 0 {
+				continue
+			}
+			obj := map[string]any{}
+			if err := json.Unmarshal(dep.Raw, &obj); err != nil {
+				return fmt.Errorf("unmarshal override %d dependency %d: %w", oi, di, err)
+			}
+			if kind, _ := obj[keyKind].(string); kind != kindTrainingRuntime {
+				continue
+			}
+			replicatedJobs, ok := nestedSlice(obj, keySpec, keyTemplate, keySpec, keyReplicatedJobs)
+			if !ok {
+				continue
+			}
+			changed := false
+			for _, rj := range replicatedJobs {
+				job, isMap := rj.(map[string]any)
+				if !isMap {
+					continue
+				}
+				if name, _ := job[keyName].(string); name == launcherJobName {
+					continue
+				}
+				jobChanged, err := applyNetworkAttachmentsToPatchJob(job, annotation, resources)
+				if err != nil {
+					return fmt.Errorf("override %d dependency %d: %w", oi, di, err)
+				}
+				if jobChanged {
+					changed = true
+				}
+			}
+			if !changed {
+				continue
+			}
+			raw, err := json.Marshal(obj)
+			if err != nil {
+				return fmt.Errorf("marshal override %d dependency %d: %w", oi, di, err)
+			}
+			dep.Raw = raw
+		}
+	}
+	return nil
+}
+
+// applyNetworkAttachmentsToPatchJob raises, on one replicatedJob of an
+// override patch, every attachment resource the "node" container already
+// requests, and replaces a networks annotation the patch renders.
+func applyNetworkAttachmentsToPatchJob(job map[string]any, annotation string, resources map[string]int64) (bool, error) {
+	podTemplate, ok := nestedMap(job, keyTemplate, keySpec, keyTemplate)
+	if !ok {
+		return false, nil
+	}
+	changed := false
+	if annotations, found := nestedMap(podTemplate, keyMetadata, keyAnnotations); found {
+		if _, set := annotations[MultusNetworksAnnotation]; set {
+			annotations[MultusNetworksAnnotation] = annotation
+			changed = true
+		}
+	}
+
+	containers, _ := nestedSlice(podTemplate, keySpec, keyContainers)
+	var worker map[string]any
+	for _, c := range containers {
+		m, isMap := c.(map[string]any)
+		if !isMap {
+			continue
+		}
+		if name, _ := m[keyName].(string); name == workerContainerName {
+			worker = m
+			break
+		}
+	}
+	res, found := worker[keyResources].(map[string]any)
+	if worker == nil || !found {
+		return changed, nil
+	}
+	limits, _ := res[keyLimits].(map[string]any)
+	requests, _ := res[keyRequests].(map[string]any)
+	// Compute every sum before writing any, so an error leaves the job as it was.
+	sums := make(map[string]string, len(resources))
+	for name, qty := range resources {
+		base, present := limits[name]
+		if !present {
+			base, present = requests[name]
+		}
+		if !present {
+			continue
+		}
+		sum, err := addResourceQuantity(base, present, qty)
+		if err != nil {
+			return false, fmt.Errorf("resource %s: %w", name, err)
+		}
+		sums[name] = sum
+	}
+	if len(sums) == 0 {
+		return changed, nil
+	}
+	limits = ensureMap(res, keyLimits)
+	requests = ensureMap(res, keyRequests)
+	for name, sum := range sums {
+		limits[name] = sum
+		requests[name] = sum
+	}
+	return true, nil
+}

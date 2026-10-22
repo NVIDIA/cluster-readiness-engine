@@ -574,20 +574,8 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		runtimeDep = platform.BuildExecRuntime(rtCfg)
 	}
 
-	// Build dependencies list. The networkAttachments annotation and
-	// resources go on the runtime now, before any override runs. No WorkloadRun
-	// platform override renders a networks annotation, so the platform
-	// overrides applied later never compete with them. The user's own
-	// spec.overrides are applied after them, when the Workflow reconciles, so
-	// one that sets the networks annotation or one of these resources on the
-	// runtime replaces the value written here. That is deliberate and matches
-	// every other WorkloadRun field: spec.overrides is the last word on the
-	// rendered objects. Certification has no user overrides, so there the
-	// list is final.
+	// Build dependencies list.
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
-	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
-		return nil, "", err
-	}
 
 	// ConfigMap dependency (if inline config provided).
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
@@ -614,6 +602,25 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
+
+	// networkAttachments, once the platform overrides exist. The runtime gets
+	// the annotation and one device per entry, and every platform override
+	// patch that requests one of the same resources is raised by the same
+	// count. The Workflow controller applies these overrides later and an
+	// override replaces a scalar, so writing the sum into the runtime alone
+	// would let Azure's nvidia.com/mlnxnics: 8 replace 8 plus one entry. With
+	// both written, the request is 9 whether or not the override matches,
+	// as on the Certification path, where the list is step 4 of
+	// ApplyResolvedWorkflowTransforms after overrides resolve. The user's own
+	// spec.overrides are appended below untouched and are still the last word
+	// on the rendered objects, as for every other WorkloadRun field.
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, "", err
+	}
+	if err := platform.ApplyNetworkAttachmentsToOverrides(wrOverrides, spec.NetworkAttachments); err != nil {
+		return nil, "", err
+	}
+
 	octx := OverrideContext{
 		Platform:        detectedPlatform,
 		GPUArchitecture: gpuArch,

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Workflow name is the one getWorkflowName derives for this category and
+# its options hash. Its absence proves the conflict was caught before the
+# create, not after the Workflow started.
+waitFor:
+  kind: Certification
+  name: netatt-merged-hostpath
+  namespace: default
+  condition: Failed
+  reason: WorkflowValidationFailed
+collect:
+  - kind: Certification
+    name: netatt-merged-hostpath
+    namespace: default
+expectAbsent:
+  - kind: Workflow
+    name: netatt-merged-hostpath-co-26206
+    namespace: default

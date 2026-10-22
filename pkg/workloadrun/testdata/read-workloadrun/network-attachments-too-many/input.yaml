@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# 17 entries, one over the 16-entry cap the CRD enforces with MaxItems.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-netatt
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 2
+  framework:
+    mpi:
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      mpirunPath: /usr/local/mpi/bin/mpirun
+  networkAttachments:
+    - {network: nvcre/r0, resourceName: nvidia.com/r0}
+    - {network: nvcre/r1, resourceName: nvidia.com/r1}
+    - {network: nvcre/r2, resourceName: nvidia.com/r2}
+    - {network: nvcre/r3, resourceName: nvidia.com/r3}
+    - {network: nvcre/r4, resourceName: nvidia.com/r4}
+    - {network: nvcre/r5, resourceName: nvidia.com/r5}
+    - {network: nvcre/r6, resourceName: nvidia.com/r6}
+    - {network: nvcre/r7, resourceName: nvidia.com/r7}
+    - {network: nvcre/r8, resourceName: nvidia.com/r8}
+    - {network: nvcre/r9, resourceName: nvidia.com/r9}
+    - {network: nvcre/r10, resourceName: nvidia.com/r10}
+    - {network: nvcre/r11, resourceName: nvidia.com/r11}
+    - {network: nvcre/r12, resourceName: nvidia.com/r12}
+    - {network: nvcre/r13, resourceName: nvidia.com/r13}
+    - {network: nvcre/r14, resourceName: nvidia.com/r14}
+    - {network: nvcre/r15, resourceName: nvidia.com/r15}
+    - {network: nvcre/r16, resourceName: nvidia.com/r16}
