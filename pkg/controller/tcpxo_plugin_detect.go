@@ -5,14 +5,16 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 // TCPXO NCCL plugin version detection for the GCP H100 overrides (issues
@@ -34,19 +36,20 @@ import (
 // saying why.
 //
 // The read is one namespace-scoped List of kube-system pods per category
-// Workflow creation. In the controller it goes through the manager cache,
-// whose cluster-wide Pod informer already exists for the Pod field indexes,
-// and the cache's namespace index serves it. It is still a different access
-// pattern from the controller's other Pod reads, which all narrow by an
-// indexed field or JobSet labels. The manager ClusterRole already grants
-// pods get/list/watch cluster-wide.
+// Workflow creation. The installer pods carry no NVCRE job label, so the
+// controller's cache never holds them (ADR-102); podread.NamespacePods lists
+// them from the API server. The manager ClusterRole already grants pods
+// get/list/watch cluster-wide.
 //
-// A refusal from the cache (no release found) is confirmed against the API
-// server before it is acted on: detection runs once per Workflow, so an
-// installer pod the cache has not caught up with yet would otherwise pin the
-// fallback images for the whole run. The live List only happens on that
-// refusal path, and a live List that fails keeps the cached refusal. A
-// cached read that found a release, mapped or not, is used as is.
+// A failed List is retried once, after tcpxoListRetryDelay. Detection runs
+// once per Workflow and the images it picks are fixed when the Workflow is
+// created, so a transient API error would otherwise pin the fallback images
+// for the whole run. A List that fails twice is a refusal: the minimum
+// profile renders and the Warning event names the error.
+
+// tcpxoListRetryDelay is how long detection waits before retrying a failed
+// List of the installer pods. A variable so tests need not wait.
+var tcpxoListRetryDelay = time.Second
 
 const (
 	// tcpxoInstallerNamespace is where GKE's nccl-tcpxo-installer runs.
@@ -110,11 +113,20 @@ func tcpxoPluginImageVersion(image string) (version string, ok bool) {
 // vMAJOR.MINOR.PATCH release; Exact says whether the catalog maps it. How
 // many installers a node runs is not checked: Google's installer DaemonSet
 // rolls out without surge, and a terminating installer is already skipped.
-func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes []corev1.Node) tcpxoPluginDetection {
+//
+// The installer pods live in kube-system and carry no NVCRE job label, so the
+// controller's cache never holds them; podread reads them from the API server
+// (ADR-102).
+func detectTCPXOPluginVersion(ctx context.Context, pods *podread.Reader, nodes []corev1.Node) tcpxoPluginDetection {
 	d := tcpxoPluginDetection{Ran: true, Nodes: len(nodes)}
 
-	var pods corev1.PodList
-	if err := reader.List(ctx, &pods, client.InNamespace(tcpxoInstallerNamespace)); err != nil {
+	installers, err := pods.NamespacePods(ctx, tcpxoInstallerNamespace)
+	if err != nil {
+		// podread names the read in its error; the Warning event names
+		// the namespace itself, so keep only the API error.
+		if inner := errors.Unwrap(err); inner != nil {
+			err = inner
+		}
 		d.ListErr = err
 		return d
 	}
@@ -124,8 +136,8 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 		target[nodes[i].Name] = true
 	}
 	versionsByNode := map[string][]string{}
-	for i := range pods.Items {
-		pod := &pods.Items[i]
+	for i := range installers {
+		pod := &installers[i]
 		if !target[pod.Spec.NodeName] || pod.Status.Phase != corev1.PodRunning || !pod.DeletionTimestamp.IsZero() {
 			continue
 		}
@@ -176,29 +188,26 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 // resolveTCPXOPluginVersion resolves the TCPXO plugin release the GCP H100
 // overrides render images for, the way every consumer (the Certification
 // controller and the CLI dry-run path) must agree on: detection runs only for
-// the GCP H100 target.
-//
-// reader is read first. When it finds no release at all and liveReader is
-// non-nil, detection runs again against liveReader, so a cache that lags the
-// installer pods cannot force a fallback. The live result is used unless its
-// List failed, which says nothing about the installers. A release the cached
-// read did find, even an unmapped one, is not re-read: it already picks the
-// right profile, and a failed live read must not replace it with the
-// minimum. The CLI passes its uncached client as reader and nil for
-// liveReader.
+// the GCP H100 target. The installer pods are read from the API server, and a
+// failed read is retried once.
 func resolveTCPXOPluginVersion(
-	ctx context.Context, reader, liveReader client.Reader, platformName, gpuArch string, nodes []corev1.Node,
+	ctx context.Context, pods *podread.Reader, platformName, gpuArch string, nodes []corev1.Node,
 ) tcpxoPluginDetection {
 	if !isGCPH100(platformName, gpuArch) {
 		return tcpxoPluginDetection{}
 	}
-	d := detectTCPXOPluginVersion(ctx, reader, nodes)
-	if d.Version == "" && liveReader != nil {
-		if live := detectTCPXOPluginVersion(ctx, liveReader, nodes); live.ListErr == nil {
-			d = live
-		}
+	d := detectTCPXOPluginVersion(ctx, pods, nodes)
+	if d.ListErr == nil {
+		return d
 	}
-	return d
+	timer := time.NewTimer(tcpxoListRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return d
+	case <-timer.C:
+	}
+	return detectTCPXOPluginVersion(ctx, pods, nodes)
 }
 
 // tcpxoPluginDetectionMessage renders the user-facing explanation for a

@@ -8,14 +8,12 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 // podDrainGracePeriod bounds the pod-drain barrier: how long dependency
@@ -43,24 +41,21 @@ const podDrainGracePeriod = 5 * time.Minute
 // hold no GPU or ComputeDomain claims, so the label is the right selector
 // here: the barrier protects DRA allocations, all of which belong to worker
 // pods.
-func activeWorkloadPods(ctx context.Context, c client.Reader, namespace, jobName string) ([]string, error) {
-	podList := &corev1.PodList{}
-	if err := c.List(ctx, podList,
-		client.InNamespace(namespace),
-		client.MatchingFields{nodemonitor.PodNVCREJobIndexField: jobName},
-	); err != nil {
+//
+// The pods come from podread.ActiveJobPods, which checks the API server
+// whenever the cache leaves no active pod (ADR-102): no active pods lets
+// teardown proceed, and the cache can hold a Job's finished pods while
+// missing a newer one that is still running.
+func activeWorkloadPods(ctx context.Context, pods *podread.Reader, namespace, jobName string) ([]string, error) {
+	active, err := pods.ActiveJobPods(ctx, namespace, jobName)
+	if err != nil {
 		return nil, fmt.Errorf("failed to list workload pods for Job %s: %w", jobName, err)
 	}
-	var active []string
-	for i := range podList.Items {
-		switch podList.Items[i].Status.Phase {
-		case corev1.PodSucceeded, corev1.PodFailed:
-			// Terminal pods have exited and cannot fault on a revoked DRA allocation.
-		default:
-			active = append(active, podList.Items[i].Name)
-		}
+	var names []string
+	for i := range active {
+		names = append(names, active[i].Name)
 	}
-	return active, nil
+	return names, nil
 }
 
 // drainStart returns the persisted instant the workload teardown began: the
@@ -117,7 +112,7 @@ func drainStart(job *nvcrev1alpha1.Job) *metav1.Time {
 // workload's pods are gone, and also once podDrainGracePeriod has elapsed
 // since drainStart, so a pod stuck Terminating cannot wedge the Workflow
 // forever.
-func shouldWaitForPodDrain(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) bool {
+func shouldWaitForPodDrain(ctx context.Context, pods *podread.Reader, job *nvcrev1alpha1.Job) bool {
 	log := logf.FromContext(ctx)
 
 	graceExpired := false
@@ -125,7 +120,7 @@ func shouldWaitForPodDrain(ctx context.Context, c client.Reader, job *nvcrev1alp
 		graceExpired = true
 	}
 
-	active, err := activeWorkloadPods(ctx, c, job.Namespace, job.Name)
+	active, err := activeWorkloadPods(ctx, pods, job.Namespace, job.Name)
 	if err != nil {
 		if graceExpired {
 			log.Error(err, "Pod drain check failed after the grace period; proceeding without the drain barrier",

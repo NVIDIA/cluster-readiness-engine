@@ -87,6 +87,10 @@ func TestIntegration(t *testing.T) {
 
 	parser.TestDir(t, func(tc *testutil.TestCase) error {
 		tt := tc.T.(*testing.T)
+		// The cache refuses a Pod read it cannot answer completely (ADR-102).
+		// Several callers treat a read error as "not found yet", so a refusal
+		// fails the case here rather than relying on its golden to show it.
+		refusedBefore := controller.UnscopedCacheReads()
 
 		// Install any per-test-case CRDs from input_crd_*.yaml files.
 		installTestCRDs(tt, suite.Config, tc)
@@ -115,10 +119,23 @@ func TestIntegration(t *testing.T) {
 		// Ensure cleanup always runs, even on test failure/timeout.
 		// Without this, a timed-out test leaks objects (e.g., cluster-scoped
 		// LogProfiles) into subsequent subtests, causing cascade failures.
+		//
+		// The refused-read check runs here, after the manager has stopped,
+		// so reads made while the case winds down, such as the drain
+		// barrier's, are charged to this case rather than lost or charged
+		// to the next one (ADR-102).
 		defer func() {
 			cancel()
-			time.Sleep(200 * time.Millisecond)
+			select {
+			case <-stopped:
+			case <-time.After(30 * time.Second):
+				tt.Errorf("manager did not stop within 30s")
+			}
 			deleteTestObjects(tt, suite.Client, objs)
+			if got := controller.UnscopedCacheReads(); got != refusedBefore {
+				tt.Errorf("the cache refused %d read(s) during this case; its log names the caller (ADR-102)",
+					got-refusedBefore)
+			}
 		}()
 
 		for _, step := range cfg.Steps {
@@ -443,11 +460,13 @@ func startManager(
 			BindAddress: "0", // Disable metrics server — tests read from the global registry directly.
 		},
 		// Use production's cache configuration so the harness exercises the same
-		// informer scoping (notably: only GPU-labelled Nodes are cached), and
-		// production's client configuration, which reads ConfigMaps and PVCs
-		// live (ADR-092).
-		Cache:  controller.CacheOptions(),
-		Client: controller.ClientOptions(),
+		// informer scoping (only GPU-labelled Nodes and job-labelled Pods are
+		// cached), production's client configuration, which reads ConfigMaps
+		// and PVCs live (ADR-092), and production's cache, which refuses a Pod
+		// read the job-scoped cache cannot answer (ADR-102).
+		Cache:    controller.CacheOptions(),
+		Client:   controller.ClientOptions(),
+		NewCache: controller.NewCache,
 		Controller: crconfig.Controller{
 			SkipNameValidation:      func() *bool { v := true; return &v }(),
 			MaxConcurrentReconciles: 5, // Prevent stale objects from blocking the reconcile queue.

@@ -136,6 +136,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		fetcher := &stubLogFetcher{lines: in.Logs}
 		r := &GoodputMeasurementReconciler{
 			Client:     c,
+			APIReader:  c,
 			Scheme:     scheme,
 			LogFetcher: fetcher,
 		}

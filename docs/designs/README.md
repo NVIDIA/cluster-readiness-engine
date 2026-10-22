@@ -109,3 +109,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 099 | [Relay the Failure Attribution NVCRE Already Has, and Do Not Classify Causes from Log Text](099-failed-node-attribution-relay.md) |
 | 100 | [One Fragment Owns Each Variable in a Composed NCCL Profile](100-catalog-env-fragment-ownership.md) |
 | 101 | [Akamai LKE RTX PRO 6000 TCP Overrides](101-akamai-rtxpro6000-tcp.md) |
+| 102 | [Cache Only NVCRE's Own Pods](102-scoped-pod-cache.md) |

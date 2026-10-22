@@ -15,6 +15,23 @@ followed them.
 
 ## [Unreleased]
 
+### Changed
+
+- The controller caches only the Pods that carry the `nvcre.nvidia.com/job` label,
+  the workload pods NVCRE creates, instead of every Pod in the cluster. Its memory now
+  follows the GPU node count and NVCRE's own workload pods, from runs in progress and
+  from finished runs whose Certification is kept, not the cluster's total Pod count,
+  which on a cluster with about 80,000 Pods held it at 3.1–3.8 GiB and OOMKilled it at
+  the 1Gi default. Goodput and the GCP TCPXO installer check read Pods without that
+  label from the API server. The controller reads Pods only through one package that
+  picks the cache or the API server for each read, and the cache refuses a Pod read it
+  cannot answer completely, logging the caller, instead of returning an incomplete
+  list. The pod-drain barrier now checks the API server whenever its cached read
+  leaves no active pod, so a cache that holds a Job's finished pod but not yet a newer
+  running one cannot let teardown proceed. New metrics: `nvcre_pod_reads_total` and
+  `nvcre_unscoped_cache_reads_total`
+  ([ADR-102](docs/designs/102-scoped-pod-cache.md), #504).
+
 ### Fixed
 
 - Certification `spec.imagePullSecrets` reached only the two training categories;
