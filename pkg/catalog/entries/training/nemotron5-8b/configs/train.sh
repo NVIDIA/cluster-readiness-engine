@@ -12,29 +12,29 @@ TENSORBOARD_DIR=${TENSORBOARD_DIR:-${WORKSPACE_DIR}/tensorboard}
 mkdir -p ${CHECKPOINT_DIR} ${TENSORBOARD_DIR}
 
 # Build C++ helpers if not already compiled (needed for mock data). With a
-# shared checkpoint workspace every pod reaches this at once, so the build
-# takes a lock like the megatron-clone init container and re-checks under it.
+# shared checkpoint workspace every pod reaches this at once, so both the check
+# and the build run under a lock like the megatron-clone init container: the
+# build copies the library into the source tree in chunks, so a check outside
+# the lock could see it before the copy finishes.
 helpers_built() {
   ls ${MEGATRON_PATH}/megatron/core/datasets/helpers_cpp*.so 1>/dev/null 2>&1
 }
-if ! helpers_built; then
-  exec 8>"${WORKSPACE_DIR}/.megatron-lm.build.lock"
-  rc=0
-  flock -w 1200 -E 75 8 || rc=$?
-  if [ "$rc" -eq 75 ]; then
-    echo "Timed out after 1200s waiting for the Megatron helpers build lock"
-    exit 1
-  elif [ "$rc" -ne 0 ]; then
-    echo "Locking the Megatron helpers build failed (exit $rc); building without the lock"
-  fi
-  if ! helpers_built; then
-    echo "Building Megatron helpers_cpp..."
-    cd ${MEGATRON_PATH}
-    pip install -e . --no-deps --no-build-isolation 2>&1 | tail -5
-    cd ${WORKSPACE_DIR}
-  fi
-  exec 8>&-
+exec 8>"${WORKSPACE_DIR}/.megatron-lm.build.lock"
+rc=0
+flock -w 1200 -E 75 8 || rc=$?
+if [ "$rc" -eq 75 ]; then
+  echo "Timed out after 1200s waiting for the Megatron helpers build lock"
+  exit 1
+elif [ "$rc" -ne 0 ]; then
+  echo "Locking the Megatron helpers build failed (exit $rc); building without the lock"
 fi
+if ! helpers_built; then
+  echo "Building Megatron helpers_cpp..."
+  cd ${MEGATRON_PATH}
+  pip install -e . --no-deps --no-build-isolation 2>&1 | tail -5
+  cd ${WORKSPACE_DIR}
+fi
+exec 8>&-
 
 CHECKPOINT_ARGS=""
 DATA_CACHE_ARGS=""
