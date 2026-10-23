@@ -1,0 +1,10 @@
+[
+  {
+    "workflow": "onprem-h100-cert-communic-4c0c2",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "h100",
+      "nvcrectl.nvidia.com/detected-platform": "onprem"
+    },
+    "appliedOverrides": null
+  }
+]
