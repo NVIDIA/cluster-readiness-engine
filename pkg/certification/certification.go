@@ -304,7 +304,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // detected from the synthetic node, and the overrides that matched. They
 // record what override matching saw, so a render without --platform shows
 // detected-platform: onprem (the synthetic node has no providerID) rather
-// than silently applying the on-prem overrides.
+// than silently applying the on-prem overrides. A nodeSelector carrying a
+// Forge marker (nke.nvidia.com/site-name, or a forge hostname) detects as
+// forge instead, and --platform onprem, whose synthetic providerID is empty,
+// does not change that.
 func resolveWorkflowsOffline(
 	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag, gpuArchOverride string,
 ) error {

@@ -30,10 +30,20 @@ type annotationsWorkflow struct {
 	// applied-overrides, so a missing or unexpected render annotation shows up
 	// in the golden.
 	Annotations map[string]string `json:"annotations"`
-	// AppliedOverrides is the applied-overrides annotation decoded into the
-	// API type it carries, null when the annotation is absent (no override
+	// AppliedOverrides is the applied-overrides annotation decoded from the API
+	// type it carries, null when the annotation is absent (no override
 	// matched).
-	AppliedOverrides []nvcrev1alpha1.AppliedOverride `json:"appliedOverrides"`
+	AppliedOverrides []matchedOverride `json:"appliedOverrides"`
+}
+
+// matchedOverride is one decoded AppliedOverride without its index. The
+// index is the override's position in the catalog entry's overrides list,
+// so it shifts whenever a block is inserted earlier in that file; when and
+// patches already identify which block matched.
+type matchedOverride struct {
+	When    string `json:"when"`
+	Patches string `json:"patches"`
+	NoOp    bool   `json:"noOp,omitempty"`
 }
 
 // TestCertificationRenderAnnotations covers the render annotations offline
@@ -89,8 +99,14 @@ func TestCertificationRenderAnnotations(t *testing.T) {
 			for k, v := range workflows[i].Annotations {
 				switch {
 				case k == appliedOverridesAnnoKey:
-					if err := json.Unmarshal([]byte(v), &out.AppliedOverrides); err != nil {
+					var applied []nvcrev1alpha1.AppliedOverride
+					if err := json.Unmarshal([]byte(v), &applied); err != nil {
 						return err
+					}
+					for _, a := range applied {
+						out.AppliedOverrides = append(out.AppliedOverrides, matchedOverride{
+							When: a.When, Patches: a.Patches, NoOp: a.NoOp,
+						})
 					}
 				case strings.HasPrefix(k, renderAnnotationPrefix):
 					out.Annotations[k] = v
