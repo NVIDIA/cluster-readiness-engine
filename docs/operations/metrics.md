@@ -74,7 +74,7 @@ These series are built at scrape time from the elected leader's informer cache. 
 
 ## Pod read metrics
 
-The controller caches only Pods that carry the `nvcre.nvidia.com/job` label and reads other Pods, such as MPI launchers, from the API server ([ADR-102](../designs/102-scoped-pod-cache.md)).
+The controller caches only Pods that carry the `nvcre.nvidia.com/job` label and reads other Pods, such as MPI launchers, from the API server ([ADR-102](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/102-scoped-pod-cache.md)).
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|

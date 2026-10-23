@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every registered entry on GB200 with the optional branches that add script
+# or env content turned on: MNNVL, checkpointing, Mellanox NICs requested
+# through the on-prem NIC resource, and hostPath RDMA device access. Trim
+# markers inside a guarded block only take effect when the block renders, so
+# the default case alone would not see a comment joined to code inside one.
+gpuProducts:
+- NVIDIA-GB200-NVL72
+nodesPerJob: 8
+enableMNNVL: true
+enableCheckpoint: true
+mlnxPerNode: 8
+nicResourceName: rdma/ib
+rdmaDeviceAccess: hostPath

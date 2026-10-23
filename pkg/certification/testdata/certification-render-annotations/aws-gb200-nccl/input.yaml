@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --platform aws on GB200: the annotations must report aws and gb200, and each
+# Workflow must list the overrides its own catalog entry matched.
+platform: aws
