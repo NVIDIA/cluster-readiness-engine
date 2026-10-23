@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every registered entry on six products. Build keeps every platform and GPU
+# override in the spec whatever the product, so each product scans all of
+# them; the products vary the GPU count per node (4 on GB200 and GB300, 8 on
+# the rest) and the per-architecture TP/PP in meta.yaml. Violations must be
+# empty. Before the nemotron5 train.sh fix, both training entries rendered
+# "# Dynamic computation — values from Go template at render time.TOTAL_GPUS=<n>"
+# here (32 on the 4-GPU products, 64 on the others), so this case is the pin
+# for the whitespace trim in those templates. 8 nodes x at least 4 GPUs clears
+# the training minGPUs, so all entries build.
+gpuProducts:
+- NVIDIA-GB200-NVL72
+- NVIDIA-GB300
+- NVIDIA-H100-80GB-HBM3
+- NVIDIA-A100-SXM4-80GB
+- NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+- NVIDIA-L40S
+nodesPerJob: 8

@@ -1,0 +1,221 @@
+{
+  "entries": [
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-A100-SXM4-80GB",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-GB200-NVL72",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-GB300",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-L40S",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-A100-SXM4-80GB",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-GB300",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-L40S",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    }
+  ],
+  "violations": []
+}

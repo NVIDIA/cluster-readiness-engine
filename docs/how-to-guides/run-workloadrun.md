@@ -252,7 +252,7 @@ spec:
 confinement for that container, and a CRI-O runtime may refuse a privileged
 container that requests `nvidia.com/gpu`. That is the same trade the
 catalog's `rdmaDeviceAccess: hostPath` makes for a Certification; see
-[ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md). `type: Directory`
+[ADR-088](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/088-oci-gb200-roce-and-rdma-device-access.md). `type: Directory`
 keeps a node without the device tree from starting the pod over an empty
 directory; such a pod stays in `ContainerCreating` with a `FailedMount` event
 until `spec.timeoutPerJob`.
