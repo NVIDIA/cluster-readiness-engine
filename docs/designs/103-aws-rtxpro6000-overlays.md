@@ -118,6 +118,12 @@ renders its generic base configuration. On g7e it can exercise PCIe, so a
 passing result does not establish NVSwitch support. The validated EFA
 loopback is `nccl-loopback`.
 
+Nemotron 5 56B likewise has no AWS RTX override. With at least four eight-GPU
+nodes, it renders the generic `nvcr.io/nvidia/pytorch:25.08-py3` configuration
+without an EFA resource request or AWS RTX EFA transport settings. It does not
+inherit the 8B image or DDP backport. This render is not validated AWS RTX
+training support.
+
 ## Alternatives considered
 
 - Copy GCP's TCP overlay: rejected without node evidence; would potentially

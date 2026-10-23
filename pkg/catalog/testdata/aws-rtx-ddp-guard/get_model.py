@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: BSD-3-Clause
+# Source: https://github.com/NVIDIA/Megatron-LM/blob/core_v0.15.2/megatron/training/training.py
 
 # Inspected core_v0.15.2 get_model with the validated DDP stream-ordering backport.
 def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
