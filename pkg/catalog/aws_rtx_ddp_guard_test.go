@@ -21,26 +21,7 @@ import (
 func TestAWSRTXDDPGuard(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	require.NoError(t, err)
-	rendered, err := makeLibTemplate(TemplateFuncsWithLib())(
-		"deps/aws-rtxpro6000-training-image.yaml", TemplateData{EntryName: "test"})
-	require.NoError(t, err)
-	var deps []map[string]any
-	require.NoError(t, yaml.Unmarshal([]byte(rendered), &deps))
-	jobs, found, err := unstructured.NestedSlice(deps[0], "spec", "template", "spec", "replicatedJobs")
-	require.NoError(t, err)
-	require.True(t, found)
-	containers, found, err := unstructured.NestedSlice(jobs[0].(map[string]any),
-		"template", "spec", "template", "spec", "initContainers")
-	require.NoError(t, err)
-	require.True(t, found)
-	var script string
-	for _, raw := range containers {
-		container := raw.(map[string]any)
-		if container["name"] == "megatron-ddp-stream-order" {
-			script = container["args"].([]any)[0].(string)
-		}
-	}
-	require.NotEmpty(t, script)
+	script := awsRTXDDPGuardScript(t)
 	fixture, err := os.ReadFile("testdata/aws-rtx-ddp-guard/get_model.py")
 	require.NoError(t, err)
 	known := string(fixture)
@@ -70,8 +51,7 @@ func TestAWSRTXDDPGuard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "training.py")
 			require.NoError(t, os.WriteFile(path, []byte(tc.source), 0o600))
-			code := strings.Replace(script,
-				`"/mnt/workspace/megatron-lm/megatron/training/training.py"`, strconv.Quote(path), 1)
+			code := awsRTXDDPGuardForPath(script, path)
 			require.NotEqual(t, script, code)
 			output, runErr := exec.Command(python, "-c", code).CombinedOutput()
 			if tc.accept {
@@ -85,4 +65,36 @@ func TestAWSRTXDDPGuard(t *testing.T) {
 			require.Equal(t, tc.source, string(actual), "accepted and rejected alternatives stay unchanged")
 		})
 	}
+}
+
+func awsRTXDDPGuardScript(t *testing.T) string {
+	t.Helper()
+	rendered, err := makeLibTemplate(TemplateFuncsWithLib())(
+		"deps/aws-rtxpro6000-training-image.yaml", TemplateData{EntryName: "test"})
+	require.NoError(t, err)
+	var deps []map[string]any
+	require.NoError(t, yaml.Unmarshal([]byte(rendered), &deps))
+	jobs, found, err := unstructured.NestedSlice(deps[0], "spec", "template", "spec", "replicatedJobs")
+	require.NoError(t, err)
+	require.True(t, found)
+	containers, found, err := unstructured.NestedSlice(jobs[0].(map[string]any),
+		"template", "spec", "template", "spec", "initContainers")
+	require.NoError(t, err)
+	require.True(t, found)
+	var script string
+	for _, raw := range containers {
+		container := raw.(map[string]any)
+		if container["name"] == "megatron-ddp-stream-order" {
+			script = container["args"].([]any)[0].(string)
+		}
+	}
+	require.NotEmpty(t, script)
+	return script
+}
+
+func awsRTXDDPGuardForPath(script, path string) string {
+	return strings.NewReplacer(
+		`"/mnt/workspace/megatron-lm/megatron/training/training.py"`, strconv.Quote(path),
+		`"/mnt/workspace/.megatron-lm.lock"`, strconv.Quote(filepath.Join(filepath.Dir(path), ".megatron-lm.lock")),
+	).Replace(script)
 }

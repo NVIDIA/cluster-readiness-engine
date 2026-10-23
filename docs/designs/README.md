@@ -119,4 +119,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 104 | [Multus Network Attachments Paired With Extended Resources](104-network-attachments.md) |
 | 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
 | 108 | [JUnit Certification Reports](108-junit-certification-reports.md) |
-| 103 | [AWS RTX PRO 6000 Workload Overlays](103-aws-rtxpro6000-overlays.md) |
+| 109 | [AWS RTX PRO 6000 Workload Overlays](109-aws-rtxpro6000-overlays.md) |
