@@ -25,9 +25,10 @@ import (
 //
 // It checks spec.resources and each category's own resources, the scope the
 // CEL rules had. ResolveOptions replaces Resources whole, so that is also
-// every resources block a Workflow can be built from. Every violation is
-// reported, not only the first: the spec is immutable, so each round trip
-// costs the operator a delete and a re-create.
+// every resources block a Workflow can be built from. Up to
+// maxReportedResourceProblems violations are reported, not only the first:
+// the spec is immutable, so each round trip costs the operator a delete and
+// a re-create.
 func ValidateCertificationResources(spec *nvcrev1alpha1.CertificationSpec) error {
 	var problems []string
 	problems = append(problems, categoryResourcesProblems("spec.resources", spec.Resources)...)
@@ -41,8 +42,20 @@ func ValidateCertificationResources(spec *nvcrev1alpha1.CertificationSpec) error
 	if len(problems) == 0 {
 		return nil
 	}
+	if more := len(problems) - maxReportedResourceProblems; more > 0 {
+		problems = append(problems[:maxReportedResourceProblems:maxReportedResourceProblems],
+			fmt.Sprintf("and %d more", more))
+	}
 	return fmt.Errorf("invalid resources: %s", strings.Join(problems, "; "))
 }
+
+// maxReportedResourceProblems bounds the error message, which becomes the
+// Failed condition's message. status.conditions[].message is capped at 32768
+// bytes, and a Certification can carry six problems in each of 64 categories:
+// listed in full, that overruns the cap, the status write is refused, and the
+// Certification requeues forever instead of recording InvalidResources. Ten
+// problems stay near 2 KiB.
+const maxReportedResourceProblems = 10
 
 // The two sides of a resources block, as they appear in field paths.
 const (

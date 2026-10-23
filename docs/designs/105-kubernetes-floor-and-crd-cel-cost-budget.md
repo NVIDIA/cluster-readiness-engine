@@ -54,14 +54,14 @@ CI never caught any of this. envtest runs one version, derived from `k8s.io/api`
 
 2. **No CEL rule may read an int-or-string value while any supported minor is 1.33 or older.** On those versions such a rule costs about 315k per evaluation even when it does nothing useful. That allows about 31 evaluations per rule, far below the 64 categories one Certification may hold. Validation for these fields uses OpenAPI keywords, which have no CEL cost, or moves to the controller.
 
-3. **`cpu` and `memory` in `CategoryResourceList` are validated at admission by pattern.** A `+kubebuilder:validation:Pattern` restricts each to a non-negative quantity that `resource.ParseQuantity` decodes quickly and to the value written. It is controller-gen's Quantity pattern without a leading `-`, with the exponent limited to a whole number of at most two digits.
+3. **`cpu` and `memory` in `CategoryResourceList` are validated at admission by pattern.** A `+kubebuilder:validation:Pattern` restricts each to a non-negative quantity that `resource.ParseQuantity` decodes, and decodes quickly. It is controller-gen's Quantity pattern without a leading `-`, with the exponent limited to a whole number of at most two digits.
    - **Why the pattern must be stricter than controller-gen's.** Every typed client decodes these fields with `ParseQuantity`. One Certification that fails to decode breaks every typed List of Certifications in its namespace, including the controller's informer and nvcrectl's run-namespace RoleBinding cleanup. controller-gen's pattern is looser than `ParseQuantity`: it allows a fractional exponent, and `"1e1.5"` matches it but does not parse. The `quantity()` rule used to reject that; with the rule gone, the pattern has to.
    - **Why the exponent is capped at two digits.** A whole-number exponent is not enough on its own, because `maxLength: 32` leaves room for long ones:
      - past int64, `ParseQuantity` refuses it;
      - past int32, it wraps silently to a different value (`1e4294967297` decodes as 10);
      - a large negative one decodes slowly (`1e-9999999` took 1.1 s, and `1e-99999999` ran past a 15 s limit).
 
-     Two digits allow `1e99` and `1e-99`, far beyond any CPU or memory value. Of about a million generated strings that the pattern accepts, every one decodes, in 2.7 s in total.
+     Two digits allow `1e99` and `1e-99`, far beyond any CPU or memory value. Of about a million generated strings that the pattern accepts, every one decodes, in 2.7 s in total. The cap buys a decode that always succeeds, quickly, with no int64 refusal and no int32 wrap. It does not make decoding exact. `ParseQuantity` still rounds a value below `1n` up to `1n` (`1e-99` decodes as `1e-9`), and a plain number past int64 loses digits. Both are general `Quantity` behaviour, which the controller-gen pattern on `main` shares.
    - **How the schema is generated.** controller-gen emits a signed pattern for every `resource.Quantity`, and it cannot merge two patterns. Left alone, it would put both under an `allOf`. The API server then reports every bad value twice, once as the pattern failure and once as an `allOf` failure with no field path. Instead, `+kubebuilder:validation:Schemaless` drops the generated Quantity schema, and `XIntOrString`, `MaxLength` and `Pattern` rebuild it with the one pattern.
    - **Type checking still holds.** `x-kubernetes-int-or-string` alone still limits the value to an integer or a string. Measured on 1.29 and 1.36, floats, booleans and objects are rejected.
    - **Result.** Negative and malformed strings are still rejected at admission on every supported version, with one error each.
@@ -77,13 +77,13 @@ CI never caught any of this. envtest runs one version, derived from `k8s.io/api`
   - give `cpu` and `memory` `Schemaless`, `XIntOrString`, `MaxLength` and the non-negative `Pattern`;
   - rewrite the comments that claimed `MaxLength` and `MaxItems` kept the rules within budget;
   - regenerate with `make manifests generate`. Only the Certification CRD changes.
-- `pkg/controller/resources_validation.go`: `ValidateCertificationResources`. Errors name the field path and both quantities, for example `spec.categories[1].options.resources: requests.cpu (256) must not exceed limits.cpu (128)`.
+- `pkg/controller/resources_validation.go`: `ValidateCertificationResources`. Errors name the field path and both quantities, for example `spec.categories[1].options.resources: requests.cpu (256) must not exceed limits.cpu (128)`. It reports at most ten violations and counts the rest. The message becomes the Failed condition's message, which is capped at 32768 bytes, and 64 categories with six violations each would overrun that cap and leave the status unwritable.
 - `pkg/controller/certification_controller.go`: call it in `initializeCategoryStatuses`. Add `ReasonInvalidResources` to `helpers.go`.
 - `pkg/certification/certification.go`: call it from `readCertification`.
 - `test/crdcompat/`:
   - `TestCRDsInstall` creates every chart CRD in envtest. When `NVCRE_CRD_COMPAT_K8S_VERSION` is set, it also asserts that the server really is that minor, so a misconfigured asset path cannot quietly test the default version eight times.
   - `TestDocumentedFloorIsTested` ties the install guide to `MIN_K8S_VERSION`.
-- `Makefile`: `MIN_K8S_VERSION` and `test-crd-compat`, which loops over every minor with `setup-envtest use 1.N`.
+- `Makefile`: `MIN_K8S_VERSION` and `test-crd-compat`, which loops over every minor with `setup-envtest use 1.N`. It fails if either bound is unreadable or the range is empty, so a misconfigured bound cannot pass by testing nothing.
 - `.github/workflows/ci.yml`: a `crd-compat` job that runs `make test-crd-compat`.
 - Tests:
   - the admission cases in `cmd/integration/testdata/validation/` now pin what admission accepts;

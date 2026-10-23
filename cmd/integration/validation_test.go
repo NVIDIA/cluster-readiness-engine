@@ -129,9 +129,13 @@ const rawInputFile = "input_raw.yaml"
 
 // validationInput returns the one object a validation case submits: the
 // document in input_raw.yaml as unstructured, or else the typed object
-// decoded from input.yaml.
+// decoded from input.yaml. A case with both is a mistake, since only one
+// would be submitted, so it fails.
 func validationInput(tc *testutil.TestCase) (client.Object, error) {
 	if raw, ok := tc.Inputs[rawInputFile]; ok {
+		if _, typed := tc.Inputs["input.yaml"]; typed {
+			return nil, fmt.Errorf("a validation case has %s or input.yaml, not both", rawInputFile)
+		}
 		obj := &unstructured.Unstructured{}
 		if err := sigsyaml.Unmarshal([]byte(raw), &obj.Object); err != nil {
 			return nil, fmt.Errorf("decoding %s: %w", rawInputFile, err)

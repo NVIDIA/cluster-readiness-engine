@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A request equal to its limit is valid and must render. It pins the
+# comparison as "exceeds", not "reaches": every other resources case uses a
+# strictly greater request, so a >= check would pass them all while refusing
+# every Certification that sets requests.cpu and limits.cpu both to "6".
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits: {cpu: "6", memory: 48Gi}
+          requests: {cpu: "6", memory: 48Gi}

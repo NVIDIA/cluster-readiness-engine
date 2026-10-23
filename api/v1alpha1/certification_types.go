@@ -121,13 +121,15 @@ type CertificationCategoryStatus struct {
 // Every typed client decodes these fields with resource.ParseQuantity, and
 // one Certification that fails to decode breaks every typed List of
 // Certifications in its namespace: the controller's informer, and the
-// run-namespace RoleBinding cleanup in nvcrectl. So the Pattern accepts only
-// what ParseQuantity decodes to the value written, and quickly. The exponent
-// is a whole number, unlike the controller-gen Quantity pattern this replaces
-// ("1e1.5" does not parse), and at most two digits: ParseQuantity refuses an
-// exponent past int64, wraps one past int32 to a different value, and takes
-// seconds to hours on a large negative one. 1e99 is far beyond any CPU or
-// memory value.
+// run-namespace RoleBinding cleanup in nvcrectl. So everything the Pattern
+// accepts must decode, and decode quickly. The exponent is a whole number,
+// unlike the controller-gen Quantity pattern this replaces ("1e1.5" does not
+// parse), and at most two digits: ParseQuantity refuses an exponent past
+// int64, wraps one past int32 to a different value, and takes seconds to
+// hours on a large negative one. 1e99 is far beyond any CPU or memory value.
+// The cap does not make decoding exact: ParseQuantity still rounds a value
+// below 1n up to 1n, and a plain number past int64 loses digits, as for any
+// Quantity.
 //
 // Schemaless drops the schema controller-gen generates for every Quantity.
 // Its signed pattern would otherwise be combined with this one in an allOf,

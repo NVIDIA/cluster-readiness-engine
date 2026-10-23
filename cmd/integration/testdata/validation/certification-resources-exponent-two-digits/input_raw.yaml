@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The largest exponents the Pattern allows, two digits either way, are
-# accepted: ParseQuantity decodes both to the value written, at once
-# (ADR-105). Submitted raw, like the rejected boundary cases.
+# accepted: ParseQuantity decodes both at once (ADR-105), though "1e-99",
+# like any value below 1n, rounds up to 1n. Submitted raw, like the rejected
+# boundary cases.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
