@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nvcrectl workloadrun render --platform togetherai --gpu-arch H100. TogetherAI's
+# platform override requests nvidia.com/mlnxnics: 8; one entry on that same
+# resource adds an interface, so the worker requests 9, the same answer
+# certification render gives for the same input.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-netatt
+  namespace: default
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 2
+  framework:
+    mpi:
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      mpirunPath: /usr/local/mpi/bin/mpirun
+  networkAttachments:
+    - {network: nvcre/ib-extra, resourceName: nvidia.com/mlnxnics}

@@ -32,6 +32,10 @@
     "default": "0"
   },
   {
+    "name": "extended-resources",
+    "default": "[]"
+  },
+  {
     "name": "gpus-per-node",
     "default": "0"
   },
@@ -56,12 +60,20 @@
     "default": "0"
   },
   {
+    "name": "multus-networks",
+    "default": "[]"
+  },
+  {
     "name": "name",
     "default": ""
   },
   {
     "name": "namespace",
     "default": ""
+  },
+  {
+    "name": "network-attachments",
+    "default": "[]"
   },
   {
     "name": "nodes-per-job",

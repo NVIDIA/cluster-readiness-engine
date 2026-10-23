@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The MPI shape with a catalog networks annotation on the node pod. The list
+# replaces that annotation (sibling annotations stay), adds one unit per entry
+# to the node container with entries on one resource adding up (nvcre/r1
+# listed twice requests nvidia.com/r1: 2), keeps nvidia.com/gpu, and leaves the
+# launcher untouched.
+networkAttachments:
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+  - {network: nvcre/r1, resourceName: nvidia.com/r1}
+  - {network: nvcre/r1, resourceName: nvidia.com/r1}
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    metadata:
+                      annotations:
+                        k8s.v1.cni.cncf.io/networks: network-operator/sriov-net,network-operator/sriov-net
+                        example.com/keep: "yes"
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
+                          resources:
+                            limits:
+                              nvidia.com/gpu: "8"
+                            requests:
+                              nvidia.com/gpu: "8"
+            - name: launcher
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
