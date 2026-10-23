@@ -15,7 +15,7 @@ On such a cluster, every NVCRE pod on OCI fails to attach net1..netN until someo
 
 The usual Kubernetes split is that the platform owns the secondary network and the workload refers to it. The platform can be an admin, or a controller that renders NADs from a CR (the NVIDIA Network Operator's `HostDeviceNetwork` and `SriovNetwork`, with `networkNamespace`). Device plugins and NADs are tied together by the `k8s.v1.cni.cncf.io/resourceName` annotation: Multus uses it to hand the pod the device the resource request allocated. That annotation is the one fact that holds on every cluster that provides `nvidia.com/mlnxnics`, whatever the NAD is called.
 
-The `networkAttachments` ADR (#510; its number is assigned when it merges) already gives the operator an explicit way out: a `networkAttachments` list on `CategoryOptions` names the NADs and their resources, and on OCI it replaces `oci-mlnxnics-comm.yaml` outright (the fragment is gated on `not .HasNetworkAttachments`). What remains is the default: a Certification that sets no list still attaches a name that may not exist.
+ADR-104 (`networkAttachments`, #510) already gives the operator an explicit way out: a `networkAttachments` list on `CategoryOptions` names the NADs and their resources, and on OCI it replaces `oci-mlnxnics-comm.yaml` outright (the fragment is gated on `not .HasNetworkAttachments`). What remains is the default: a Certification that sets no list still attaches a name that may not exist.
 
 There is a precedent for reading cluster state the catalog needs at render time. GKE TCPXO network names are detected by the controller from node allocatable, passed to the templates through `BuildConfig.GKETCPXONetworks` with no CRD field, and fall back to `DefaultGKETCPXONetworks()` when detection refuses (issue #432).
 
@@ -23,14 +23,14 @@ There is a precedent for reading cluster state the catalog needs at render time.
 
 Throughout, the **workload namespace** is the Certification's namespace. The Workflow is created in `certification.Namespace`, and the Job and TrainJob follow it, so the two are always the same.
 
-1. **Resolve the NAD only when the resolved Workflow attaches it.** The gate is the render, not its inputs. Whether a Workflow carries the OCI attachment depends on the platform, the GPU architecture, the entry's own OCI override blocks, `mlnxPerNode`, and the `networkAttachments` gate #510 adds to the fragment. Restating that outside the catalog would drift from it, and an input-only gate is already wrong today: on OCI, `mlnxPerNode` resolves above 0 for H100, A100, B200, B300, H200, L40S, L40 and GB300, but `diagnostics/dcgm-level4` never includes the fragment, and the nemotron entries include it only in their L40S/L40, GB200 and GB300 blocks (where GB200 resolves `mlnxPerNode: 0`, so it renders empty), not for H100, A100, B200, B300 or H200. Gating on `mlnxPerNode > 0` would fail those categories over a network they never reference.
+1. **Resolve the NAD only when the resolved Workflow attaches it.** The gate is the render, not its inputs. Whether a Workflow carries the OCI attachment depends on the platform, the GPU architecture, the entry's own OCI override blocks, `mlnxPerNode`, and the `networkAttachments` gate ADR-104 adds to the fragment. Restating that outside the catalog would drift from it, and an input-only gate is already wrong today: on OCI, `mlnxPerNode` resolves above 0 for H100, A100, B200, B300, H200, L40S, L40 and GB300, but `diagnostics/dcgm-level4` never includes the fragment, and the nemotron entries include it only in their L40S/L40, GB200 and GB300 blocks (where GB200 resolves `mlnxPerNode: 0`, so it renders empty), not for H100, A100, B200, B300 or H200. Gating on `mlnxPerNode > 0` would fail those categories over a network they never reference.
 
    The controller therefore builds in two passes:
    1. `entry.Build` with `BuildConfig.OCISecondaryNetwork` set to `catalog.OCISecondaryNetworkUnresolved`, a sentinel that is not a valid `<namespace>/<name>`. Then apply and prune overlays as today.
    2. If the sentinel appears nowhere in the resolved `WorkflowSpec`, remaining overrides included, the Workflow attaches no OCI network. Detection does not run, no NAD is listed, and this result is the one created.
    3. Otherwise, detect, then build and apply overlays again with the detected name. `Build` is a pure function of its config, so the second pass differs from the first only in that string. Before Create, the spec is checked once more. A sentinel still present means a bug in NVCRE, not in the cluster: `createWorkflowForCategory` returns it as an ordinary error, which the callers already turn into `WorkflowValidationFailed`, and nothing is created.
 
-   Detection lists NetworkAttachmentDefinitions in every namespace and keeps those annotated `k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics`, the resource the OCI fragment requests. An explicit `networkAttachments` list gates the fragment off (#510), so the sentinel never renders and detection, with its RBAC, never runs. No API change.
+   Detection lists NetworkAttachmentDefinitions in every namespace and keeps those annotated `k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics`, the resource the OCI fragment requests. An explicit `networkAttachments` list gates the fragment off (ADR-104), so the sentinel never renders and detection, with its RBAC, never runs. No API change.
 
 2. **Resolution rules.** They are the same for the controller and `nvcrectl certification render --dry-run`. The **candidates** are the matches in the workload namespace if there are any, otherwise all matches. A NAD in the workload namespace therefore always wins over NADs elsewhere, and under Multus `namespaceIsolation` it is the only one the pod can attach.
 
@@ -61,20 +61,20 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
 
 5. **Read-only, uncached, narrow RBAC.** The list goes through the manager's `APIReader` as an `unstructured` `k8s.cni.cncf.io/v1` `NetworkAttachmentDefinitionList`. Going uncached means no informer, so no `watch` verb and no permanent cache of every NAD in the cluster. Detection runs at most once per category Workflow creation, and only when Decision 1's first pass carries the attachment. `nvcre-manager-role` gains `get` and `list` on `k8s.cni.cncf.io/network-attachment-definitions`, and nothing else. This is a read, so it goes in the cluster-wide manager role, not in `nvcre-run-role` (ADR-092).
 
-6. **Document Multus `namespaceIsolation` rather than solve it.** With `namespaceIsolation: true`, Multus rejects a pod that references a NAD in another namespace unless that namespace is listed in `globalNamespaces`. `default` is allowed implicitly only while `globalNamespaces` is unset; once it is set, `default` must be listed too. Sites with isolation enabled have two options: list the platform NAD's namespace in `globalNamespaces`, or provide a NAD in the workload namespace, which detection then uses whatever exists elsewhere (Decision 2). An explicit `networkAttachments` list is a third.
+6. **Document Multus `namespaceIsolation` rather than solve it.** With `namespaceIsolation: true`, Multus rejects a pod that references a NAD in another namespace unless that namespace is listed in `globalNamespaces`. `default` is allowed implicitly only while `globalNamespaces` is unset; once it is set, `default` must be listed too. Sites with isolation enabled have two options: list the platform NAD's namespace in `globalNamespaces`, or provide a NAD in the workload namespace: Decision 2 then considers only the workload-namespace matches, whatever exists elsewhere. An explicit `networkAttachments` list is a third.
 
 ### Scope
 
-- **WorkloadRun is unaffected.** `pkg/platform/overrides/workloadrun.yaml` has no OCI override: a WorkloadRun on OCI requests neither `nvidia.com/mlnxnics` nor the networks annotation unless its own `networkAttachments` says so (#510), so it has nothing to resolve.
+- **WorkloadRun is unaffected.** `pkg/platform/overrides/workloadrun.yaml` has no OCI override: a WorkloadRun on OCI requests neither `nvidia.com/mlnxnics` nor the networks annotation unless its own `networkAttachments` says so (ADR-104), so it has nothing to resolve.
 - **Other platforms, and OCI categories that attach no network, are unaffected.** The first pass carries no sentinel there, so detection does not run, no event is emitted and no permission is needed. Only the first pass runs, so this ADR does not change their Workflows.
 - **The resource name stays `nvidia.com/mlnxnics`** on OCI. It becomes a named constant, so detection and the fragment cannot disagree.
 
 ## Implementation
 
-This change is written against #510's versions of `oci-mlnxnics-comm.yaml`, `catalog.go`, `loader.go`, `pkg/certification/certification.go` and `platform-detection.md`, and lands after it.
+This change builds on ADR-104's versions of `oci-mlnxnics-comm.yaml`, `catalog.go`, `loader.go`, `pkg/certification/certification.go` and `platform-detection.md`, now on `main`.
 
 - `pkg/catalog/catalog.go`, `loader.go`: add `BuildConfig.OCISecondaryNetwork`, `TemplateData.OCISecondaryNetwork` (copied as is, never defaulted), the `Build` check from Decision 4, the constants `DefaultOCISecondaryNetwork`, `OCISecondaryNetworkUnresolved` and `OCIMlnxResourceName`, and a helper that reports whether a `WorkflowSpec` contains a given network name.
-- `_lib/deps/oci-mlnxnics-comm.yaml`: keep #510's gate, `{{- if and (gt (int .MlnxPerNode) 0) (not .HasNetworkAttachments) }}`, and render `{{ repeat (int .MlnxPerNode) (printf "%s," .OCISecondaryNetwork) | trimSuffix "," }}`. Rewrite the header comment, which names `sriov-net` as fact.
+- `_lib/deps/oci-mlnxnics-comm.yaml`: keep ADR-104's gate, `{{- if and (gt (int .MlnxPerNode) 0) (not .HasNetworkAttachments) }}`, and render `{{ repeat (int .MlnxPerNode) (printf "%s," .OCISecondaryNetwork) | trimSuffix "," }}`. Rewrite the header comment, which names `sriov-net` as fact.
 - `pkg/controller/oci_network_detect.go`:
   - a pure `selectOCISecondaryNetwork(nads, workloadNamespace)` holding the rules and the equivalence test
   - a `listNetworkAttachmentDefinitions(ctx, reader)` that classifies list errors as terminal or retryable
@@ -130,7 +130,7 @@ This change is written against #510's versions of `oci-mlnxnics-comm.yaml`, `cat
 
 ## Alternatives Considered
 
-- **Require `networkAttachments` on OCI** and drop the default wiring. Rejected: every OCI Certification would have to restate what the platform already publishes through the `resourceName` annotation. The `networkAttachments` list (#510) stays the explicit override, and detection is the default.
+- **Require `networkAttachments` on OCI** and drop the default wiring. Rejected: every OCI Certification would have to restate what the platform already publishes through the `resourceName` annotation. The `networkAttachments` list (ADR-104) stays the explicit override, and detection is the default.
 - **NVCRE creates its own NAD** (host-device, empty IPAM, `resourceName` annotation) in the workload namespace when none matches. It sidesteps `namespaceIsolation` and works on clusters with no NAD at all. It also needs create and delete RBAC on NADs, lifecycle and cleanup handling, and it copies platform-specific CNI choices into NVCRE, including the switchdev and sriov issue above. Deferred in review: detection plus `networkAttachments` covers the known layouts. Revisit if a cluster turns up with no NAD for `nvidia.com/mlnxnics` and no way to add one.
 - **Fall back to the default name in the controller, with a Warning**, as GKE TCPXO does. Rejected: the default may not exist, and an attachment that silently fails is the defect being fixed.
 - **Match on namespace or name conventions** (`*/sriov-net`, `*/rdma-net`). Rejected: it encodes today's two layouts and breaks on the third.
@@ -141,12 +141,12 @@ This change is written against #510's versions of `oci-mlnxnics-comm.yaml`, `cat
 ## Notes
 
 - The equivalence test compares only the top level of `spec.config` after removing `name`. Nested differences are reported under their top-level key (for example `ipam`).
-- The `networkAttachments` ADR (#510) notes that NVCRE cannot check that a listed `resourceName` matches its NAD. This ADR's listing could, but that is outside its scope.
+- ADR-104 notes that NVCRE does not catch a listed `resourceName` that differs from the one its NAD declares, and defers reading NADs to check it. This ADR's listing could, but that is outside its scope.
 
 ## References
 
 - Issue #542: OCI workload pods reference a hard-coded `network-operator/sriov-net` NAD
-- #510, the `networkAttachments` ADR: Multus network attachments paired with extended resources
+- ADR-104 (#510): Multus network attachments paired with extended resources
 - ADR-075: NIC resource auto-detection
 - ADR-087: `mlnxPerNode: 0` as a real opt-out, and OCI GB200 NIC defaults
 - ADR-088: OCI GB200 RoCE overrides, and `rdmaDeviceAccess` for hostPath RDMA
