@@ -106,16 +106,6 @@ type cachedNCCLParser struct {
 	parser          *nccl.Parser
 }
 
-// podReader returns the APIReader when available, falling back to the cached
-// client. The APIReader bypasses the informer cache so pod lookups reflect the
-// current API server state rather than a potentially-stale watch snapshot.
-func (r *BandwidthMeasurementReconciler) podReader() client.Reader {
-	if r.APIReader != nil {
-		return r.APIReader
-	}
-	return r.Client
-}
-
 func (r *BandwidthMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 	if r.LogFetcher != nil {
 		return r.LogFetcher
@@ -269,7 +259,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
-	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
+	discoverer := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader))
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
@@ -562,7 +552,7 @@ func (r *BandwidthMeasurementReconciler) readFinalResults(ctx context.Context, m
 	if profile.Spec.WorkerStrategy != nil && profile.Spec.WorkerStrategy.ReplicatedJobName != "" {
 		replicatedJobName = profile.Spec.WorkerStrategy.ReplicatedJobName
 	}
-	pod, err := podutil.NewWorkerDiscoverer(r.podReader()).GetReplicatedJobPod(
+	pod, err := podutil.NewWorkerDiscoverer(newPodReader(r.Client, r.APIReader)).GetReplicatedJobPod(
 		ctx, measurement.Namespace, job.Status.WorkloadRef.Name, replicatedJobName)
 	if err != nil {
 		return finalRead{}, err
@@ -891,6 +881,11 @@ func (r *BandwidthMeasurementReconciler) warnf(obj runtime.Object, reason, messa
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BandwidthMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Default the uncached reader. The launcher this reads has no NVCRE job
+	// label, so the job-scoped cache never holds it (ADR-102).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.BandwidthMeasurement{}).
 		Watches(
