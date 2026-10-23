@@ -366,6 +366,16 @@ func RunInitWithValues(
 					"'helm status %s --namespace %s' and resolve the conflict manually.\n",
 				trainerReleaseName, helmReleaseName, helmReleaseName, nvcreNamespace)
 		}
+		// A controller that never stays Ready fails helm --wait with only
+		// "context deadline exceeded"; name the cause when the pod shows it.
+		if crash := diagnoseManagerCrash(ctx, c, managerReadTimeout); crash != nil {
+			_, _ = fmt.Fprintf(out, "[helm] %v\n", crash)
+		}
+		return fmt.Errorf("[helm] %w", err)
+	}
+	// helm --wait passes on a single Ready sample, so a controller that is
+	// Ready for a few seconds before each OOMKill passes it (issue #504).
+	if err := verifyManagerStable(ctx, newManagerStability(c), out); err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
 
