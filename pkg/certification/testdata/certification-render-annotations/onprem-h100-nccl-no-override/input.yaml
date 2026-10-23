@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No override in the entry targets on-prem H100: detected-platform and
+# detected-gpu-architecture are still written, and applied-overrides is
+# omitted rather than written empty.
+platform: onprem
