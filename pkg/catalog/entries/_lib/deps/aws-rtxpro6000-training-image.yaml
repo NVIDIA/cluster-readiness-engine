@@ -34,6 +34,7 @@
                     - |
                       import ast
                       import hashlib
+                      import json
                       from pathlib import Path
 
                       path = Path("/mnt/workspace/megatron-lm/megatron/training/training.py")
@@ -44,22 +45,30 @@
                       if digest == patched:
                           print("Megatron DDP stream ordering already applied")
                       elif digest != original:
-                          waits = {
-                              ast.unparse(node)
-                              for node in ast.walk(ast.parse(source))
-                              if isinstance(node, ast.Call)
-                              and isinstance(node.func, ast.Attribute)
-                              and node.func.attr == "wait_stream"
-                          }
-                          if {
-                              "ddp_stream.wait_stream(current_stream)",
-                              "current_stream.wait_stream(ddp_stream)",
-                          } <= waits:
-                              print("Megatron DDP stream waits already present; leaving source unchanged")
+                          # Verify the inspected function, including wait placement
+                          # around DDP construction. Calls elsewhere cannot qualify.
+                          def shape(node):
+                              if isinstance(node, ast.AST):
+                                  return [type(node).__name__, [
+                                      [name, shape(value)] for name, value in ast.iter_fields(node)
+                                      if value is not None and value != []
+                                  ]]
+                              if isinstance(node, list):
+                                  return [shape(value) for value in node]
+                              return node
+
+                          functions = [node for node in ast.parse(source).body
+                                       if isinstance(node, ast.FunctionDef) and node.name == "get_model"]
+                          verified = "3b0496099dadd5ae1505d4d2b724119d25ed213541e681521b4050b0cfb46970"
+                          fingerprint = hashlib.sha256(
+                              json.dumps(shape(functions[0]), separators=(",", ":")).encode()
+                          ).hexdigest() if len(functions) == 1 else None
+                          if fingerprint == verified:
+                              print("Verified synchronized Megatron get_model; leaving source unchanged")
                           else:
                               raise RuntimeError(
                                   "AWS RTX DDP stream patch requires the inspected core_v0.15.2 source "
-                                  "or both existing DDP stream waits"
+                                  "or the inspected synchronized get_model implementation"
                               )
                       else:
                           before = "        with torch.cuda.stream(torch.cuda.Stream()):\n            model = [\n"

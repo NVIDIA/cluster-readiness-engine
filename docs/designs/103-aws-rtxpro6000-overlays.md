@@ -91,8 +91,9 @@ After design approval and node inspection:
   initialization stream before parameter copies and before optimizer setup.
   Apply this two-wait backport in an init container after cloning Megatron.
   Guard changes to training.py with SHA-256 checks. Leave another source
-  unchanged only when both DDP stream waits are already present as Python
-  calls; otherwise fail initialization. Retain all parameter integrity assertions.
+  unchanged only when its `get_model` AST matches the inspected synchronized
+  implementation, including wait placement around DDP construction; otherwise
+  fail initialization. Retain all parameter integrity assertions.
 - Identify golden changes before regeneration: new AWS cell expected output,
   catalog override counts, and offline available-combination/error lists from
   adding the mock node. Regenerate only deliberately changed expectations
@@ -194,8 +195,10 @@ PR #2852. The AWS RTX runtime backports two stream dependencies: the DDP
 stream waits for the current stream before construction, and the current
 stream waits for DDP construction before continuing. The source and result
 hashes pin the transformation to the inspected version. An alternative
-source containing both explicit stream waits is recognized from Python
-calls and left unchanged, including for mirrored or pre-seeded workspaces.
+source is left unchanged only when the entire `get_model` AST matches the
+inspected synchronized implementation. Comments and formatting do not affect
+that fingerprint; moved waits, conditional waits and calls elsewhere do.
+This applies to mirrored and pre-seeded workspaces too.
 Other source revisions require inspection; different upstream fixes are not
 assumed equivalent. Other clouds and caller-provided WorkloadRun code receive
 no source patch.
