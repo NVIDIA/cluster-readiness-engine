@@ -49,7 +49,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 
 ### Controller access to the run namespace
 
-With the chart's `rbac.scope: namespaced`, the controller can write only in namespaces that have a RoleBinding granting it `nvcre-run-role` ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Before creating the Certification, `run` makes sure the run namespace has one:
+With the chart's `rbac.scope: namespaced`, the controller can write only in namespaces that have a RoleBinding granting it `nvcre-run-role` ([ADR-092](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/092-per-namespace-controller-rbac.md)). Before creating the Certification, `run` makes sure the run namespace has one:
 
 - A namespace this run created (the generated `nvcrectl-<timestamp>`, or a `-n` namespace that did not exist yet) gets the binding automatically. Deleting the namespace removes it.
 - A namespace that already existed gets it only with `--grant-run-access`. Without the flag, `run` stops before submitting anything and prints the binding, so a shared namespace never becomes a standing grant by accident. A binding `--grant-run-access` created is deleted by `--cleanup` once the Certification is fully gone and no other Certification, WorkloadRun or Workflow is left in the namespace or recently adopted the binding, because the controller's finalizers need it until then; a binding kept for another run stays for you to delete once no run needs it. Without `--cleanup` it stays, and `run` says so.
@@ -99,6 +99,8 @@ nvcrectl certification render [flags] <cert-file>
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
 A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on the submitted workload object, on the Job template, and on the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
+
+Each rendered Workflow carries annotations that record how overrides were matched: `nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`, and `nvcrectl.nvidia.com/applied-overrides`, a JSON list of the overrides that matched, omitted when none did. Offline, the platform and architecture come from `--platform`, `--gpu-arch` and the target `nodeSelector`; without `--platform` the render detects `onprem` and applies the on-prem overrides, or `forge` when the `nodeSelector` carries a Forge marker (`nke.nvidia.com/site-name`, or a `kubernetes.io/hostname` containing `forge`), which `--platform onprem` does not override. Pass `--platform` to preview a cloud target. With `--dry-run` they are detected from the discovered nodes, and `--platform` still wins over the detected platform.
 
 ## nvcrectl certification report
 

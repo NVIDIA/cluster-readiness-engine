@@ -14,6 +14,11 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
   decision, kept for readers who want the short form.
 - New records follow the structure in `CLAUDE.md`: Context, Decision, Implementation,
   Rationale, Consequences, Alternatives Considered, Notes, References.
+- ADRs are not published on the docs site and are not in `docs/index.yml`. A page under
+  `docs/` that cites one links it by GitHub URL,
+  `https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/NNN-name.md`,
+  because a relative `../designs/` link renders as "Page Not Found" on the site.
+  `TestPublishedPagesLinkOnlyToPublishedPages` in `test/docspolicy/` enforces this.
 
 ## Index
 
@@ -111,3 +116,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 101 | [Akamai LKE RTX PRO 6000 TCP Overrides](101-akamai-rtxpro6000-tcp.md) |
 | 102 | [Cache Only NVCRE's Own Pods](102-scoped-pod-cache.md) |
 | 104 | [Multus Network Attachments Paired With Extended Resources](104-network-attachments.md) |
+| 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
