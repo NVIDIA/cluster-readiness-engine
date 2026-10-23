@@ -5,7 +5,7 @@ description: Bring up a Kind cluster with simulated GPUs, install NVCRE from you
 # SPDX-License-Identifier: Apache-2.0
 ---
 
-[Mokka](https://github.com/NVIDIA/k8s-test-infra) simulates the NVIDIA driver's management interfaces (NVML, `nvidia-smi`, the PCI and fabric views) on ordinary Kind nodes. The real device plugin, GPU Feature Discovery (GFD) and DRA driver run against it, so the cluster looks like a GPU cluster to Kubernetes and to NVCRE. Nothing in it runs CUDA. The design is in [ADR-096](../designs/096-mokka-local-environment-and-uat-runtime-lane.md).
+[Mokka](https://github.com/NVIDIA/k8s-test-infra) simulates the NVIDIA driver's management interfaces (NVML, `nvidia-smi`, the PCI and fabric views) on ordinary Kind nodes. The real device plugin, GPU Feature Discovery (GFD) and DRA driver run against it, so the cluster looks like a GPU cluster to Kubernetes and to NVCRE. Nothing in it runs CUDA. The design is in [ADR-096](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/096-mokka-local-environment-and-uat-runtime-lane.md).
 
 Use this environment to develop and debug the controller against real scheduling, real GPU allocation, real MPI bootstrap and, on GB200 and GB300, a real ComputeDomain lifecycle.
 
