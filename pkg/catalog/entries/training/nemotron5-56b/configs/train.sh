@@ -32,6 +32,7 @@ if [ "$ENABLE_CHECKPOINT" = "true" ]; then
 fi
 
 # Dynamic computation — values from Go template at render time.
+{{- /* Keep the last assignment ending in "}}", not "-}}": a trailing trim eats the newline before TOTAL_GPUS=. */}}
 {{- $totalGPUs := mul (int .NodesPerJob) (int .GpusPerNode) -}}
 {{- $mbs := 1 -}}
 {{- $gbs := mul $totalGPUs $mbs }}
