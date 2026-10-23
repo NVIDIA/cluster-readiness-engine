@@ -1,0 +1,9 @@
+# A deployed Helm release owns every NVCRE CRD (ADR-107 decision 7): the
+# upgrade gets --skip-crds, so a first install of the main release does not
+# re-apply the crds subchart's CRDs over that release's ownership. The same
+# arguments serve a first install and an upgrade (upgrade --install).
+chartRef: ""
+trainerChartRef: ""
+chartVersion: "0.9.0"
+valuesFile: "/tmp/nvcrectl-values-1/values.json"
+skipCRDs: true

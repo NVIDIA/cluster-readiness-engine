@@ -1,0 +1,11 @@
+# A partial owner whose state cannot be read stops init, as a sole owner's
+# would.
+crds:
+  - {name: bandwidthmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: certifications.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: goodputmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: jobs.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: logprofiles.nvcre.nvidia.com}
+  - {name: workflows.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workloadruns.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+statusError: "helm status nvcre-crds: exit status 1: Kubernetes cluster unreachable"

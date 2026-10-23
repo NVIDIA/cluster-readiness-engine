@@ -1,0 +1,13 @@
+# Ownership split between a deployed release, no owner and incomplete
+# metadata: nvcrectl reads the owner's state, warns, names each CRD's owner,
+# and applies, because a stale schema is the failure ADR-107 prevents.
+crds:
+  - {name: bandwidthmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: certifications.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: goodputmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: jobs.nvcre.nvidia.com}
+  - {name: logprofiles.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workflows.nvcre.nvidia.com, annotations: {meta.helm.sh/release-name: nvcre-crds}}
+  - {name: workloadruns.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+releases:
+  nvcre/nvcre-crds: deployed

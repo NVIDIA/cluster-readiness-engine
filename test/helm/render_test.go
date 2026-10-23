@@ -141,15 +141,18 @@ func requireChartInputs(t *testing.T, chartDir string) {
 	}
 }
 
-func helmTemplate(chartDir string, set []string) ([]byte, error) {
+// helmTemplate renders chartDir with each set value. extra holds further helm
+// template flags, such as --include-crds.
+func helmTemplate(chartDir string, set []string, extra ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), helmTemplateTimeout)
 	defer cancel()
 
-	args := make([]string, 0, 3+2*len(set))
+	args := make([]string, 0, 3+2*len(set)+len(extra))
 	args = append(args, "template", "render-test", chartDir)
 	for _, value := range set {
 		args = append(args, "--set", value)
 	}
+	args = append(args, extra...)
 
 	cmd := exec.CommandContext(ctx, "helm", args...)
 	var stderr bytes.Buffer

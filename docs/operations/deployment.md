@@ -87,6 +87,7 @@ Key chart values:
 
 | Value | Default | Purpose |
 |-------|---------|---------|
+| `crds.enabled` | `true` | Install the NVCRE CRDs from the chart's `crds` subchart. Set to `false` when the [CRDs chart](#keep-the-crds-current-with-the-crds-chart) manages them |
 | `manager.replicas` | `1` | Controller Deployment replicas |
 | `manager.image.repository` | `ghcr.io/nvidia/cluster-readiness-engine/manager` | Controller image |
 | `manager.image.tag` | `""` (uses chart `appVersion`) | Controller image tag |
@@ -106,6 +107,92 @@ Key chart values:
 | `metrics.serviceMonitor.labels` | `{release: prometheus}` | Extra ServiceMonitor labels for Prometheus Operator discovery. Override `release` to match your kube-prometheus-stack Helm release name |
 | `metrics.serviceMonitor.interval` | `""` | Optional scrape interval; empty uses the Prometheus default |
 | `metrics.serviceMonitor.scrapeTimeout` | `""` | Optional scrape timeout; empty uses the Prometheus default |
+
+### Keep the CRDs current with the CRDs chart
+
+Helm installs the CRDs in the main chart only on the first install and never updates them on `helm upgrade`. After a plain upgrade the new controller runs against the old schema, and the API server silently drops every field the old schema lacks. `nvcrectl setup init` and Argo CD re-apply the CRDs on every run; a direct Helm, Helmfile or Flux install does not.
+
+Every release also publishes the CRDs as their own chart, `oci://ghcr.io/nvidia/cluster-readiness-engine-crds`, at the same version as the main chart. Its CRDs are ordinary chart resources, so `helm upgrade` keeps them current, including removing fields. Each CRD carries `helm.sh/resource-policy: keep` (value `crds.keep`, default `true`), so `helm uninstall` of the CRDs chart leaves the CRDs and every NVCRE object in place. Install it beside the main chart, and set `crds.enabled=false` on the main chart, so only one release manages the CRDs:
+
+```bash
+# New install
+helm install nvcre-crds oci://ghcr.io/nvidia/cluster-readiness-engine-crds \
+  --version "$NVCRE_VERSION" --namespace nvcre --create-namespace
+helm install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version "$NVCRE_VERSION" --namespace nvcre --set crds.enabled=false
+```
+
+Upgrade the CRDs chart first and the main chart second, with the same version. Roll back in the reverse order: the controller first, then the CRDs. A newer CRD schema under an older controller is safe; an older schema under a newer controller is the failure the CRDs chart exists to prevent. Releases add fields to the CRDs, and a field is removed only once the previous release's controller no longer writes it.
+
+```bash
+helm upgrade nvcre-crds oci://ghcr.io/nvidia/cluster-readiness-engine-crds \
+  --version <new-version> --namespace nvcre
+helm upgrade nvcre oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version <new-version> --namespace nvcre --reuse-values
+```
+
+Keep `crds.enabled=false` on the main chart for as long as the CRDs chart is installed. On Helm 4, a main-chart install with `crds.enabled=true` re-applies the CRDs and strips the CRDs chart's ownership until its next upgrade, and in that window `helm uninstall` of the CRDs chart deletes the CRDs. `crds.enabled=false` works wherever Helm renders the chart, but `helm show crds` ignores it: retire any script that pipes `helm show crds` into `kubectl apply` in the same change that sets the value, or it keeps applying the CRDs under its own field manager.
+
+With Helmfile, order the releases with `needs:`. With Flux, give the main `HelmRelease` a `dependsOn` on the CRDs release, and remove `upgrade.crds: CreateReplace` from it. Argo CD already re-applies the main chart's CRDs on every sync; to move an existing Argo CD install to the CRDs chart, see [Move an Argo CD install to the CRDs chart](#move-an-argo-cd-install-to-the-crds-chart).
+
+`nvcrectl setup init` leaves the CRDs to the CRDs chart when one deployed Helm release owns every CRD the chart being installed carries, and does not apply them when the release's values set `crds.enabled=false`. It stops before changing anything while a release that owns any NVCRE CRD is failed or mid-operation. See [`setup init`](../cli-reference/setup.md).
+
+#### Adopt CRDs that are already installed
+
+CRDs that `setup init`, the main chart, or a manual `kubectl apply` installed carry no Helm release metadata, so a plain `helm install` of the CRDs chart fails with `invalid ownership metadata`. Adopt them once with `--take-ownership` (Helm 3.17 or later), then set `crds.enabled=false` on the main chart:
+
+```bash
+helm install nvcre-crds oci://ghcr.io/nvidia/cluster-readiness-engine-crds \
+  --version <version> --namespace nvcre --take-ownership
+helm upgrade nvcre oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version <version> --namespace nvcre --reuse-values --set crds.enabled=false
+```
+
+On Helm 4, CRDs that another writer server-side-applied — `nvcrectl setup init` (field manager `nvcrectl-setup`), `kubectl apply --server-side`, or a script built on `helm show crds` — are co-owned by that writer, and Helm's apply fails with an error such as `conflict with "kubectl": .spec.versions`. List the writers that own `spec.versions`:
+
+```bash
+kubectl get crd jobs.nvcre.nvidia.com --show-managed-fields -o yaml \
+  | grep -E '^\s+manager:'
+```
+
+Stop every writer other than `helm` first, or the conflict comes back. Then add `--force-conflicts` to the adopting install, and again to the first CRDs-chart upgrade that changes the schema: when the other writer's schema matched the chart's, forcing the takeover alone leaves it a co-owner. Helm 3 does not conflict.
+
+Helm applies the seven CRDs one at a time, so a conflict on one leaves the others upgraded. That state is safe while the controller has not moved, because every CRD is at its old version or newer. Check the managed fields again, rerun the CRDs-chart upgrade with `--force-conflicts`, and upgrade the main chart only once that rerun succeeds.
+
+#### Move an Argo CD install to the CRDs chart
+
+The main Application never owns the CRDs, so it does not prune them when it stops rendering them. Argo CD writes no tracking metadata on CRDs: under annotation tracking, the default since Argo CD 3.0, no Application owns them; under label tracking, the CRDs Application owns them through the `app.kubernetes.io/instance` label the CRDs chart sets to its release name. Deleting either Application, even with cascading deletion, leaves the CRDs in place whatever the tracking mode: Argo CD never deletes a CRD when it deletes an Application, and it also honors the `helm.sh/resource-policy: keep` annotation the CRDs chart sets. The move takes two steps, and automated pruning can stay on.
+
+1. Add an Application for the CRDs chart, pointing at the same repository as the main Application, with `ServerSideApply=true`: the Workflow and Job CRDs exceed the 256 KiB client-side apply limit. Let it sync.
+
+   ```yaml
+   apiVersion: argoproj.io/v1alpha1
+   kind: Application
+   metadata:
+     name: nvcre-crds
+     namespace: argocd
+   spec:
+     project: default
+     destination:
+       server: https://kubernetes.default.svc
+       namespace: nvcre
+     source:
+       repoURL: ghcr.io/nvidia            # the repository the main Application uses
+       chart: cluster-readiness-engine-crds
+       targetRevision: <version>         # the main Application's version
+     syncPolicy:
+       automated:
+         prune: true
+         selfHeal: true
+       syncOptions:
+         - ServerSideApply=true
+   ```
+
+2. Set `crds.enabled=false` in the main Application's Helm values and let it sync.
+
+Do step 2 soon after step 1. While both Applications render the CRDs, Argo CD applies them for both under one field manager, so each sync rewrites the other's labels and the `keep` annotation until the switch. With label tracking, leave the CRDs Application's `helm.releaseName` unset or different from the main Application's name: the CRDs chart labels the CRDs with its release name.
+
+On upgrades, move the CRDs Application's `targetRevision` first and wait for it to sync, then the main Application's.
 
 ### Restricted egress and air-gapped installs
 
@@ -166,7 +253,7 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
 
 This is also the only path that works for an air-gapped workload image derived from a base image the nodes already have — for example the `sshd`-prebaked MPI image recommended in the [FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters).
 
-**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image (and `manager.imagePullSecrets` when the mirror needs credentials), and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
+**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image (and `manager.imagePullSecrets` when the mirror needs credentials), and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports yourself. To keep the CRDs current on upgrades, install `helm/cluster-readiness-engine-crds` from the same source tree beside it and follow [Keep the CRDs current with the CRDs chart](#keep-the-crds-current-with-the-crds-chart), or re-apply the CRDs on every upgrade yourself.
 
 ## Resource requirements
 
@@ -457,7 +544,12 @@ readinessProbe:
 ## Upgrades
 
 1. Review the release notes for breaking changes.
-2. Apply the new chart version's CRDs. Helm never updates CRDs on `helm upgrade` — it applies a chart's `crds/` directory only on the first install — so skipping this step leaves the installed CRDs at the old schema:
+2. Bring the CRDs to the new version first. With the [CRDs chart](#keep-the-crds-current-with-the-crds-chart), upgrade it:
+   ```bash
+   helm upgrade nvcre-crds oci://ghcr.io/nvidia/cluster-readiness-engine-crds \
+     --version <new-version> --namespace nvcre
+   ```
+   Without it, apply the new chart version's CRDs by hand. Helm never updates the main chart's CRDs on `helm upgrade` — it applies them only on the first install — so skipping this step leaves the installed CRDs at the old schema:
    ```bash
    helm show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version <new-version> \
      | kubectl apply --server-side --force-conflicts -f -
@@ -509,7 +601,7 @@ kubectl delete namespace nvcre kubeflow-system
 
 ### helm uninstall leaves the CRDs behind
 
-Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall nvcre` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
+Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall nvcre` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. The [CRDs chart](#keep-the-crds-current-with-the-crds-chart) keeps them too: its CRDs carry `helm.sh/resource-policy: keep` unless it was installed with `crds.keep=false`. Delete them explicitly:
 
 ```bash
 kubectl delete crd \

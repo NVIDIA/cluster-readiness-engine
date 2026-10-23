@@ -1,0 +1,6 @@
+# Only one NVCRE CRD exists and a deployed release owns it: one is not the
+# chart's seven, so nvcrectl applies.
+crds:
+  - {name: jobs.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+releases:
+  nvcre/nvcre-crds: deployed
