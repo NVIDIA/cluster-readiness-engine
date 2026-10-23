@@ -180,6 +180,7 @@ After implementation, update **all** affected artifacts — do not stop partway:
 - **Golden files**: Run `TESTUTIL_UPDATE_EXPECTED=true make test-integration` to regenerate. **NEVER blindly overwrite golden files when tests are failing** — investigate and fix the code or test inputs first. Only regenerate golden files when the new output is intentionally correct. For new tests that require golden file generation, thoroughly review the generated `expected.json` before considering the test complete. **NEVER silently regenerate golden files during implementation** — always stop and ask the user for explicit permission before regenerating any golden file, explaining what changed and why. **Always diagnose first**: before updating any integration golden file, read the existing expected.json, understand what fields are changing and why, and confirm the change is an expected consequence of the code changes — never jump straight to regeneration.
 - **Documentation**: Update `docs/` files if API or behavior changed
 - **Site**: The public docs site is built with Fern from `docs/` (site config in `fern/docs.yml`, nav in `docs/index.yml`). Update the relevant `docs/` pages if user-facing behavior changed, and add new pages to `docs/index.yml` so they appear in the published nav
+- **Links in `docs/`**: Fern publishes only the pages listed in `docs/index.yml`. A relative link to anything else renders as a "Page Not Found" page that returns HTTP 200, and `fern check` and `fern docs broken-links` both pass it. ADRs under `docs/designs/` are deliberately not in the nav (ADR-074), so link them by GitHub URL, `https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/NNN-name.md`, never `../designs/NNN-name.md`. The same goes for any other file outside the nav, such as `SECURITY.md` or `config/samples/`. Relative links between pages in the nav are fine. `TestPublishedPagesLinkOnlyToPublishedPages` in `test/docspolicy/` enforces this.
 - **Samples**: Update `config/samples/` if new fields or resources were added
 
 ### 5. Run Verification Until Green
@@ -256,7 +257,7 @@ spec:
 
 ### What to Verify in Output
 
-1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
+1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
 
 2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should appear for GB200, H100 and RTX PRO 6000 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 

@@ -154,6 +154,18 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
   go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
+## Writing Documentation
+
+The public docs site is built with Fern from `docs/`. It publishes only the pages listed in `docs/index.yml`, so add a new page there or it will not appear.
+
+A relative link from a published page to a file that is not in the nav, such as `../designs/092-per-namespace-controller-rbac.md`, renders as a "Page Not Found" page that still returns HTTP 200, and Fern's own checks do not flag it. The ADRs under `docs/designs/` are not published, so link them by their GitHub URL:
+
+```markdown
+[ADR-092](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/092-per-namespace-controller-rbac.md)
+```
+
+Do the same for any other file outside the nav, such as `SECURITY.md` or `config/samples/`. Relative links between published pages are fine. `make test` runs `TestPublishedPagesLinkOnlyToPublishedPages` in `test/docspolicy/`, which fails on a link that breaks this rule, or on a GitHub link to a path that does not exist on `main`.
+
 ## Writing Tests
 
 Structured output is snapshotted to golden files under `testdata/` through `testutil.TestCaseParser` rather than asserted against hand-written table cases. A failure then prints the full expected and actual output instead of a struct field mismatch, and expectations update with one command instead of hand-edited inline structs.
