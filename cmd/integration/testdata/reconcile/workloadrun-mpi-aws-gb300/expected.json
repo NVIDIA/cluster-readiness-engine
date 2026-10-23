@@ -1536,11 +1536,11 @@
                                     "resources": {
                                       "limits": {
                                         "nvidia.com/gpu": "4",
-                                        "vpc.amazonaws.com/efa": "4"
+                                        "vpc.amazonaws.com/efa": "2"
                                       },
                                       "requests": {
                                         "nvidia.com/gpu": "4",
-                                        "vpc.amazonaws.com/efa": "4"
+                                        "vpc.amazonaws.com/efa": "2"
                                       }
                                     }
                                   }
