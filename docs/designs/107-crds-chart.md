@@ -105,7 +105,7 @@ The CRD path also changes in:
 - `docs/operations/faq.md:68`;
 - comments in `pkg/setup`.
 
-nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, so that code is unaffected. A CRDs chart release Secret holds the rendered manifest and the chart's `files/` as base64, which compresses worse than YAML: about 686 KB of Helm's 1 MiB limit for the seven CRDs at 1.89 MB raw. The headroom is about 1.5x, and every minor release adds CRD fields.
+nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, so that code is unaffected. A CRDs chart release Secret holds the rendered manifest and the chart's `files/` as base64, which compresses worse than YAML: about 686 KB of Helm's 1 MiB limit for the seven CRDs at 1.89 MB raw. The headroom is about 1.5x, and every minor release adds CRD fields, so `TestReleaseSecretFitsBudget` in `test/helm` estimates both charts' release Secrets the way Helm's Secrets driver encodes them and fails above 850 KiB.
 
 ### Build and release
 

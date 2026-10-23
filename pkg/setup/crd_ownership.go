@@ -10,9 +10,13 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// apiextensionsGroup is the API group of CustomResourceDefinitions.
+const apiextensionsGroup = "apiextensions.k8s.io"
 
 // crdsChartName is the chart that manages the NVCRE CRDs outside the main
 // release (ADR-107).
@@ -172,18 +176,21 @@ func confirmReleaseOwned(plan crdPlan, chartCRDs []string, out io.Writer) crdPla
 	return plan
 }
 
-// listGroupCRDs returns the CRDs of one API group, sorted by name.
-func listGroupCRDs(ctx context.Context, c client.Client, apiGroup string) ([]unstructured.Unstructured, error) {
-	list := &unstructured.UnstructuredList{}
-	list.SetAPIVersion("apiextensions.k8s.io/v1")
-	list.SetKind("CustomResourceDefinitionList")
+// listGroupCRDs returns the metadata of the CRDs of one API group, sorted by
+// name. The decision needs only names, labels and annotations, so it lists
+// metadata alone rather than every CRD's full schema. The API server requires
+// a CRD's name to be <plural>.<group>, so the name suffix selects the group.
+func listGroupCRDs(ctx context.Context, c client.Client, apiGroup string) ([]metav1.PartialObjectMetadata, error) {
+	list := &metav1.PartialObjectMetadataList{}
+	list.SetGroupVersionKind(schema.GroupVersionKind{
+		Group: apiextensionsGroup, Version: "v1", Kind: "CustomResourceDefinitionList",
+	})
 	if err := c.List(ctx, list); err != nil {
 		return nil, err
 	}
-	var crds []unstructured.Unstructured
+	var crds []metav1.PartialObjectMetadata
 	for _, item := range list.Items {
-		group, _, _ := unstructured.NestedString(item.Object, "spec", "group")
-		if group == apiGroup {
+		if strings.HasSuffix(item.GetName(), "."+apiGroup) {
 			crds = append(crds, item)
 		}
 	}
@@ -213,7 +220,7 @@ func distinctOwners(owners map[string]helmOwner) []helmOwner {
 
 // soleHelmOwner returns the release that owns every CRD, when all of them
 // carry the same complete Helm ownership metadata.
-func soleHelmOwner(crds []unstructured.Unstructured) (helmOwner, bool) {
+func soleHelmOwner(crds []metav1.PartialObjectMetadata) (helmOwner, bool) {
 	if len(crds) == 0 {
 		return helmOwner{}, false
 	}
@@ -231,7 +238,7 @@ func soleHelmOwner(crds []unstructured.Unstructured) (helmOwner, bool) {
 
 // crdOwnerSummary names each CRD's Helm owner when any CRD carries Helm
 // ownership metadata, and is empty when none does.
-func crdOwnerSummary(crds []unstructured.Unstructured) string {
+func crdOwnerSummary(crds []metav1.PartialObjectMetadata) string {
 	anyOwned := false
 	parts := make([]string, 0, len(crds))
 	for i := range crds {

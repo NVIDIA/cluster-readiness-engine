@@ -73,7 +73,7 @@ type jobSetFingerprint struct {
 func jobSetCRDExists(ctx context.Context, c client.Client) (bool, error) {
 	crd := &unstructured.Unstructured{}
 	crd.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: "apiextensions.k8s.io", Version: "v1", Kind: kindCustomResourceDefinition,
+		Group: apiextensionsGroup, Version: "v1", Kind: kindCustomResourceDefinition,
 	})
 	if err := c.Get(ctx, client.ObjectKey{Name: jobSetCRDName}, crd); err != nil {
 		if apierrors.IsNotFound(err) {

@@ -449,7 +449,7 @@ func deleteTrainerCRDWithRecheck(sp setupPhaseParams, name string) error {
 		return fmt.Errorf("late recovery refusal before deleting CRD %s: %s", name, strings.Join(blockers, "; "))
 	}
 	crd := &unstructured.Unstructured{}
-	crd.SetGroupVersionKind(schema.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: kindCustomResourceDefinition})
+	crd.SetGroupVersionKind(schema.GroupVersionKind{Group: apiextensionsGroup, Version: "v1", Kind: kindCustomResourceDefinition})
 	crd.SetName(name)
 	if err := sp.c.Delete(sp.ctx, crd); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("delete request for CRD %s failed; deletion outcome is uncertain: %w", name, err)
