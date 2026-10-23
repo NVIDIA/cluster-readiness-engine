@@ -114,7 +114,9 @@ dependencies:
                     # mounts the same ReadWriteMany PVC here, so preparation
                     # is serialized on a lock file: the first pod prepares
                     # $src and the rest find it and reuse it. A wait past
-                    # 1200s fails the pod rather than hanging it. Where the
+                    # 1200s fails the pod rather than hanging it, and the
+                    # clone and the image copy are bounded at 900s so the
+                    # lock holder cannot outlast the waiters. Where the
                     # filesystem cannot lock, each pod stages into its own
                     # $tmp and the no-clobber rename keeps the first copy, so
                     # pods still never delete each other's work.
@@ -139,7 +141,15 @@ dependencies:
                       else
                         if [ -d /opt/megatron-lm ]; then
                           mkdir -p "$tmp"
-                          cp -a /opt/megatron-lm/. "$tmp"
+                          rc=0
+                          timeout 900 cp -a /opt/megatron-lm/. "$tmp" || rc=$?
+                          if [ "$rc" -eq 124 ]; then
+                            echo "Copying Megatron-LM from the image timed out after 900s"
+                            exit 1
+                          elif [ "$rc" -ne 0 ]; then
+                            echo "Copying Megatron-LM from the image failed (exit $rc)"
+                            exit 1
+                          fi
                           how="Copied Megatron-LM from image at /opt/megatron-lm"
                         else
                           repo="{{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}https://github.com/NVIDIA/Megatron-LM.git{{ end }}"
