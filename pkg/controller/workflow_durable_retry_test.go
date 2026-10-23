@@ -220,7 +220,7 @@ func TestDurableGroupRetry(t *testing.T) {
 					return c.SubResource(sub).Update(ctx, obj, opts...)
 				},
 			}).Build()
-		r.Client, r.Scheme = c, c.Scheme()
+		r.Client, r.APIReader, r.Scheme = c, c, c.Scheme()
 
 		var timeline []map[string]any
 		for pass = 1; pass <= in.Passes; pass++ {

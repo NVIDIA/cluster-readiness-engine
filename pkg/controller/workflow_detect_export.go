@@ -11,6 +11,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 // Exported field hints for GPUArchFallbackMessage, one per CLI surface.
@@ -101,7 +102,7 @@ func ResolveGKETCPXONetworks(
 func ResolveTCPXOPluginVersion(
 	ctx context.Context, reader client.Reader, platformName, gpuArch string, nodes []corev1.Node,
 ) (version, fallbackMessage string, detectionRan bool) {
-	d := resolveTCPXOPluginVersion(ctx, reader, nil, platformName, gpuArch, nodes)
+	d := resolveTCPXOPluginVersion(ctx, podread.New(reader, reader), platformName, gpuArch, nodes)
 	if d.Ran && !d.Exact {
 		fallbackMessage = tcpxoPluginDetectionMessage(d)
 	}

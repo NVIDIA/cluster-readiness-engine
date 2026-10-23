@@ -223,6 +223,7 @@ func newRootCommand() *cobra.Command {
 				HealthProbeBindAddress: probeAddr,
 				Cache:                  controller.CacheOptions(),
 				Client:                 controller.ClientOptions(),
+				NewCache:               controller.NewCache,
 				LeaderElection:         enableLeaderElection,
 				LeaderElectionID:       "240fe9c6.nvidia.com",
 				// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
@@ -298,6 +299,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.GoodputMeasurementReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("goodputmeasurement-controller"),

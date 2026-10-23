@@ -19,6 +19,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -59,6 +60,12 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 				Phase    string `yaml:"phase"`
 				OtherJob bool   `yaml:"otherJob"`
 			} `yaml:"pods"`
+			// LiveOnlyPods are in the API server but not yet in the cache,
+			// as when the cache lags a newly created pod (ADR-102).
+			LiveOnlyPods []struct {
+				Name  string `yaml:"name"`
+				Phase string `yaml:"phase"`
+			} `yaml:"liveOnlyPods"`
 			ListError bool `yaml:"listError"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
@@ -98,18 +105,29 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 			return err
 		}
 
+		newPod := func(name, phase, jobLabel string) client.Object {
+			return &corev1.Pod{
+				Name: name, Namespace: job.Namespace,
+				Labels: map[string]string{nodemonitor.NVCREJobLabel: jobLabel},
+				Status: corev1.PodStatus{Phase: corev1.PodPhase(phase)},
+			}
+		}
 		objs := make([]client.Object, 0, len(input.Pods))
 		for _, sp := range input.Pods {
 			jobLabel := job.Name
 			if sp.OtherJob {
 				jobLabel = "some-other-job"
 			}
-			objs = append(objs, &corev1.Pod{
-				Name: sp.Name, Namespace: job.Namespace,
-				Labels: map[string]string{nodemonitor.NVCREJobLabel: jobLabel},
-				Status: corev1.PodStatus{Phase: corev1.PodPhase(sp.Phase)},
-			})
+			objs = append(objs, newPod(sp.Name, sp.Phase, jobLabel))
 		}
+		liveObjs := make([]client.Object, 0, len(objs)+len(input.LiveOnlyPods))
+		for _, o := range objs {
+			liveObjs = append(liveObjs, o.DeepCopyObject().(client.Object))
+		}
+		for _, lp := range input.LiveOnlyPods {
+			liveObjs = append(liveObjs, newPod(lp.Name, lp.Phase, job.Name))
+		}
+		var live client.Reader = fake.NewClientBuilder().WithScheme(scheme).WithObjects(liveObjs...).Build()
 		var reader client.Reader = fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
 			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)
@@ -124,6 +142,7 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 			Build()
 		if input.ListError {
 			reader = failingPodLister{reader}
+			live = failingPodLister{live}
 		}
 
 		anchorLabel := "none"
@@ -135,7 +154,8 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 			}
 		}
 
-		active, activeErr := activeWorkloadPods(context.Background(), reader, job.Namespace, job.Name)
+		pods := podread.New(reader, live)
+		active, activeErr := activeWorkloadPods(context.Background(), pods, job.Namespace, job.Name)
 		if active == nil && activeErr == nil {
 			active = []string{}
 		}
@@ -146,7 +166,7 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 			ActivePods  []string `json:"activePods"`
 			ListError   bool     `json:"listError,omitempty"`
 		}{
-			Wait:        shouldWaitForPodDrain(context.Background(), reader, job),
+			Wait:        shouldWaitForPodDrain(context.Background(), pods, job),
 			DrainAnchor: anchorLabel,
 			ActivePods:  active,
 			ListError:   activeErr != nil,

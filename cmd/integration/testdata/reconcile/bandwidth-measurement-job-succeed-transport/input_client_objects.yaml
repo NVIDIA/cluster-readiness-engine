@@ -81,7 +81,6 @@ metadata:
     jobset.sigs.k8s.io/jobset-name: test-bw-succeed-workload
     jobset.sigs.k8s.io/replicatedjob-name: launcher
     batch.kubernetes.io/job-completion-index: "0"
-    nvcre.nvidia.com/job: test-bw-succeed-job
 spec:
   containers:
     - name: node
