@@ -12,17 +12,21 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
-// WorkerDiscoverer finds worker pods for training workloads.
+// WorkerDiscoverer finds worker pods for training workloads. It reads a
+// workload's pods from the API server through podread.WorkloadPods, since an
+// MPI launcher carries no NVCRE job label and the cache never holds it
+// (ADR-102).
 type WorkerDiscoverer struct {
-	client client.Reader
+	pods *podread.Reader
 }
 
 // NewWorkerDiscoverer creates a new WorkerDiscoverer.
-func NewWorkerDiscoverer(c client.Reader) *WorkerDiscoverer {
-	return &WorkerDiscoverer{client: c}
+func NewWorkerDiscoverer(pods *podread.Reader) *WorkerDiscoverer {
+	return &WorkerDiscoverer{pods: pods}
 }
 
 // GetWorkerPods returns the worker-0 and optionally the last worker pod.
@@ -41,23 +45,20 @@ func (d *WorkerDiscoverer) GetWorkerPods(ctx context.Context, namespace, name, w
 // order defined by replicatedJobPodLess, so repeated calls pick the same pod.
 // replicatedJobName is "launcher" for MPI workloads or "node" for torch workloads.
 func (d *WorkerDiscoverer) GetReplicatedJobPod(ctx context.Context, namespace, workloadName, replicatedJobName string) (*corev1.Pod, error) {
-	podList := &corev1.PodList{}
-	if err := d.client.List(ctx, podList, client.InNamespace(namespace), client.MatchingLabels{
-		"jobset.sigs.k8s.io/jobset-name":        workloadName,
-		"jobset.sigs.k8s.io/replicatedjob-name": replicatedJobName,
-	}); err != nil {
+	pods, err := d.pods.WorkloadPods(ctx, namespace, workloadName, replicatedJobName)
+	if err != nil {
 		return nil, fmt.Errorf("listing pods for %s/%s replicatedJob %s: %w", namespace, workloadName, replicatedJobName, err)
 	}
 
-	if len(podList.Items) == 0 {
+	if len(pods) == 0 {
 		return nil, fmt.Errorf("no pods found for %s/%s replicatedJob %s", namespace, workloadName, replicatedJobName)
 	}
 
-	sort.SliceStable(podList.Items, func(i, j int) bool {
-		return replicatedJobPodLess(&podList.Items[i], &podList.Items[j])
+	sort.SliceStable(pods, func(i, j int) bool {
+		return replicatedJobPodLess(&pods[i], &pods[j])
 	})
 
-	return &podList.Items[0], nil
+	return &pods[0], nil
 }
 
 // replicatedJobPodLess orders the pods of one replicatedJob so the first is the
@@ -111,31 +112,29 @@ func labelInt(pod *corev1.Pod, key string) int {
 // TrainJob creates a JobSet, which creates batch Jobs, which create pods.
 // Workers are identified by the batch.kubernetes.io/job-completion-index label.
 func (d *WorkerDiscoverer) getTrainJobWorkerPods(ctx context.Context, namespace, name string) (*corev1.Pod, *corev1.Pod, error) {
-	// List pods with the JobSet label matching the TrainJob name.
-	podList := &corev1.PodList{}
-	if err := d.client.List(ctx, podList, client.InNamespace(namespace), client.MatchingLabels{
-		"jobset.sigs.k8s.io/jobset-name": name,
-	}); err != nil {
+	// Every pod JobSet labelled with the TrainJob's name.
+	pods, err := d.pods.WorkloadPods(ctx, namespace, name, "")
+	if err != nil {
 		return nil, nil, fmt.Errorf("listing pods for TrainJob %s: %w", name, err)
 	}
 
-	if len(podList.Items) == 0 {
+	if len(pods) == 0 {
 		return nil, nil, fmt.Errorf("no pods found for TrainJob %s", name)
 	}
 
 	// Sort pods by their completion index.
-	sort.Slice(podList.Items, func(i, j int) bool {
-		idxI := getCompletionIndex(&podList.Items[i])
-		idxJ := getCompletionIndex(&podList.Items[j])
+	sort.Slice(pods, func(i, j int) bool {
+		idxI := getCompletionIndex(&pods[i])
+		idxJ := getCompletionIndex(&pods[j])
 		return idxI < idxJ
 	})
 
-	worker0 := &podList.Items[0]
-	if len(podList.Items) == 1 {
+	worker0 := &pods[0]
+	if len(pods) == 1 {
 		return worker0, nil, nil
 	}
 
-	lastWorker := &podList.Items[len(podList.Items)-1]
+	lastWorker := &pods[len(pods)-1]
 	return worker0, lastWorker, nil
 }
 

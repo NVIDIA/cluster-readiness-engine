@@ -72,6 +72,15 @@ These series are built at scrape time from the elected leader's informer cache. 
 | `nvcre_reconcile_total` | Counter | `namespace`, `job`, `workflow`, `result` | Total number of reconciliation attempts. `result` values: `success`, `error`, `requeue`. |
 | `nvcre_reconcile_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of reconciliation operations in seconds. Buckets: 10ms to ~20s (exponential). |
 
+## Pod read metrics
+
+The controller caches only Pods that carry the `nvcre.nvidia.com/job` label and reads other Pods, such as MPI launchers, from the API server ([ADR-102](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/102-scoped-pod-cache.md)).
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `nvcre_pod_reads_total` | Counter | `read`, `source`, `result` | Pod reads by the controller. `read` names the read (`JobPods`, `ActiveJobPods`, `JobPodsOnNode`, `WorkloadPods`, `NamespacePods`); `source` is `cache` or `live` (the API server); `result` is `found`, `empty` or `error`. |
+| `nvcre_unscoped_cache_reads_total` | Counter | `kind`, `op` | Cache reads the controller refused because the job-scoped cache could not answer them completely. `op` is `list`, `get` or `informer`. Any increase is a controller bug; the controller log names the calling code. |
+
 ## Workload metrics
 
 | Metric | Type | Labels | Description |

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A patch that sets only env on the worker does not request the resource. It
+# must come back byte for byte: writing the entry's count into it would replace
+# the runtime's sum with 1 whenever this override matched after another.
+networkAttachments:
+  - {network: nvcre/ib-extra, resourceName: nvidia.com/mlnxnics}
+overrides:
+  - dependencies:
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: wr-runtime
+        spec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: node
+                              env:
+                                - {name: NCCL_DEBUG, value: INFO}
+  - dependencies:
+      - apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: wr-config
+        data:
+          nvidia.com/mlnxnics: "8"

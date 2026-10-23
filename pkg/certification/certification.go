@@ -298,14 +298,26 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // the Certification's nodeSelector, then runs the post-resolve transform stage.
 // The synthetic node lets GPU-architecture-specific overrides (images, env
 // vars) apply even without connecting to a real cluster.
+//
+// Each Workflow gets the same nvcrectl.nvidia.com/ render annotations as the
+// --dry-run path and "nvcrectl workflow render": the platform and architecture
+// detected from the synthetic node, and the overrides that matched. They
+// record what override matching saw, so a render without --platform shows
+// detected-platform: onprem (the synthetic node has no providerID) rather
+// than silently applying the on-prem overrides. A nodeSelector carrying a
+// Forge marker (nke.nvidia.com/site-name, or a forge hostname) detects as
+// forge instead, and --platform onprem, whose synthetic providerID is empty,
+// does not change that.
 func resolveWorkflowsOffline(
 	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag, gpuArchOverride string,
 ) error {
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
-		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
+		meta, err := render.ResolveWorkflow(&workflows[i], syntheticNodes)
+		if err != nil {
 			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
+		render.SetRenderAnnotations(&workflows[i], meta)
 		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
 		}
@@ -331,10 +343,11 @@ func applyWorkflowTransforms(
 	opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cert.Spec.Categories[i].Options)
 	if err := platform.ApplyResolvedWorkflowTransforms(
 		&workflows[i].Spec, platform.ResolvedWorkflowTransforms{
-			GangScheduler:  cert.Spec.GangScheduler,
-			Image:          opts.Image,
-			WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
-			Env:            opts.Env,
+			GangScheduler:      cert.Spec.GangScheduler,
+			Image:              opts.Image,
+			WorkloadLabels:     workload.LabelsOf(opts.WorkloadMetadata),
+			Env:                opts.Env,
+			NetworkAttachments: opts.NetworkAttachments,
 		}); err != nil {
 		return fmt.Errorf("apply transforms for %s: %w", workflows[i].Name, err)
 	}
@@ -370,7 +383,9 @@ func applyWorkflowTransforms(
 // controller re-resolves per category, so a per-category mlnxPerNode can
 // make a reconcile pick where this preview refused, or vice versa.
 func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, platformFlag string) {
-	if len(nodes) == 0 {
+	// An explicit networkAttachments list owns the NIC wiring, so there is
+	// nothing to detect.
+	if len(nodes) == 0 || len(cert.Spec.NetworkAttachments) > 0 {
 		return
 	}
 	platformName := controller.DetectPlatform(nodes)
@@ -516,6 +531,9 @@ func renderCertification(
 		}
 
 		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
+		if err := controller.CheckResolvedNetworkAttachments(&opts); err != nil {
+			return nil, fmt.Errorf("category %s/%s: %w", cat.Domain, cat.Variant, err)
+		}
 
 		nd := catalog.GPUDefaults(gpuArch, platformName)
 		gpusPerNode := nd.GpusPerNode
@@ -568,6 +586,7 @@ func renderCertification(
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
 			RDMADeviceAccess:           opts.RDMADeviceAccess,
+			NetworkAttachments:         opts.NetworkAttachments,
 			GKETCPXONetworks:           gkeTCPXONetworks,
 			TCPXOPluginVersion:         tcpxoPluginVersion,
 			Resources:                  opts.Resources,
@@ -701,11 +720,20 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 	if err := validateCategoryEnv(cert.Spec.Env); err != nil {
 		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
 	}
+	// networkAttachments: the per-entry rules, the list cap and the three
+	// exclusions are CRD rules, which offline render never reaches.
+	if err := validateCategoryNetworkAttachments(&cert.Spec.CategoryOptions); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
 	for _, cat := range cert.Spec.Categories {
 		if cat.Options == nil {
 			continue
 		}
 		if err := validateCategoryEnv(cat.Options.Env); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+		if err := validateCategoryNetworkAttachments(cat.Options); err != nil {
 			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
@@ -729,6 +757,33 @@ func validateCategoryEnv(env []corev1.EnvVar) error {
 				"invalid env %q: the name is owned by Kubeflow Trainer and setting it "+
 					"breaks the launch rather than overriding a default", e.Name)
 		}
+	}
+	return nil
+}
+
+// validateCategoryNetworkAttachments mirrors the CRD rules on
+// CategoryOptions.networkAttachments: each entry's pattern, the 16-entry
+// cap, and the exclusions with nicResourceName and rdmaDeviceAccess:
+// hostPath. Like the CRD, it checks one options block at a time;
+// a per-category list replacing a spec-level nicResourceName is resolution,
+// not a conflict. A hostPath and a list on different levels only meet once
+// the options merge, so renderCertification checks that pair per category
+// with controller.CheckResolvedNetworkAttachments, as the controller does.
+func validateCategoryNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
+	if opts.NetworkAttachments == nil {
+		return nil
+	}
+	if len(opts.NetworkAttachments) == 0 {
+		return fmt.Errorf("networkAttachments must not be empty when set")
+	}
+	if err := platform.ValidateNetworkAttachments(opts.NetworkAttachments); err != nil {
+		return err
+	}
+	if opts.NicResourceName != nil {
+		return fmt.Errorf("networkAttachments and nicResourceName are mutually exclusive")
+	}
+	if opts.RDMADeviceAccess == nvcrev1alpha1.RDMADeviceAccessHostPath {
+		return fmt.Errorf("networkAttachments cannot be combined with rdmaDeviceAccess: hostPath")
 	}
 	return nil
 }
@@ -816,6 +871,7 @@ type certRunConfig struct {
 // categoryRunOpts holds the optional CategoryOptions flags for the --category path.
 // Bool pointers are nil when the user did not pass the flag (use controller default).
 type categoryRunOpts struct {
+	networkAttachments         []nvcrev1alpha1.NetworkAttachment
 	enableCheckpoint           *bool
 	maxSteps                   int32
 	exitDurationMins           int32
@@ -840,6 +896,7 @@ func newRunCommand(version string) *cobra.Command {
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var resultsFile string
 	var timeout time.Duration
+	var networkAttachments, multusNetworks, extendedResources []string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 
@@ -884,19 +941,27 @@ Use --cleanup to teardown installed components after completion.`,
 				return fmt.Errorf("--startup-stall-timeout-seconds must not be negative (got %d); "+
 					"use 0 for the catalog entry's default", startupStallTimeoutSeconds)
 			}
+			if certFile != "" && (len(networkAttachments) > 0 || len(multusNetworks) > 0 || len(extendedResources) > 0) {
+				return fmt.Errorf("--network-attachments, --multus-networks and --extended-resources cannot be used" +
+					" with --cert-file; set networkAttachments in the Certification YAML")
+			}
+			atts, err := parseNetworkAttachmentFlags(networkAttachments, multusNetworks, extendedResources)
+			if err != nil {
+				return err
+			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
 					"Use 'nvcrectl certification list-categories' to see available categories")
 			}
 
 			var cfg *certRunConfig
-			var err error
 			if certFile != "" {
 				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, controllerImage,
 					controllerPullSecret, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
 					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
+					networkAttachments:         atts,
 					maxSteps:                   maxSteps,
 					exitDurationMins:           exitDurationMins,
 					startupStallTimeoutSeconds: startupStallTimeoutSeconds,
@@ -931,6 +996,14 @@ Use --cleanup to teardown installed components after completion.`,
 		"Category to run in domain/variant format (repeatable)")
 	cmd.Flags().StringVar(&certFile, "cert-file", "",
 		"Certification YAML file (mutually exclusive with --category)")
+	cmd.Flags().StringSliceVar(&networkAttachments, "network-attachments", nil,
+		"Multus networks and the extended resource behind each, as network=resource,... in interface order"+
+			" (e.g. nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1); sets networkAttachments")
+	cmd.Flags().StringSliceVar(&multusNetworks, "multus-networks", nil,
+		"Multus networks to attach to worker pods, in order; zipped by position with --extended-resources into entries")
+	cmd.Flags().StringSliceVar(&extendedResources, "extended-resources", nil,
+		"Extended resources to request on worker containers, one per --multus-networks entry, in the same order;"+
+			" each must be the resource that network's NetworkAttachmentDefinition declares")
 	cmd.Flags().BoolVar(&doSetup, "setup", false,
 		"Install CRDs, controller, and LogProfiles before creating the certification")
 	cmd.Flags().BoolVar(&doWait, "wait", false,
@@ -1106,6 +1179,9 @@ func buildConfigFromFlags(
 	}
 
 	// Apply CategoryOptions from CLI flags.
+	if len(opts.networkAttachments) > 0 {
+		cert.Spec.NetworkAttachments = opts.networkAttachments
+	}
 	if nodesPerJob > 0 {
 		cert.Spec.NodesPerJob = &nodesPerJob
 	}
@@ -1870,4 +1946,61 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile 
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// parseNetworkAttachmentFlags turns the run command's attachment flags into a
+// networkAttachments list. --network-attachments takes network=resource
+// entries. --multus-networks and --extended-resources are the issue #400
+// spelling: two lists zipped by position, which must be the same length. The
+// two forms are mutually exclusive. The result is checked against the same
+// rules as the CRD, so a bad flag fails before anything is created.
+func parseNetworkAttachmentFlags(attachments, networks, resources []string) ([]nvcrev1alpha1.NetworkAttachment, error) {
+	if len(attachments) > 0 && (len(networks) > 0 || len(resources) > 0) {
+		return nil, fmt.Errorf("--network-attachments cannot be combined with --multus-networks/--extended-resources")
+	}
+	var atts []nvcrev1alpha1.NetworkAttachment
+	switch {
+	case len(attachments) > 0:
+		for _, entry := range attachments {
+			a, err := parseNetworkAttachment(entry)
+			if err != nil {
+				return nil, err
+			}
+			atts = append(atts, a)
+		}
+	case len(networks) > 0 || len(resources) > 0:
+		if len(networks) != len(resources) {
+			return nil, fmt.Errorf("--multus-networks has %d entries but --extended-resources has %d;"+
+				" they are paired by position and must be the same length", len(networks), len(resources))
+		}
+		for i := range networks {
+			atts = append(atts, nvcrev1alpha1.NetworkAttachment{
+				Network:      strings.TrimSpace(networks[i]),
+				ResourceName: strings.TrimSpace(resources[i]),
+			})
+		}
+	default:
+		return nil, nil
+	}
+	if err := platform.ValidateNetworkAttachments(atts); err != nil {
+		return nil, err
+	}
+	return atts, nil
+}
+
+// parseNetworkAttachment parses one network=resource entry. Each entry is one
+// interface and requests one device; repeat an entry for a second interface
+// on the same rail.
+func parseNetworkAttachment(entry string) (nvcrev1alpha1.NetworkAttachment, error) {
+	network, resource, ok := strings.Cut(strings.TrimSpace(entry), "=")
+	if !ok || network == "" || resource == "" {
+		return nvcrev1alpha1.NetworkAttachment{}, fmt.Errorf(
+			"--network-attachments entry %q must be network=resource", entry)
+	}
+	if strings.Contains(resource, ":") {
+		return nvcrev1alpha1.NetworkAttachment{}, fmt.Errorf(
+			"--network-attachments entry %q: an entry takes no count; repeat it for a second interface"+
+				" on the same network", entry)
+	}
+	return nvcrev1alpha1.NetworkAttachment{Network: network, ResourceName: resource}, nil
 }

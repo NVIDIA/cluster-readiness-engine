@@ -300,7 +300,7 @@ func (r *JobReconciler) handleDeletion(ctx context.Context, job *nvcrev1alpha1.J
 	// is truthful; podDrainGracePeriod (measured from the Job's own
 	// deletionTimestamp inside drainStart) bounds the wait so a pod stuck
 	// Terminating cannot wedge Job deletion forever.
-	if shouldWaitForPodDrain(ctx, r.Client, job) {
+	if shouldWaitForPodDrain(ctx, newPodReader(r.Client, r.APIReader), job) {
 		log.Info("Waiting for workload pods to terminate before removing Job finalizer")
 		return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 	}
@@ -1085,19 +1085,10 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 		kind, name = ref.Kind, ref.Name
 	}
 
-	podList := &corev1.PodList{}
-	listOpts := []client.ListOption{
-		client.InNamespace(job.Namespace),
-		client.MatchingFields{nodemonitor.PodNVCREJobIndexField: job.Name},
-	}
-	if err := r.List(ctx, podList, listOpts...); err != nil {
-		// Fall back to the label selector if the field index is unavailable
-		// (same pattern as NodeDiscoverer.DiscoverNodesForJob).
-		labelSelector := client.MatchingLabels{nodemonitor.NVCREJobLabel: job.Name}
-		if err := r.List(ctx, podList, client.InNamespace(job.Namespace), labelSelector); err != nil {
-			logf.FromContext(ctx).V(1).Info("Failed to list pods for scheduling check", "error", err)
-			return false, ""
-		}
+	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
+	if err != nil {
+		logf.FromContext(ctx).V(1).Info("Failed to list pods for scheduling check", "error", err)
+		return false, ""
 	}
 
 	// Find the first blocked pod and relay its scheduling diagnosis: the
@@ -1106,8 +1097,8 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 	// FailedScheduling Event copy is truncated and can carry stale text.
 	var diagnosis string
 	blocked := false
-	for i := range podList.Items {
-		pod := &podList.Items[i]
+	for i := range pods {
+		pod := &pods[i]
 		if pod.Spec.NodeName != "" {
 			continue
 		}
@@ -1575,12 +1566,9 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		return
 	}
 
-	// List pods for this Job using the field index for O(1) lookup.
-	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList,
-		client.InNamespace(job.Namespace),
-		client.MatchingFields{nodemonitor.PodNVCREJobIndexField: job.Name},
-	); err != nil {
+	// The Job's workload pods, from the cache through the job index.
+	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
+	if err != nil {
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
 	}
@@ -1589,8 +1577,8 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 	// preferring OOMKilled (root cause) over other failures.
 	var failedPod *corev1.Pod
 	var failedContainer *corev1.ContainerStatus
-	for i := range podList.Items {
-		pod := &podList.Items[i]
+	for i := range pods {
+		pod := &pods[i]
 		for j := range pod.Status.ContainerStatuses {
 			cs := &pod.Status.ContainerStatuses[j]
 			if cs.State.Terminated == nil || cs.State.Terminated.ExitCode == 0 {
@@ -1609,7 +1597,7 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 	if failedPod == nil {
 		reason := "NoTerminatedContainer"
 		tail := "pods for this Job were found, but none had a container terminated with a non-zero exit code"
-		if len(podList.Items) == 0 {
+		if len(pods) == 0 {
 			reason = "PodNotFound"
 			tail = "no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"
 		}
@@ -2196,7 +2184,8 @@ func (r *JobReconciler) warnf(obj runtime.Object, reason, messageFmt string, arg
 func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Initialize node discoverer if not set
 	if r.NodeDiscoverer == nil {
-		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
+		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient(),
+			newPodReader(mgr.GetClient(), mgr.GetAPIReader()))
 	}
 
 	// Default the uncached reader so a manager-backed reconciler can never end
@@ -2253,15 +2242,15 @@ func (r *JobReconciler) nodeToJobRequests(ctx context.Context, obj client.Object
 	// stay a keyed lookup. The index is registered unconditionally at manager
 	// startup; if the read fails it is a transient cache error, and falling back
 	// to an unfiltered cluster-wide Pod list would turn that into a list storm.
-	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList, client.MatchingFields{podNodeNameIndexField: node.Name}); err != nil {
+	pods, err := newPodReader(r.Client, r.APIReader).JobPodsOnNode(ctx, node.Name)
+	if err != nil {
 		logf.FromContext(ctx).V(1).Info("Failed to list pods for node, skipping enqueue",
 			"node", node.Name, "error", err)
 		return nil
 	}
 
 	requests := make(map[string]reconcile.Request)
-	for _, pod := range podList.Items {
+	for _, pod := range pods {
 		// The index already constrains this, but a pod can be rescheduled between
 		// the indexed read and here; re-check rather than enqueue the wrong Job.
 		if pod.Spec.NodeName != node.Name {

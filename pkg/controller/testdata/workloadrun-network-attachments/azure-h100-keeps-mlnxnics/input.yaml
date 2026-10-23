@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Azure reaches InfiniBand through nvidia.com/mlnxnics with no Multus, and its
+# WorkloadRun platform override requests it. The list adds to that request
+# rather than replacing it.
+platform: azure
+gpuArchitecture: h100
+nodes:
+  - metadata:
+      name: azure-h100-0
+      labels:
+        nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    spec:
+      providerID: azure:///subscriptions/x/resourceGroups/y/providers/Microsoft.Compute/virtualMachineScaleSets/z/virtualMachines/0
+run:
+  metadata:
+    name: wr-netatt
+    namespace: test-ns
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /usr/local/bin/all_reduce_perf_mpi
+        mpirunPath: /usr/local/mpi/bin/mpirun
+    networkAttachments:
+      - {network: nvcre/storage, resourceName: example.com/storage}

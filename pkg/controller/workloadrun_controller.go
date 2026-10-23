@@ -483,11 +483,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	// container — on every discovered target node. Zero or multiple
 	// candidates means nothing is injected and a Normal event says why;
 	// detection never guesses (ADR-075).
-	nicDetected := resolveNICResourceName(
-		spec.NicResourceName, detectedPlatform, gpuArch, nodes, mlnxPerNode)
-	nicResourceName := nicDetected.Name
-	if nicDetected.Ran && nicResourceName == "" {
-		r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicDetected))
+	// An explicit networkAttachments list owns the NIC wiring (issue #400),
+	// so detection is skipped rather than adding a second NIC request.
+	nicResourceName := ""
+	if len(spec.NetworkAttachments) == 0 {
+		nicDetected := resolveNICResourceName(
+			spec.NicResourceName, detectedPlatform, gpuArch, nodes, mlnxPerNode)
+		nicResourceName = nicDetected.Name
+		if nicDetected.Ran && nicResourceName == "" {
+			r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicDetected))
+		}
 	}
 	if spec.EnableMNNVL != nil {
 		enableMNNVL = *spec.EnableMNNVL
@@ -597,6 +602,25 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
+
+	// networkAttachments, once the platform overrides exist. The runtime gets
+	// the annotation and one device per entry, and every platform override
+	// patch that requests one of the same resources is raised by the same
+	// count. The Workflow controller applies these overrides later and an
+	// override replaces a scalar, so writing the sum into the runtime alone
+	// would let Azure's nvidia.com/mlnxnics: 8 replace 8 plus one entry. With
+	// both written, the request is 9 whether or not the override matches,
+	// as on the Certification path, where the list is step 4 of
+	// ApplyResolvedWorkflowTransforms after overrides resolve. The user's own
+	// spec.overrides are appended below untouched and are still the last word
+	// on the rendered objects, as for every other WorkloadRun field.
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, "", err
+	}
+	if err := platform.ApplyNetworkAttachmentsToOverrides(wrOverrides, spec.NetworkAttachments); err != nil {
+		return nil, "", err
+	}
+
 	octx := OverrideContext{
 		Platform:        detectedPlatform,
 		GPUArchitecture: gpuArch,

@@ -128,6 +128,8 @@ Table tests remain fine in any package for nil-safety pins, concurrency guards, 
 
 The full testing guide is in `.claude/skills/cre-test/SKILL.md`: golden file rules, the integration test input format, and the canonical example. Read that file directly. It is plain Markdown and needs no particular tool.
 
+**Review checklist for Pod reads**: for any new or changed `podread` method, state which pods it must return and confirm every one carries the job label if it reads from the cache. A new integration case for the read must use pods labelled as production labels them (launchers have no job label).
+
 Release-path workflows are tested in `test/releasepolicy/`. `attest.yml`'s input validation is shell embedded in YAML — nothing type-checks it, and a weakened guard would not break a build, it would just stop rejecting things. The tests extract that step from the workflow and execute it against a table of accept and reject cases, so the test cannot drift from the validation it covers:
 
 ```bash
@@ -144,6 +146,7 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
 - **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.
+- **Pods are read only through `pkg/podread` (ADR-102)**: The manager's cache holds only Pods with the `nvcre.nvidia.com/job` label. MPI launchers, `kube-system` pods and other components' pods are not in it. Never list or get Pods through `r.Client`, `mgr.GetCache()` or a `Watches`/`Owns` on Pods. The cache guard refuses those, and `test/readpolicy` fails on a `corev1.PodList` outside `pkg/podread`. A new kind of Pod read is a new `podread` method, and that method decides cache or live: cache only when every pod it needs carries the job label (selected by the label or `JobIndexField`); otherwise live (`WorkloadPods`, `NamespacePods`). A cached read that expects launchers returns empty without an error.
 
 ## Development Workflow (MANDATORY)
 
@@ -177,6 +180,7 @@ After implementation, update **all** affected artifacts — do not stop partway:
 - **Golden files**: Run `TESTUTIL_UPDATE_EXPECTED=true make test-integration` to regenerate. **NEVER blindly overwrite golden files when tests are failing** — investigate and fix the code or test inputs first. Only regenerate golden files when the new output is intentionally correct. For new tests that require golden file generation, thoroughly review the generated `expected.json` before considering the test complete. **NEVER silently regenerate golden files during implementation** — always stop and ask the user for explicit permission before regenerating any golden file, explaining what changed and why. **Always diagnose first**: before updating any integration golden file, read the existing expected.json, understand what fields are changing and why, and confirm the change is an expected consequence of the code changes — never jump straight to regeneration.
 - **Documentation**: Update `docs/` files if API or behavior changed
 - **Site**: The public docs site is built with Fern from `docs/` (site config in `fern/docs.yml`, nav in `docs/index.yml`). Update the relevant `docs/` pages if user-facing behavior changed, and add new pages to `docs/index.yml` so they appear in the published nav
+- **Links in `docs/`**: Fern publishes only the pages listed in `docs/index.yml`. A relative link to anything else renders as a "Page Not Found" page that returns HTTP 200, and `fern check` and `fern docs broken-links` both pass it. ADRs under `docs/designs/` are deliberately not in the nav (ADR-074), so link them by GitHub URL, `https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/NNN-name.md`, never `../designs/NNN-name.md`. The same goes for any other file outside the nav, such as `SECURITY.md` or `config/samples/`. Relative links between pages in the nav are fine. `TestPublishedPagesLinkOnlyToPublishedPages` in `test/docspolicy/` enforces this.
 - **Samples**: Update `config/samples/` if new fields or resources were added
 
 ### 5. Run Verification Until Green
@@ -253,7 +257,7 @@ spec:
 
 ### What to Verify in Output
 
-1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
+1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
 
 2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 
@@ -319,6 +323,7 @@ Nothing in CI inspects commit authorship, so these rules hold by convention. The
 - Change CRD schemas (`api/v1alpha1/*_types.go`).
 - Create an ADR in `docs/designs/`.
 - Push branches or open pull requests.
+- Change `guardedScopes`, `exemptScopes` or the scoped-read rule in `pkg/controller/cache.go`; add a `ByObject` selector to `CacheOptions()`; add a `podread` method that reads from the cache.
 
 **Never do**:
 - Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.

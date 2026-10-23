@@ -1,0 +1,1 @@
+workloadrun wr-netatt: networkAttachments[0].network "nvcre/IB-Rail0" must be <name> or <namespace>/<name> with a DNS-1123 namespace and name
