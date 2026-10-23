@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# TogetherAI renders nvidia.com/mlnxnics: 8. An entry backed by that same
+# resource adds an interface, so the worker requests 9 in both limits and
+# requests, not 1.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: togetherai-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  enableMNNVL: false
+  networkAttachments:
+    - {network: nvcre/ib-extra, resourceName: nvidia.com/mlnxnics}
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

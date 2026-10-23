@@ -1,0 +1,3 @@
+{
+  "error": "certification test-cert: networkAttachments[0].resourceName \"example.kubernetes.io/r0\" must not use the reserved kubernetes.io or k8s.io domains"
+}

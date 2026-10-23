@@ -88,7 +88,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | RTX PRO 6000 Blackwell | Akamai LKE | TCP over `eth0` | Standard `nvidia.com/gpu` resources; inspected GPU nodes are untainted; no RDMA request; set `gpusPerNode` to the VM GPU count |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
-| B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
+| B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`, or one resource and Multus network per rail via `networkAttachments`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
 | GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
 | GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four `network-operator/sriov-net` attachments, ComputeDomain |
 | L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two `network-operator/sriov-net` attachments |

@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The worker container is the one named "node" wherever it sits; a
+# replicatedJob without one gets the resources on its first container. Sidecars
+# get nothing, and the annotation is written even when the pod template had no
+# metadata.
+networkAttachments:
+  - {network: r0, resourceName: example.com/r0}
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: torch-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: sidecar
+                          image: busybox
+                        - name: node
+                          image: pytorch
+            - name: worker
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: trainer
+                          image: pytorch
+                        - name: sidecar
+                          image: busybox

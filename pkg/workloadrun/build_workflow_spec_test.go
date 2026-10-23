@@ -210,6 +210,11 @@ type projection struct {
 	// is enough to catch an override that goes missing, and it does not change
 	// when someone edits an override body.
 	OverrideCount int `json:"overrideCount"`
+	// NetworkAttachments records, per replicatedJob that carries any, the
+	// Multus networks annotation and the extended resources networkAttachments
+	// requested (issue #400). Omitted when no replicatedJob has an
+	// annotation, so cases without attachments are unchanged.
+	NetworkAttachments map[string][]string `json:"networkAttachments,omitempty"`
 	// GangSchedulerName is the schedulerName injected into pod specs by
 	// pkg/platform when GangScheduler is set. Omitted when empty so that cases
 	// without gang scheduling do not need to carry a blank field.
@@ -249,6 +254,44 @@ func project(s *nvcrev1alpha1.WorkflowSpec) projection {
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerJobLabels, out.GangSchedulerPodLabels = runtimeWorker(s)
 	out.LauncherEnv = runtimeLauncherEnv(s)
 	out.ImagePullSecretsByJob = runtimePatchImagePullSecrets(s)
+	out.NetworkAttachments = runtimeNetworkAttachments(s)
+	return out
+}
+
+// runtimeNetworkAttachments projects, for each replicatedJob of the runtime
+// dependency whose pod template has a Multus networks annotation, the
+// annotation as "networks=<value>" followed by every container resource as
+// sorted "<container>:limits/<name>=<qty>" entries.
+func runtimeNetworkAttachments(s *nvcrev1alpha1.WorkflowSpec) map[string][]string {
+	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
+		return nil
+	}
+	var rt trainerv1alpha1.TrainingRuntime
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &rt); err != nil {
+		return nil
+	}
+	out := map[string][]string{}
+	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
+		pod := rj.Template.Spec.Template
+		networks, ok := pod.Annotations["k8s.v1.cni.cncf.io/networks"]
+		if !ok {
+			continue
+		}
+		var res []string
+		for _, c := range pod.Spec.Containers {
+			for name, qty := range c.Resources.Limits {
+				res = append(res, c.Name+":limits/"+string(name)+"="+qty.String())
+			}
+			for name, qty := range c.Resources.Requests {
+				res = append(res, c.Name+":requests/"+string(name)+"="+qty.String())
+			}
+		}
+		sort.Strings(res)
+		out[rj.Name] = append([]string{"networks=" + networks}, res...)
+	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }
 
