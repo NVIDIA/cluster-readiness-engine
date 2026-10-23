@@ -61,7 +61,7 @@ Add a second detector on the Job tier, next to the ADR-083 scheduling-stall dete
   - In the `default` (running) branch, after the stall check: the final `setJobInProgress` takes its reason and message from the not-ready result, and one extra mutation sets or clears `workloadPodsNotReadySince` next to the existing `workloadStartTime` stamp. The Warning Event is emitted when the reason moves to `WorkloadPodsNotReady`.
   - `restartFromCheckpoint` clears the marker with `workloadStartTime`.
   - `+kubebuilder:rbac:groups="",resources=events,verbs=get;list`, for the record only.
-- **`helm/cluster-readiness-engine/templates/manager-role.yaml`**: a rule granting `get` and `list` on `events` in the core group, next to the `create`/`patch` rule at line 43. Added by hand: `make manifests` writes no RBAC (ADR-092). `nvcre-manager-role` is bound cluster-wide, so this holds under both `rbac.scope` values. The helm RBAC goldens under `test/helm/` are updated with it.
+- **`helm/cluster-readiness-engine/templates/run-role.yaml`**: a rule granting `get` and `list` on `events` in the core group, next to the `pods/log` read. Added by hand: `make manifests` writes no RBAC (ADR-092). ADR-092 put the controller's other read of workload content, pod logs, in `nvcre-run-role`, so this grant follows `rbac.scope` the same way: cluster-wide under `cluster`, and only in bound namespaces under `namespaced`. The Job is created in its Workflow's namespace, which that binding already covers. `nvcre-manager-role` is unchanged: it is bound cluster-wide under both scopes, and binding it per namespace would break its cluster-scoped grants. The namespace access check (`pkg/controller/namespace_access.go`) does not gain the verb, because the read is best effort (decision 3): a narrower custom Role without it degrades the message and does not hold the Workflow. The helm RBAC goldens under `test/helm/` and ADR-092's role table are updated with it.
 - **`pkg/controller/workflow_controller.go`**: the `ReasonWorkloadPodsNotReady` case in `schedulingBlockedMessage`; the not-Ready timeout message in the timeout path. `isJobTimedOut` is unchanged.
 - **`cmd/integration/integration_test.go`**: normalize `workloadPodsNotReadySince` to the fixed placeholder, the way `schedulingBlockedSince` is at line 1727, or every golden that carries it flakes.
 - **Docs**: `docs/api-reference/job.md`, `docs/operations/troubleshooting.md` and `docs/concepts/health-monitoring-remediation.md` gain `WorkloadPodsNotReady` where they describe `WorkloadSchedulingBlocked`; ADR-093's Consequences point here; `CHANGELOG.md` gets an `[Unreleased]` entry.
@@ -89,7 +89,7 @@ No GPUs are needed.
 
 - A worker whose `sshd` refuses sessions, or any placed pod that never becomes Ready, shows as `InProgress=True(WorkloadPodsNotReady)` with the probe's or the kubelet's own text on the Job, as `JobSchedulingBlocked` with `job <name> pods not ready: ...` on the Workflow, and on the report's `Blocked:` line, within one reconcile of grace elapsing, instead of never.
 - `timeoutPerJob` is unchanged in effect: the Job still times out when it would have, now with a message that says why.
-- The controller reads Events for the first time, and `nvcre-manager-role` gains `get` and `list` on core `events` cluster-wide. That exposes Event contents in every namespace to the controller's service account. The read itself is confined to the Job's namespace and one pod.
+- The controller reads Events for the first time, and `nvcre-run-role` gains `get` and `list` on core `events`. Under `rbac.scope: cluster` that exposes Event contents in every namespace to the controller's service account, as pod logs already are; under `namespaced`, only in the namespaces it is bound in. The read itself is confined to the Job's namespace and one pod.
 - A new optional status field, `workloadPodsNotReadySince`. No new spec field, no new Workflow reason, no report change.
 - `schedulingStallGraceSeconds` now also delays this condition. A site that set it high to tolerate slow scheduling also waits longer to see a not-Ready pod reported.
 - Adapters are unchanged.
@@ -114,7 +114,7 @@ No GPUs are needed.
 
 - Issue [#469](https://github.com/NVIDIA/cluster-readiness-engine/issues/469)
 - [ADR-083](083-scheduling-stall-visibility.md): the scheduling-stall detector, grace field, Workflow relay and `Blocked:` line this record reuses
-- [ADR-092](092-per-namespace-controller-rbac.md): the role is maintained by hand
+- [ADR-092](092-per-namespace-controller-rbac.md): the manager and run role split, `rbac.scope`, and RBAC maintained by hand
 - [ADR-093](093-mpi-worker-sshd-capability-and-session-probe.md): the probe whose failure this relays
 - [ADR-099](099-failed-node-attribution-relay.md): failed-node attribution on timeout
 - [ADR-102](102-scoped-pod-cache.md): `podread`, and why launchers are not in the cached list
