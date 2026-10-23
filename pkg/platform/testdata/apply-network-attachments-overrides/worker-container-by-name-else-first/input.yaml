@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An override picks the worker container the same way the runtime path does:
+# the one named "node" wherever it sits, else the first. In the "node"
+# replicatedJob the sidecar comes first and keeps its own request; only the
+# "node" container is raised. The "worker" replicatedJob has no container
+# named "node", so its first container (trainer) is raised and the sidecar
+# after it is left alone.
+networkAttachments:
+  - {network: nvcre/ib-extra, resourceName: nvidia.com/mlnxnics}
+overrides:
+  - dependencies:
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: wr-runtime
+        spec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: sidecar
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "1"
+                            - name: node
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "8"
+                                requests:
+                                  nvidia.com/mlnxnics: "8"
+                - name: worker
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: trainer
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "8"
+                            - name: sidecar
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "1"

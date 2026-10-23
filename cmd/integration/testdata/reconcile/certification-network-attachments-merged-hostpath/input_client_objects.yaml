@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# rdmaDeviceAccess: hostPath at the spec level and a networkAttachments list in
+# one category's options. Each options block is valid on its own, so admission
+# accepts the Certification; the two only meet on the category's merged
+# options, which createWorkflowForCategory checks with
+# CheckResolvedNetworkAttachments. That check has to fail the whole
+# Certification with reason WorkflowValidationFailed and a message naming the
+# category, with no Workflow created for it. The render twin is
+# pkg/certification's network-attachments-merged-hostpath-spec.
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-netatt-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-netatt-01
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000031"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-netatt-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-netatt-02
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000032"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: netatt-merged-hostpath
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        networkAttachments:
+          - {network: nvcre/r0, resourceName: nvidia.com/r0}
+          - {network: nvcre/r1, resourceName: nvidia.com/r1}

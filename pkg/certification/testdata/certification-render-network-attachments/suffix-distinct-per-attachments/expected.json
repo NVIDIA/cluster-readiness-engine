@@ -1,0 +1,95 @@
+[
+  {
+    "workflow": "onprem-b300-cert-communic-5a384",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "nvcre/r0,nvcre/r1",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=8",
+            "limits/nvidia.com/r0=1",
+            "limits/nvidia.com/r1=1",
+            "requests/nvidia.com/gpu=8",
+            "requests/nvidia.com/r0=1",
+            "requests/nvidia.com/r1=1"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "workflow": "onprem-b300-cert-communic-e349d",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "nvcre/r2,nvcre/r3",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=8",
+            "limits/nvidia.com/r2=1",
+            "limits/nvidia.com/r3=1",
+            "requests/nvidia.com/gpu=8",
+            "requests/nvidia.com/r2=1",
+            "requests/nvidia.com/r3=1"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "workflow": "onprem-b300-cert-communic-8404b",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "nvcre/r1,nvcre/r0",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=8",
+            "limits/nvidia.com/r0=1",
+            "limits/nvidia.com/r1=1",
+            "requests/nvidia.com/gpu=8",
+            "requests/nvidia.com/r0=1",
+            "requests/nvidia.com/r1=1"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  }
+]

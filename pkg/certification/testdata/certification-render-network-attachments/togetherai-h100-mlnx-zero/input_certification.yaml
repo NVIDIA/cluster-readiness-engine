@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# mlnxPerNode: 0 is accepted next to the list and is how a Certification drops
+# the platform NIC request the list does not replace (ADR-087): the worker
+# keeps the attachment and its resource, and nvidia.com/mlnxnics is gone.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: togetherai-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  enableMNNVL: false
+  mlnxPerNode: 0
+  networkAttachments:
+    - {network: nvcre/r0, resourceName: example.com/r0}
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

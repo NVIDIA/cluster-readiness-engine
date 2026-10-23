@@ -1,0 +1,3 @@
+{
+  "error": "--multus-networks has 1 entries but --extended-resources has 0; they are paired by position and must be the same length"
+}

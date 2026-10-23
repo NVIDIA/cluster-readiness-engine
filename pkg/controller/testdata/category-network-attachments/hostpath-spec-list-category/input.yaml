@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The review case on #510: rdmaDeviceAccess: hostPath and mlnxPerNode: 0 at the
+# spec level, the list in one category. Each options block passes the CRD on
+# its own; the merge is where they meet. The second category inherits
+# hostPath with no list and is fine, and the third opts back to devicePlugin
+# and keeps its list.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: c3
+spec:
+  rdmaDeviceAccess: hostPath
+  mlnxPerNode: 0
+  categories:
+  - domain: communication
+    variant: nccl-all-reduce
+    options:
+      networkAttachments:
+      - {network: nvcre/r0, resourceName: nvidia.com/r0}
+  - domain: communication
+    variant: nccl-all-gather
+  - domain: communication
+    variant: nccl-alltoall
+    options:
+      rdmaDeviceAccess: devicePlugin
+      networkAttachments:
+      - {network: nvcre/r0, resourceName: nvidia.com/r0}

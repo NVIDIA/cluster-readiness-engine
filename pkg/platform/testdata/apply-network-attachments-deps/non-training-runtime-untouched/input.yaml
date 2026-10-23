@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Only TrainingRuntime dependencies carry worker pods; a ConfigMap next to the
+# runtime is not touched, while the runtime is.
+networkAttachments:
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+dependencies:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: nccl-config
+    data:
+      k8s.v1.cni.cncf.io/networks: untouched
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    metadata:
+                      annotations:
+                        k8s.v1.cni.cncf.io/networks: network-operator/sriov-net,network-operator/sriov-net
+                        example.com/keep: "yes"
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
+                          resources:
+                            limits:
+                              nvidia.com/gpu: "8"
+                            requests:
+                              nvidia.com/gpu: "8"
+            - name: launcher
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests

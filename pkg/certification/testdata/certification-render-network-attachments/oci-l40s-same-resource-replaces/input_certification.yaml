@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI L40S renders nvidia.com/mlnxnics: 2 by default, but a list replaces that
+# wiring, so an entry on the same resource is not added to it: the worker
+# requests exactly the one device the entry needs.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-l40s-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+  nodesPerJob: 2
+  enableMNNVL: false
+  networkAttachments:
+    - {network: east-west-a, resourceName: nvidia.com/mlnxnics}
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
