@@ -10,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type junitSuites struct {
@@ -48,7 +47,7 @@ type junitIssue struct {
 
 // WriteJUnit writes one test suite per certification and one test case per
 // category, plus a certification-level case when the categories alone do not
-// carry the certification's result (ADR-105).
+// carry the certification's result (ADR-108).
 func WriteJUnit(path string, reports []*CertReport) error {
 	var output junitSuites
 	for _, r := range reports {
@@ -81,7 +80,7 @@ func WriteJUnit(path string, reports []*CertReport) error {
 func junitSuiteFor(r *CertReport) (junitSuite, error) {
 	suite := junitSuite{Name: r.Name, Properties: junitProperties(r)}
 	occurrences := make(map[string]int)
-	var seconds float64
+	var seconds int64
 	for _, cat := range r.Categories {
 		tc := junitCase{Name: cat.Variant, Classname: r.Name + "." + cat.Domain}
 		identity := cat.Domain + "/" + cat.Variant
@@ -89,9 +88,9 @@ func junitSuiteFor(r *CertReport) (junitSuite, error) {
 		if occurrences[identity] > 1 {
 			tc.Name = fmt.Sprintf("%s [%d]", cat.Variant, occurrences[identity])
 		}
-		if duration, err := time.ParseDuration(strings.ReplaceAll(cat.Runtime, " ", "")); err == nil {
-			tc.Time = strconv.FormatFloat(duration.Seconds(), 'f', -1, 64)
-			seconds += duration.Seconds()
+		if cat.RuntimeSeconds > 0 {
+			tc.Time = strconv.FormatInt(cat.RuntimeSeconds, 10)
+			seconds += cat.RuntimeSeconds
 		}
 		var issue *junitIssue
 		switch {
@@ -143,7 +142,7 @@ func junitSuiteFor(r *CertReport) (junitSuite, error) {
 		suite.Cases = append(suite.Cases, tc)
 	}
 	suite.Tests = len(suite.Cases)
-	suite.Time = strconv.FormatFloat(seconds, 'f', -1, 64)
+	suite.Time = strconv.FormatInt(seconds, 10)
 	return suite, nil
 }
 

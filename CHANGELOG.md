@@ -23,10 +23,15 @@ followed them.
   an `INCOMPLETE` run has no failures or errors and lists its excluded nodes as suite
   properties. `results.json` gains `failureReason`, the Certification's own Failed
   condition message, which also explains a certification that failed before any
-  category did ([ADR-105](docs/designs/105-junit-certification-reports.md), #446).
+  category did, and a per-category `runtimeSeconds`
+  ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
 
 ### Changed
 
+- `nvcrectl certification run --wait` fails when it cannot write the
+  `--results-file` it was asked for, as `certification report` already did. It used
+  to print a warning and exit 0 with no file
+  ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
 - The controller caches only the Pods that carry the `nvcre.nvidia.com/job` label,
   the workload pods NVCRE creates, instead of every Pod in the cluster. Its memory now
   follows the GPU node count and NVCRE's own workload pods, from runs in progress and

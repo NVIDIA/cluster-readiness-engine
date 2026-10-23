@@ -8,13 +8,15 @@
         "variant": "nccl-all-reduce",
         "status": "Succeeded",
         "runtime": "1m 2s",
+        "runtimeSeconds": 62,
         "bandwidth": [{"size": "128 MB", "algBW": "42 GB/s", "busBW": "21 GB/s", "samples": 1}]
       },
       {
         "domain": "training",
         "variant": "nemotron5-8b",
         "status": "Succeeded",
-        "runtime": "500ms"
+        "runtime": "1h 0m",
+        "runtimeSeconds": 3605
       }
     ]
   },
@@ -28,6 +30,7 @@
         "status": "Failed",
         "failureReason": "1 group failed: <rank-0> & \"trainer\"",
         "runtime": "10m 0s",
+        "runtimeSeconds": 600,
         "failedGroups": [
           {
             "name": "group-0",
@@ -65,7 +68,7 @@
     "name": "cert-running-partial",
     "result": "RUNNING",
     "categories": [
-      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s"},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s", "runtimeSeconds": 3},
       {"domain": "training", "variant": "nemotron5-8b", "status": "Running"}
     ]
   },
@@ -74,7 +77,7 @@
     "result": "FAILED",
     "failureReason": "category training/nemotron5-8b: no nodes match the target selector",
     "categories": [
-      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s"},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "3s", "runtimeSeconds": 3},
       {"domain": "training", "variant": "nemotron5-8b", "status": "Pending"}
     ]
   },
@@ -95,7 +98,7 @@
     "totalNodes": 3,
     "excludedNodes": ["node003"],
     "exclusionReason": "1 node has insufficient GPUs",
-    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "2s"}]
+    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "2s", "runtimeSeconds": 2}]
   },
   {
     "name": "cert-repeated",

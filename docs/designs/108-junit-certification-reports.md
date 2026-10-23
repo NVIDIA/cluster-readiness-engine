@@ -1,4 +1,4 @@
-# ADR-105: JUnit certification reports
+# ADR-108: JUnit certification reports
 
 > **Status:** Proposed
 
@@ -53,7 +53,10 @@ excluded nodes were never tested. Each suite instead carries `<properties>`:
 excluded.
 
 `CertReport` gains `failureReason`, the Certification's Failed condition
-message. It is additive in `results.json`.
+message, and `CategoryReport` gains `runtimeSeconds`. Both are additive in
+`results.json`. A testcase's `time` comes from `runtimeSeconds`, not from the
+`runtime` display string, which drops the seconds once a category runs past an
+hour.
 
 Testcase details hold the category's own JSON, not the whole report, so the
 file grows linearly with the category count. The certification-level case
@@ -62,8 +65,12 @@ holds the full report once.
 The CLI rejects `--results-file` and `--junit-file` naming the same file before
 creating the Certification. It checks again after writing the JSON and before
 writing the XML, with `os.SameFile`, which catches two spellings of one file on
-a case-insensitive filesystem or through a symlinked directory. Failure to
-write a requested JUnit report fails the command.
+a case-insensitive filesystem or through a symlinked directory.
+
+Failing to write either requested file fails the command, so a zero exit means
+every requested file is there. `certification report` already failed on a JSON
+write error; `certification run --wait` only warned, and now fails the same
+way. A failed JSON write does not skip the JUnit write.
 
 ## Rationale
 

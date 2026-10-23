@@ -1371,3 +1371,18 @@ func TestNewRunCommandRejectsSameReportPaths(t *testing.T) {
 		"--results-file", "out/report", "--junit-file", "out/report"})
 	require.ErrorIs(t, cmd.Execute(), errSameReportPaths)
 }
+
+// TestHandleReportJSONWriteErrorFails checks that a failed --results-file write
+// fails the command, as a failed --junit-file write does, without skipping the
+// JUnit file.
+func TestHandleReportJSONWriteErrorFails(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "missing", "report.json")
+	junitPath := filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	require.ErrorContains(t, err, "write results file")
+	_, statErr := os.Stat(junitPath)
+	require.NoError(t, statErr, "JUnit file must still be written")
+}

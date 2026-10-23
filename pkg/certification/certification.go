@@ -1465,7 +1465,10 @@ func certificationIsTerminal(cert *nvcrev1alpha1.Certification) bool {
 }
 
 // handleReport builds and prints the certification report, optionally writing
-// JSON and JUnit files. Caller must pass a non-nil cert.
+// JSON and JUnit files. Failing to write either file fails the command, as it
+// does for certification report, so a zero exit means every requested file is
+// there. A failed JSON write does not stop the JUnit write. Caller must pass a
+// non-nil cert.
 func handleReport(
 	ctx context.Context, wc client.WithWatch,
 	cert *nvcrev1alpha1.Certification, resultsFile, junitFile string,
@@ -1481,23 +1484,24 @@ func handleReport(
 	}
 	report.Print(dest, r)
 
+	var jsonErr error
 	if resultsFile != "" {
-		if err := report.WriteJSON(resultsFile, []*report.CertReport{r}); err != nil {
-			_, _ = fmt.Fprintf(out, "Warning: failed to write results file %s: %v\n", resultsFile, err)
+		if jsonErr = report.WriteJSON(resultsFile, []*report.CertReport{r}); jsonErr != nil {
+			jsonErr = fmt.Errorf("write results file: %w", jsonErr)
 		} else {
 			_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
 		}
 	}
 	if junitFile != "" {
 		if err := validateReportPaths(resultsFile, junitFile); err != nil {
-			return err
+			return errors.Join(jsonErr, err)
 		}
 		if err := report.WriteJUnit(junitFile, []*report.CertReport{r}); err != nil {
-			return fmt.Errorf("write JUnit file: %w", err)
+			return errors.Join(jsonErr, fmt.Errorf("write JUnit file: %w", err))
 		}
 		_, _ = fmt.Fprintf(out, "JUnit results written to %s\n", junitFile)
 	}
-	return nil
+	return jsonErr
 }
 
 // validateReportPaths prevents JSON and JUnit output from overwriting the same path.
