@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
 
 func TestGetReplicatedJobPodPicksOnePodDeterministically(t *testing.T) {
@@ -99,7 +101,7 @@ func TestGetReplicatedJobPodPicksOnePodDeterministically(t *testing.T) {
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
 
-			got, err := NewWorkerDiscoverer(c).GetReplicatedJobPod(context.Background(), "ns", "w", "launcher")
+			got, err := NewWorkerDiscoverer(podread.New(c, c)).GetReplicatedJobPod(context.Background(), "ns", "w", "launcher")
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got.Name)
 		})

@@ -1,0 +1,4 @@
+{
+  "platform": "",
+  "error": "heterogeneous platforms detected: map[akamai:1 onprem:1]"
+}

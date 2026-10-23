@@ -56,6 +56,8 @@ The controller image is the exception: it is worked out on every run, from this 
 
 Before installing or upgrading Trainer, `setup init` checks the shared JobSet CRD and correlates the supported JobSet controller fingerprints with live resources and the exact Trainer release manifest. A verified external JobSet controller makes Trainer install with `jobset.install=false`; a bundled controller stays bundled. An orphaned JobSet CRD with no controller, supporting resources, release evidence, or JobSets keeps the CRD and installs the bundled controller without refreshing the CRD schema. An existing Trainer release with a missing JobSet CRD stops with repair guidance because Helm does not restore a chart CRD during upgrade. Ambiguous or unreadable ownership stops before Helm mutation and prints the manual Trainer installation followed by the `nvcrectl setup init --skip-phases=deps` path. The bounded fingerprint scan covers the published chart pattern, not arbitrary customized controllers; operators who cannot establish that assumption must manage the Trainer installation explicitly. Operator-managed Trainer and JobSet installations are responsible for compatible Trainer and JobSet CRD schemas, controllers, external consumers, and any required migrations. Automatic reconciliation of the shared JobSet CRD is deferred work that needs its own design, covering schema compatibility, stored-version migration, and coordination with external controllers and workloads.
 
+`setup init` reports success only after the controller has stayed Ready for a minute with no restart. A controller that is OOMKilled or crash-looping after install fails the run, with the cause and, for an OOMKill, the `--set manager.resources.limits.memory=…` flag to raise the limit. See [setup init](../cli-reference/setup.md#what-it-installs).
+
 Check the installation at any time:
 
 ```bash
@@ -186,7 +188,9 @@ Size CPU according to the number of nodes and concurrent workloads in the cluste
 | ~100 – 500 nodes | 200m / 500m | 1Gi / 1Gi | Increase CPU if reconcile latency rises |
 | ~500 – 1000 nodes | 500m / 1000m | 1Gi / 2Gi | Raise both CPU and memory for heavier concurrency |
 
-Size memory by the cluster-wide **Pod count**, not the node count. The controller caches every Pod in the cluster, so its memory grows with all the cluster's Pods, including Pods NVCRE did not create. On a 2,678-node cluster with about 80,000 Pods, the controller peaked at 3.83 GiB during its initial cache sync and stayed at 3.1–3.8 GiB while idle ([issue #504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)); at the 1Gi default it was OOMKilled about 15 seconds after every start. Measure a cluster like that before choosing a limit, and leave headroom over the peak. Set it through `setup init`, which keeps it on later runs:
+Memory follows the number of GPU nodes and NVCRE's own workload pods, not the cluster's total Pod count. The controller caches GPU Nodes and only the Pods that carry the `nvcre.nvidia.com/job` label, the workload pods NVCRE creates ([ADR-102](../designs/102-scoped-pod-cache.md)). Those include the pods of finished runs: a finished Job keeps its workload and pods for log inspection until its Certification is deleted, so every Certification you keep holds its completed categories' pods in the controller's memory. Size memory for the GPU nodes, the runs in progress and the Certifications you keep; deleting finished Certifications releases their pods. Earlier releases cached every Pod in the cluster. On a 2,678-node cluster with about 80,000 Pods, mostly DaemonSet pods, such a controller peaked at 3.83 GiB during its initial cache sync and stayed at 3.1–3.8 GiB while idle, and at the 1Gi default it was OOMKilled about 15 seconds after every start ([issue #504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)). Pods were most of that memory.
+
+To raise the limit, set it through `setup init`, which keeps it on later runs:
 
 ```bash
 nvcrectl setup init \
@@ -382,7 +386,7 @@ The controller has no external database, no admission webhook, and no sidecar in
 | Parameter | Default | Large cluster | Notes |
 |-----------|---------|---------------|-------|
 | Controller CPU limit | 500m | 1000m | CEL evaluation scales with node count |
-| Controller memory limit | 1Gi | By Pod count | Follows the cluster-wide Pod count, not the node count: 3.83 GiB peak at about 80,000 Pods ([Resource requirements](#resource-requirements)). Set with `setup init --set manager.resources.limits.memory=…` |
+| Controller memory limit | 1Gi | By GPU nodes and NVCRE's own pods | Follows the GPU node count and NVCRE's workload pods, from runs in progress and from Certifications still kept, not the cluster-wide Pod count ([Resource requirements](#resource-requirements)). Set with `setup init --set manager.resources.limits.memory=…` |
 | GoodputMeasurement `sampleInterval` | 60s | 120s | Reduces API server log fetch load |
 | Certification category concurrency | Unlimited | Partition by node groups | Use multiple Certifications for >500 nodes |
 

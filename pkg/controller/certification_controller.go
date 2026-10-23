@@ -570,11 +570,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// The GCP H100 workload images and the tcpxo-daemon image follow the
 	// TCPXO plugin release GKE installed, read from the installer pods on the
-	// same capable nodes, since node pools can run different releases. A
-	// cached read that finds no release is confirmed live through APIReader.
+	// same capable nodes, since node pools can run different releases. The
+	// installer pods live in kube-system and carry no NVCRE job label, so the
+	// cache never holds them (ADR-102) and podread reads them from the API server.
 	// When no mapped release results, the nearest safe profile is rendered,
 	// and a Warning says why once the Workflow is created.
-	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, r.Client, r.APIReader, detectedPlatform, gpuArch, capableNodes)
+	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, newPodReader(r.Client, r.APIReader), detectedPlatform, gpuArch, capableNodes)
 
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {

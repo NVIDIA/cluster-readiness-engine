@@ -720,6 +720,86 @@
     "backend": "flash"
   },
   {
+    "target": "nemotron5-56b/akamai/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/akamai/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/akamai/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
     "target": "nemotron5-8b/aws/a100/n1",
     "backend": "flash"
   },
@@ -1437,6 +1517,86 @@
   },
   {
     "target": "nemotron5-8b/nscale/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/a100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/b200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/b300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/gb200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/gb300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/h100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/akamai/rtxpro6000/n8",
     "backend": "flash"
   }
 ]

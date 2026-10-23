@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -48,6 +48,30 @@ func (r podReader) Get(_ context.Context, _ client.ObjectKey, _ client.Object, _
 	return nil
 }
 
+// flakyPodReader fails its first *failures Lists with err, then serves like
+// its podReader.
+type flakyPodReader struct {
+	podReader
+	failures *int
+	err      error
+}
+
+func (r flakyPodReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if *r.failures > 0 {
+		*r.failures--
+		return r.err
+	}
+	return r.podReader.List(ctx, list, opts...)
+}
+
+// noTCPXORetryDelay makes detection retry a failed List at once.
+func noTCPXORetryDelay(t *testing.T) {
+	t.Helper()
+	saved := tcpxoListRetryDelay
+	tcpxoListRetryDelay = 0
+	t.Cleanup(func() { tcpxoListRetryDelay = saved })
+}
+
 // The GCP H100 workload and tcpxo-daemon images follow the TCPXO plugin
 // release GKE installed (issues #438, #439). These cases pin the detection
 // rule: the gate (gcp + h100) keeps other platforms untouched; only Running,
@@ -63,12 +87,18 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 		Subdir:         "detect-tcpxo-plugin-version",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
+	noTCPXORetryDelay(t)
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
 			Platform        string   `yaml:"platform"`
 			GPUArchitecture string   `yaml:"gpuArchitecture"`
 			Nodes           []string `yaml:"nodes"`
-			Pods            []struct {
+			// ListError makes every List of the installer pods fail with it.
+			ListError string `yaml:"listError"`
+			// FailFirstLists makes that many Lists fail before the pods are
+			// served, to exercise the retry.
+			FailFirstLists int `yaml:"failFirstLists"`
+			Pods           []struct {
 				Name        string   `yaml:"name"`
 				Namespace   string   `yaml:"namespace"`
 				NodeName    string   `yaml:"nodeName"`
@@ -115,7 +145,15 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 			pods = append(pods, pod)
 		}
 
-		d := resolveTCPXOPluginVersion(context.Background(), podReader{pods: pods}, nil,
+		var reader client.Reader = podReader{pods: pods}
+		switch {
+		case input.ListError != "":
+			reader = podReader{listErr: errors.New(input.ListError)}
+		case input.FailFirstLists > 0:
+			failures := input.FailFirstLists
+			reader = flakyPodReader{podReader{pods: pods}, &failures, errors.New("etcdserver: request timed out")}
+		}
+		d := resolveTCPXOPluginVersion(context.Background(), podread.New(reader, reader),
 			input.Platform, input.GPUArchitecture, nodes)
 
 		out := struct {
@@ -142,101 +180,15 @@ func TestResolveTCPXOPluginVersion(t *testing.T) {
 // A failed List is a refusal, never an error: the Certification still renders
 // with the catalog default images.
 func TestResolveTCPXOPluginVersionListError(t *testing.T) {
+	noTCPXORetryDelay(t)
 	listErr := errors.New(`pods is forbidden: cannot list resource "pods" in namespace "kube-system"`)
-	d := resolveTCPXOPluginVersion(context.Background(), podReader{listErr: listErr}, nil,
+	d := resolveTCPXOPluginVersion(context.Background(), podread.New(podReader{listErr: listErr}, podReader{listErr: listErr}),
 		"gcp", "h100", []corev1.Node{{Name: testNodeA}})
 	if !d.Ran || d.Version != "" || !errors.Is(d.ListErr, listErr) {
 		t.Fatalf("got Ran=%v Version=%q ListErr=%v, want a refusal carrying the List error", d.Ran, d.Version, d.ListErr)
 	}
 	if msg := tcpxoPluginDetectionMessage(d); !strings.Contains(msg, "could not list kube-system pods") {
 		t.Fatalf("message %q does not name the List failure", msg)
-	}
-}
-
-// countingPodReader records how often it is listed.
-type countingPodReader struct {
-	podReader
-	lists *int
-}
-
-func (r countingPodReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	*r.lists++
-	return r.podReader.List(ctx, list, opts...)
-}
-
-// A cache that has not caught up with the installer pods must not pin the
-// fallback images: the refusal is confirmed against the live reader, and the
-// live result wins. A resolved cached read never reaches the live reader.
-func TestResolveTCPXOPluginVersionConfirmsRefusalLive(t *testing.T) {
-	const version = "v1.0.17"
-	nodes := []corev1.Node{{Name: testNodeA}}
-	installer := corev1.Pod{
-		Name:      "nccl-tcpxo-installer-aaaaa",
-		Namespace: tcpxoInstallerNamespace,
-		Spec: corev1.PodSpec{
-			NodeName: testNodeA,
-			InitContainers: []corev1.Container{{
-				Name:  "nccl-tcpxo-installer",
-				Image: "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:" + version,
-			}},
-		},
-		Status: corev1.PodStatus{Phase: corev1.PodRunning},
-	}
-	ctx := context.Background()
-
-	liveLists := 0
-	live := countingPodReader{podReader{pods: []corev1.Pod{installer}}, &liveLists}
-	d := resolveTCPXOPluginVersion(ctx, podReader{}, live, "gcp", "h100", nodes)
-	if d.Version != version || liveLists != 1 {
-		t.Fatalf("stale cache: got Version=%q after %d live Lists, want v1.0.17 after 1", d.Version, liveLists)
-	}
-
-	liveLists = 0
-	d = resolveTCPXOPluginVersion(ctx, podReader{pods: []corev1.Pod{installer}}, live, "gcp", "h100", nodes)
-	if d.Version != version || liveLists != 0 {
-		t.Fatalf("resolved cache: got Version=%q after %d live Lists, want v1.0.17 after 0", d.Version, liveLists)
-	}
-
-	liveLists = 0
-	d = resolveTCPXOPluginVersion(ctx, podReader{}, countingPodReader{podReader{}, &liveLists}, "gcp", "h100", nodes)
-	if !d.Ran || d.Version != "" || liveLists != 1 || !slices.Equal(d.Missing, []string{testNodeA}) {
-		t.Fatalf("absent live: got Ran=%v Version=%q Missing=%v after %d live Lists, want a refusal naming node-a after 1",
-			d.Ran, d.Version, d.Missing, liveLists)
-	}
-
-	// A failed live List says nothing about the installers, so the cached
-	// refusal stands, naming the missing node rather than the List error.
-	liveErr := errors.New("etcdserver: request timed out")
-	d = resolveTCPXOPluginVersion(ctx, podReader{}, podReader{listErr: liveErr}, "gcp", "h100", nodes)
-	if d.ListErr != nil || !slices.Equal(d.Missing, []string{testNodeA}) {
-		t.Fatalf("failed live: got ListErr=%v Missing=%v, want the cached refusal naming node-a", d.ListErr, d.Missing)
-	}
-}
-
-// A cached read that found a release, even one newer than every mapped
-// release, is not re-read live: it already renders the right profile, and a
-// failed live List must not drop a CUDA 13 plugin to the CUDA 12 minimum.
-func TestResolveTCPXOPluginVersionKeepsFoundRelease(t *testing.T) {
-	const version = "v1.0.18"
-	installer := corev1.Pod{
-		Name:      "nccl-tcpxo-installer-aaaaa",
-		Namespace: tcpxoInstallerNamespace,
-		Spec: corev1.PodSpec{
-			NodeName: testNodeA,
-			InitContainers: []corev1.Container{{
-				Name:  "nccl-tcpxo-installer",
-				Image: "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:" + version,
-			}},
-		},
-		Status: corev1.PodStatus{Phase: corev1.PodRunning},
-	}
-	liveLists := 0
-	live := countingPodReader{podReader{listErr: errors.New("etcdserver: request timed out")}, &liveLists}
-	d := resolveTCPXOPluginVersion(context.Background(), podReader{pods: []corev1.Pod{installer}}, live,
-		"gcp", "h100", []corev1.Node{{Name: testNodeA}})
-	if d.Version != version || d.Exact || d.ListErr != nil || liveLists != 0 {
-		t.Fatalf("got Version=%q Exact=%v ListErr=%v after %d live Lists, want unmapped %s after 0",
-			d.Version, d.Exact, d.ListErr, liveLists, version)
 	}
 }
 
