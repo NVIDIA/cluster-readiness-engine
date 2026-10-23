@@ -90,7 +90,7 @@ A workload whose pods cannot be placed — for example a job pinned to one node 
 - The Workflow's `InProgress` condition carries reason `JobSchedulingBlocked` with the Job's message, and `nvcrectl certification report` shows a `Blocked:` line on the running category.
 - The condition clears automatically if the pod schedules. No terminal state is ever set by the detector — `timeoutPerJob` remains the bound.
 
-See [ADR-083](../designs/083-scheduling-stall-visibility.md).
+See [ADR-083](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/083-scheduling-stall-visibility.md).
 
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.
 
