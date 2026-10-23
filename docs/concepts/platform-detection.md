@@ -81,6 +81,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB200 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | GB300 | AWS | RoCE | `roce-channel` resource claim (DRA), no hugepages, no EFA |
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
+| B300 | AWS | EFA | `vpc.amazonaws.com/efa: 16` (p6-b300.48xlarge: card 0 is ENA-only), no hugepages, same EFA env as H100 |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
 | H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, workload and `tcpxo-daemon` images chosen from the TCPXO plugin version detected on the nodes (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
@@ -106,6 +107,29 @@ templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
 zero, the resource and the network attachment annotation are both omitted
 rather than requested as `"0"`. On Nscale, which claims its NICs through DRA,
 zero likewise omits the `rdma.nscale.com` claim while keeping the GPU claim.
+
+AWS B300 (`p6-b300.48xlarge`) defaults to **eight GPUs per node** and requests
+**16** `vpc.amazonaws.com/efa` devices per worker: AWS documents 17 network cards,
+of which the primary is ENA-only and the 16 secondary cards support EFA (see the
+[AWS EFA instance specifications](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-acc-inst-types.html)).
+Confirm the device plugin advertises 16 allocatable devices; the H100 request for
+32 cannot schedule on these nodes. The five NCCL entries use
+`public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3`,
+which carries native `sm_103` code and meets the
+[AWS P6-B300 software requirements](https://docs.aws.amazon.com/dlami/latest/devguide/p6-support-dlami.html)
+(CUDA 13.0, R580, EFA 1.44.0, AWS OFI NCCL 1.17.1). WorkloadRuns get the same EFA
+request and transport settings on the caller's image, which must carry a compatible
+EFA/NCCL stack. Images with multiple network plugins may also need explicit
+[NCCL plugin selection](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-net-plugin)
+in `spec.env`. For example, NGC PyTorch `26.04-py3` installs the AWS plugin as
+`libnccl-net-ofi.so`; set `NCCL_NET_PLUGIN=ofi` to select it. Otherwise that image
+can use sockets even with EFA devices allocated. Verify EFA provider selection
+and GDR data channels in the NCCL logs, not just successful workload completion.
+
+The training entries have no AWS B300 override yet. Their PyTorch 25.08
+image bundles EFA 1.38.1 / OFI NCCL 1.14.0, below those minimums. Nemotron 5 on
+AWS B300 renders the base entry with no EFA devices or plugin cleanup. This
+training path is not supported and has not been validated on B300 hardware.
 
 RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
 is architecture-based, not machine-shape detection. On smaller G4 nodes, set

@@ -7,7 +7,7 @@
     },
     "appliedOverrides": [
       {
-        "when": "gpuArchitecture=notIn [gb200,gb300], platform=aws",
+        "when": "gpuArchitecture=notIn [gb200,gb300,b300], platform=aws",
         "patches": "jobTemplate, 1 dependencies"
       }
     ]

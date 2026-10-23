@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Collect resolved objects: the Workflow retains its conditional templates.
+# The Job carries the trainer env; the runtime carries the EFA request and
+# IPC_LOCK.
+waitFor:
+  kind: Workflow
+  name: test-torch-aws-b300-run
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: test-torch-aws-b300-run
+    namespace: default
+  - kind: WorkloadRun
+    name: test-torch-aws-b300-run
+    namespace: default
+  - kind: Job
+    name: test-torch-aws-b300-run-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: test-torch-aws-b300-run-runtime-533a2-job
+    namespace: default

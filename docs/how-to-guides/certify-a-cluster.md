@@ -54,6 +54,12 @@ spec:
 
 H100 on AWS uses `vpc.amazonaws.com/efa: 32`. No hugepages or ComputeDomain.
 
+### B300
+
+Same spec with `nvidia.com/gpu.product: NVIDIA-B300` and `enableMNNVL: false`. B300 on
+AWS (`p6-b300.48xlarge`) uses `vpc.amazonaws.com/efa: 16` and a CUDA 13 NCCL image. No
+hugepages or ComputeDomain.
+
 ## Gang scheduling
 
 Distributed workloads can deadlock under the default scheduler when only some of their pods fit on the cluster: the placed pods hold GPUs while waiting for peers that never arrive. Set `spec.gangScheduler` to opt the certification into a gang-aware scheduler, such as KAI Scheduler, which holds all of a job's pods until the entire gang can be placed at once.

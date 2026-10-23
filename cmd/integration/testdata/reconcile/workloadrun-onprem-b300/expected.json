@@ -762,6 +762,98 @@
         {
           "when": {
             "gpuArchitecture": {
+              "equals": "b300"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "wr-onprem-b300-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "limits": {
+                                        "vpc.amazonaws.com/efa": 16
+                                      },
+                                      "requests": {
+                                        "vpc.amazonaws.com/efa": 16
+                                      }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "b300"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "FI_PROVIDER",
+                        "value": "efa"
+                      },
+                      {
+                        "name": "FI_EFA_USE_DEVICE_RDMA",
+                        "value": "1"
+                      },
+                      {
+                        "name": "FI_EFA_FORK_SAFE",
+                        "value": "1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
               "equals": "h100"
             },
             "platform": {
@@ -1909,7 +2001,7 @@
         ],
         "appliedOverrides": [
           {
-            "index": 19,
+            "index": 21,
             "when": "gpuArchitecture=in [b200,b300], platform=onprem",
             "patches": "1 dependencies"
           }

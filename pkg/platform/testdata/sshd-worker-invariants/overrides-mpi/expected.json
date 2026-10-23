@@ -1,7 +1,18 @@
 {
-  "containersScanned": 8,
+  "containersScanned": 9,
   "sshdWorkers": 0,
   "containers": [
+    {
+      "source": "override {\"gpuArchitecture\":{\"equals\":\"b300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ]
+    },
     {
       "source": "override {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
       "fragment": true,

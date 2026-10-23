@@ -729,6 +729,75 @@
         {
           "when": {
             "gpuArchitecture": {
+              "equals": "b300"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-gb300-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "limits": {
+                                        "vpc.amazonaws.com/efa": 16
+                                      },
+                                      "requests": {
+                                        "vpc.amazonaws.com/efa": 16
+                                      }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK",
+                                          "SYS_CHROOT"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "b300"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
               "equals": "h100"
             },
             "platform": {
