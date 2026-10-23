@@ -159,8 +159,9 @@ The AWS RTX 8B runtime includes a guarded Megatron core_v0.15.2 DDP stream
 ordering backport after the clone init container. It prevents parameter-buffer
 copies racing initialization and optimizer setup; the original parameter
 integrity checks stay enabled. The patch writes only the inspected training.py
-version. Other sources are left unchanged when both DDP stream waits are already
-present as Python calls; otherwise the init container fails with an explanation.
+version. Other sources are left unchanged only when the `get_model` function's
+AST matches the inspected synchronized implementation, including both waits
+around DDP construction; otherwise the init container fails with an explanation.
 This restriction also applies to `sourceRepo` and pre-seeded workspaces (see
 [Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)). Two-node validation
 passes all sixteen ranks and ten training steps. This is a smoke test;

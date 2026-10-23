@@ -109,6 +109,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 
 **Prerequisites**:
 - Go 1.27+
+- Python 3.9+ (catalog source-guard tests execute the rendered Python script; PyTorch is not required)
 - Docker (for container builds)
 - Make (for build targets)
 
