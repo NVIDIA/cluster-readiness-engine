@@ -153,7 +153,14 @@ SSH-launched MPI ranks so those image paths remain available. The
 `nccl-loopback-nvswitch` entry has no dedicated AWS RTX override and renders
 its generic base configuration. On g7e, that configuration can exercise PCIe;
 success does not validate NVSwitch hardware. Use `nccl-loopback` for the
-validated EFA loopback path. Nemotron 5 56B has not been validated for this cell.
+validated EFA loopback path.
+
+Nemotron 5 56B also has no dedicated AWS RTX override. Once its minimum of
+32 GPUs is met (four eight-GPU nodes), it renders the generic base configuration:
+`nvcr.io/nvidia/pytorch:25.08-py3`, with no `vpc.amazonaws.com/efa` request or
+AWS RTX EFA transport settings. It does not receive the 8B image or DDP
+stream-ordering backport. Rendering succeeds at that size, but 56B has not
+been validated on AWS RTX; do not treat that render as supported EFA training.
 
 The AWS RTX 8B runtime includes a guarded Megatron core_v0.15.2 DDP stream
 ordering backport after the clone init container. It prevents parameter-buffer
