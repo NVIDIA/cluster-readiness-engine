@@ -294,9 +294,8 @@ func init() {
 // catalog and would have crashed the process through pkg/platform. One map
 // removes that class of divergence.
 //
-// indent, trimSuffix and repeat are the only sprig functions the templates use
-// (confirmed by grep across pkg/catalog/entries/), which is why this replaces
-// the github.com/Masterminds/sprig/v3 dependency rather than pulling it in.
+// Implement only the helpers used by the embedded templates, avoiding a full
+// sprig dependency.
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"indent": func(spaces int, s string) string {
@@ -325,6 +324,7 @@ func TemplateFuncs() template.FuncMap {
 		},
 		"add":       func(a, b int) int { return a + b },
 		"mul":       func(a, b int) int { return a * b },
+		"div":       func(a, b int) int { return a / b },
 		"toYaml":    toYaml,
 		"toMpiArgs": toMpiArgs,
 	}

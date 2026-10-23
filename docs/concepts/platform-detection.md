@@ -142,11 +142,19 @@ resource or make it available to a pod. Do not use GCP's `NCCL_NET_PLUGIN=none`
 profile: the AWS cell selects the OFI plugin and the EFA provider. Multi-node
 NVLink and NVLS are disabled because g7e GPUs communicate through PCIe and EFA.
 
+EFA requests scale with `gpusPerNode`: one interface per pair of GPUs,
+rounded up, so eight GPUs request four interfaces. EC2 advertises one EFA
+interface on `g7e.8xlarge` and `g7e.12xlarge`, two on `g7e.24xlarge`, and four
+on `g7e.48xlarge`. The smaller `g7e.2xlarge` and `g7e.4xlarge` do not support
+EFA. Target nodes must advertise enough EFA devices for the request; the
+overlay does not fall back to TCP. Live validation and bandwidth baselines
+cover only full eight-GPU `g7e.48xlarge` workers.
+
 The NCCL all-reduce, all-gather, all-to-all, EFA loopback and Nemotron 5 8B
 entries pin NVIDIA PyTorch 26.03 with EFA 1.46.0 and NCCL 2.29.7 by digest.
 Its CUDA 13.2 stack needs a compatible host driver. SM120 kernels are required;
 the rejected AWS NCCL candidate compiled only for SM80–SM103 could not run
-these RTX GPUs (see ADR-103).
+these RTX GPUs (see ADR-109).
 The two-node validation used host driver 580.173.02 with the image's CUDA
 compatibility libraries. The catalog forwards PATH and LD_LIBRARY_PATH to
 SSH-launched MPI ranks so those image paths remain available. The
@@ -169,13 +177,19 @@ integrity checks stay enabled. The patch writes only the inspected training.py
 version. Other sources are left unchanged only when the `get_model` function's
 AST matches the inspected synchronized implementation, including both waits
 around DDP construction; otherwise the init container fails with an explanation.
-This restriction also applies to `sourceRepo` and pre-seeded workspaces (see
-[Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)). Two-node validation
+The source restriction also applies to `sourceRepo` and pre-seeded workspaces
+(see [Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)).
+The guard takes the shared `/mnt/workspace/.megatron-lm.lock`, then reads
+and validates the source under that lock. It writes a sibling temporary file
+and atomically replaces the target, preserving its permissions. Concurrent
+readers see a complete file; concurrent guards recheck the updated digest.
+The init command times out after 1200 seconds if preparation cannot finish.
+Two-node validation
 passes all sixteen ranks and ten training steps. This is a smoke test;
-training qualification and thresholds remain separate work. See ADR-103 for
+training qualification and thresholds remain separate work. See ADR-109 for
 the upstream references, source guards and CUDA graph limitation.
 
-WorkloadRun applies the same four-device request and EFA transport settings
+WorkloadRun applies the same EFA resource policy and transport settings
 while preserving the caller's workload image. Its MPI, torch and exec workers
 request `IPC_LOCK` for RDMA memory registration; only MPI also requests
 `SYS_CHROOT` for sshd. The caller must supply an

@@ -1,4 +1,4 @@
-# ADR-103: AWS RTX PRO 6000 workload overlays
+# ADR-109: AWS RTX PRO 6000 workload overlays
 
 > **Status:** Accepted design; communication and training smoke validation
 > completed on two g7e nodes. Merge and release remain pending.
@@ -84,6 +84,14 @@ After design approval and node inspection:
   restating capabilities. Keep capabilities out of the shared resource fragment.
 - Add `pkg/render/nodes/aws-rtxpro6000.yaml` from observed node facts, plus
   code-grounded documentation of the supported cell and software requirements.
+- Request one EFA interface per pair of selected GPUs, rounded up, through
+  the shared resource fragment: one/two/four interfaces for two/four/eight
+  GPUs. EC2 reports one EFA interface for g7e.8xlarge and g7e.12xlarge, two
+  for g7e.24xlarge, and four for g7e.48xlarge; g7e.2xlarge and g7e.4xlarge
+  have no EFA support. A positive resource request requires the device plugin
+  to advertise sufficient capacity; no TCP fallback is provided. Smaller
+  shapes and partial GPU allocations have render checks but no live
+  performance qualification.
 - Add TestCaseParser unit/integration cases for eight GPUs, the observed
   networking count, MPI and torch paths, and absence of H100's 32-device patch.
   Include regression renders for AWS H100/GB200/GB300 and GCP RTX.
@@ -94,6 +102,13 @@ After design approval and node inspection:
   unchanged only when its `get_model` AST matches the inspected synchronized
   implementation, including wait placement around DDP construction; otherwise
   fail initialization. Retain all parameter integrity assertions.
+  Hold the same `/mnt/workspace/.megatron-lm.lock` used by workspace
+  preparation, and read the source only after acquiring it. Write and sync
+  a sibling temporary file, preserve permissions, then use `os.replace` so
+  readers cannot observe a truncated module. Remove the temporary file on
+  failure; bound the whole init command with a 1200-second timeout.
+  Concurrency tests verify two guards apply the patch once and a replacement
+  failure leaves the original source intact.
 - Identify golden changes before regeneration: new AWS cell expected output,
   catalog override counts, and offline available-combination/error lists from
   adding the mock node. Regenerate only deliberately changed expectations
