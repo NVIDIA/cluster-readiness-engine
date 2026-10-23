@@ -91,6 +91,7 @@ Key chart values:
 | `manager.image.repository` | `ghcr.io/nvidia/cluster-readiness-engine/manager` | Controller image |
 | `manager.image.tag` | `""` (uses chart `appVersion`) | Controller image tag |
 | `manager.image.digest` | `""` | Pin the controller image by digest. Wins over `tag`; the only form that names the exact bytes you verified |
+| `manager.image.pullPolicy` | `""` | Controller image pull policy: `Always`, `IfNotPresent`, or `Never`. Empty omits `imagePullPolicy` so Kubernetes defaults it from the image tag or digest; any other value fails the render |
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
 | `manager.affinity` | `{}` | Replace the complete controller affinity; when empty, the chart prefers spreading replicas across nodes |
@@ -158,9 +159,10 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
    defaults to `Always`, which sends the kubelet to a registry that this cluster cannot reach; any other tag defaults to
    `IfNotPresent` and stays on the local copy. Name it in whichever path owns the reference: the controller chart's
    `manager.image.repository`/`manager.image.tag` (or `manager.image.digest` for a digest-pinned image), a Certification's
-   `spec.image` or `categories[].options.image`, or a WorkloadRun's `spec.image`. These paths choose the image, not a pull
-   policy: the chart leaves the manager container's `imagePullPolicy` unset, and Certification and WorkloadRun expose no
-   workload pull-policy field. The API server defaults the omitted policy according to the tag as described above.
+   `spec.image` or `categories[].options.image`, or a WorkloadRun's `spec.image`. By default, the chart leaves the manager
+   container's `imagePullPolicy` unset. For a preloaded controller image, set `manager.image.pullPolicy` to `IfNotPresent`
+   or `Never`. Certification and WorkloadRun expose no workload pull-policy field. The API server defaults an omitted
+   policy according to the image reference as described above.
 
 This is also the only path that works for an air-gapped workload image derived from a base image the nodes already have — for example the `sshd`-prebaked MPI image recommended in the [FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters).
 
@@ -467,6 +469,9 @@ readinessProbe:
      --version <new-version> \
      --namespace nvcre
    ```
+
+   With `--reuse-values`, Helm keeps the chart defaults stored with the installed release. Charts through v0.8.2 defaulted `manager.image.pullPolicy` to `IfNotPresent` without rendering it, so a `--reuse-values` upgrade from one of them renders `imagePullPolicy: IfNotPresent`; only a `:latest` controller image behaves differently, switching from `Always` to `IfNotPresent`. Add `--set-string manager.image.pullPolicy=` to omit the field, or use `--reset-then-reuse-values` (Helm 3.14 and later), which takes the new chart's defaults and keeps the values set on the release. Those charts also ignored the value itself, while later charts accept only an empty value, `Always`, `IfNotPresent`, or `Never`: clear any other value set on the release with `--set-string manager.image.pullPolicy=`, or with `nvcrectl setup init --reset-values`.
+
 4. Verify the rollout:
    ```bash
    kubectl rollout status -n nvcre deploy/nvcre-manager

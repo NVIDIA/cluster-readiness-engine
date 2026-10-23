@@ -73,6 +73,14 @@ spec:
         {{- else }}
         image: {{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}
         {{- end }}
+        {{- $pullPolicy := .Values.manager.image.pullPolicy }}
+        {{- /* Validate before the render guard so false and 0 are rejected. */}}
+        {{- if and (ne $pullPolicy nil) (not (has $pullPolicy (list "" "Always" "IfNotPresent" "Never"))) }}
+        {{- fail (printf "manager.image.pullPolicy must be empty, Always, IfNotPresent, or Never, got %q" (toString $pullPolicy)) }}
+        {{- end }}
+        {{- if $pullPolicy }}
+        imagePullPolicy: {{ $pullPolicy }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /healthz
