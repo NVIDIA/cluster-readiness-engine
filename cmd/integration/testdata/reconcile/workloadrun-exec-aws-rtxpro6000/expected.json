@@ -265,6 +265,13 @@
                               "vpc.amazonaws.com/efa": "4"
                             }
                           },
+                          "securityContext": {
+                            "capabilities": {
+                              "add": [
+                                "IPC_LOCK"
+                              ]
+                            }
+                          },
                           "volumeMounts": [
                             {
                               "mountPath": "/dev/shm",

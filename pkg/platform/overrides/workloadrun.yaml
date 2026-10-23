@@ -497,6 +497,29 @@
       equals: rtxpro6000
   dependencies:
 {{ lib "deps/aws-rtxpro6000-efa-resources.yaml" . | indent 2 }}
+  # Capability lists replace the base list: preserve SYS_CHROOT for MPI's sshd.
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      securityContext:
+                        capabilities:
+                          add:
+                          - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
 {{- if eq .FrameworkType "mpi" }}
   mpiArgs:
 {{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . | indent 4 }}
