@@ -29,6 +29,7 @@ metadata:
     jobset.sigs.k8s.io/replicatedjob-name: launcher
     jobset.sigs.k8s.io/replicatedjob-replicas: "1"
     jobset.sigs.k8s.io/restart-attempt: "0"
+    nvcre.nvidia.com/launcher: togetherai-h100-nccl-comm-5f6d4-job
   ownerReferences:
   - apiVersion: batch/v1
     blockOwnerDeletion: true
