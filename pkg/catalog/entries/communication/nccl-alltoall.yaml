@@ -259,7 +259,7 @@ overrides:
     platform:
       equals: aws
     gpuArchitecture:
-      notIn: [gb200, gb300, rtxpro6000]
+      notIn: [gb200, gb300, b300, rtxpro6000]
   dependencies:
 {{ lib "deps/aws-efa-runtime-patch-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -281,6 +281,35 @@ overrides:
             - "3600"
             - /opt/amazon/openmpi/bin/mpirun
             image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+            numNodes: {{ .NodesPerJob }}
+            numProcPerNode: {{ .GpusPerNode }}
+# --- AWS + B300 (EFA, 16 devices; see deps/aws-b300-efa-runtime-patch-comm.yaml) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  dependencies:
+{{ lib "deps/aws-b300-efa-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-h100-efa-env.yaml" . | toMpiArgs | indent 12 }}
+            - -x
+            - LD_LIBRARY_PATH
+            - /opt/nccl-tests/build/alltoall_perf
+            - -d
+            - uint8
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+            command:
+            - timeout
+            - "3600"
+            - /opt/amazon/openmpi/bin/mpirun
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3
             numNodes: {{ .NodesPerJob }}
             numProcPerNode: {{ .GpusPerNode }}
 # --- GCP + H100 (FastRak/TCPXO, image from the TCPXO plugin version) ---
