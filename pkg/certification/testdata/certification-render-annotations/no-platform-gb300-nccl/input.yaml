@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No --platform. The synthetic render node has no providerID, so override
+# matching detects onprem and the on-prem GB300 override applies. The
+# annotations are the only place the rendered output says so.
+platform: ""

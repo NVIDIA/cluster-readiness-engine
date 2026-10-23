@@ -84,7 +84,7 @@ NVCRE does not refresh an existing JobSet CRD schema. When Trainer or JobSet is 
 | `--skip-phases` | — | Comma-separated valid phases to skip (`deps`, `helm`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
 | `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |
-| `--rbac-scope` | — | Where the controller may write: `cluster` or `namespaced` (chart value `rbac.scope`, [ADR-092](../designs/092-per-namespace-controller-rbac.md)). Unset keeps the installed release's `rbac.scope`, or the chart default on a first install. Cannot be combined with values that set `rbac.scope` on the same run. See [RBAC requirements](../operations/deployment.md#rbac-requirements) |
+| `--rbac-scope` | — | Where the controller may write: `cluster` or `namespaced` (chart value `rbac.scope`, [ADR-092](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/092-per-namespace-controller-rbac.md)). Unset keeps the installed release's `rbac.scope`, or the chart default on a first install. Cannot be combined with values that set `rbac.scope` on the same run. See [RBAC requirements](../operations/deployment.md#rbac-requirements) |
 
 The value flags (`--values`, `--set`, `--set-json`, `--reset-values`) apply to the NVCRE release only, never to Kubeflow Trainer. Giving any of them with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
 
@@ -96,7 +96,7 @@ For a controller image on a private non-GHCR mirror, `--image-pull-secret` does 
 
 ### Values across runs
 
-`setup init` keeps the values set on the installed release ([ADR-098](../designs/098-setup-init-chart-values.md)). A value you set once, with `setup init` or with `helm upgrade`, survives every later `setup init`, including one with no flags. Each value is resolved in this order, lowest first:
+`setup init` keeps the values set on the installed release ([ADR-098](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/098-setup-init-chart-values.md)). A value you set once, with `setup init` or with `helm upgrade`, survives every later `setup init`, including one with no flags. Each value is resolved in this order, lowest first:
 
 > chart defaults → values set on the installed release → this run's `--values` files → this run's `--set-json` → this run's `--set` → values `setup init` sets itself
 
@@ -104,7 +104,7 @@ For a controller image on a private non-GHCR mirror, `--image-pull-secret` does 
 
 Exceptions and rules:
 
-- **The controller image is worked out on every run and never kept.** `manager.image.repository`, `.tag` and `.digest` are dropped from the kept values, so a digest pinned on an earlier run cannot hold the controller on an old image after an upgrade. Each run uses this run's values when they set any of those three keys (`setup init` then sets none, and the chart fills the rest: an unset tag is the chart's `appVersion`, so `--set manager.image.repository=<mirror>/manager` is enough for a mirror), else `--image`, else the CLI-version image. Other keys under `manager.image`, such as `pullPolicy`, are kept and do not choose the image.
+- **The controller image is worked out on every run and never kept.** `manager.image.repository`, `.tag` and `.digest` are dropped from the kept values, so a digest pinned on an earlier run cannot hold the controller on an old image after an upgrade. Each run uses this run's values when they set any of those three keys (`setup init` then sets none, and the chart fills the rest: an unset tag is the chart's `appVersion`, so `--set manager.image.repository=<mirror>/manager` is enough for a mirror), else `--image`, else the CLI-version image. Other keys under `manager.image`, such as `pullPolicy`, are kept and do not choose the image. With a kept `pullPolicy: Never`, preload each new controller image on every eligible node to avoid `ErrImageNeverPull`.
 - **A value with its own flag is set by the flag or by a value on one run, not both.** `--image` with values that set `manager.image.repository`, `.tag` or `.digest`, and `--rbac-scope` with a value for `rbac.scope`, are rejected before anything changes. A kept value never conflicts with a flag.
 - **`--image-pull-secret` adds to the pull-secret list.** It appends `nvcrectl-pull-secret` to `manager.imagePullSecrets` as resolved from the kept values and this run's values, unless it is already listed. It never overwrites an existing entry.
 - **`--reset-values` starts again from the chart defaults,** except `rbac.scope` and `rbac.runNamespaces`, which are still kept so a reset never widens a namespaced grant. Use it to restore a chart default that a kept value pins, or to drop a kept key a later chart no longer reads.
