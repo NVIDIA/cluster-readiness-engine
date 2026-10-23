@@ -115,3 +115,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 100 | [One Fragment Owns Each Variable in a Composed NCCL Profile](100-catalog-env-fragment-ownership.md) |
 | 101 | [Akamai LKE RTX PRO 6000 TCP Overrides](101-akamai-rtxpro6000-tcp.md) |
 | 102 | [Cache Only NVCRE's Own Pods](102-scoped-pod-cache.md) |
+| 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
