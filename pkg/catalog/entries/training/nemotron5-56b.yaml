@@ -143,16 +143,24 @@ dependencies:
                           how="Copied Megatron-LM from image at /opt/megatron-lm"
                         else
                           repo="{{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}https://github.com/NVIDIA/Megatron-LM.git{{ end }}"
-                          timeout 900 git clone --depth 1 -b core_v0.15.2 "$repo" "$tmp"
+                          rc=0
+                          timeout 900 git clone --depth 1 -b core_v0.15.2 "$repo" "$tmp" || rc=$?
+                          if [ "$rc" -eq 124 ]; then
+                            echo "Cloning Megatron-LM timed out after 900s"
+                            exit 1
+                          elif [ "$rc" -ne 0 ]; then
+                            echo "Cloning Megatron-LM failed (exit $rc)"
+                            exit 1
+                          fi
                           how="Cloned Megatron-LM from the configured source repo"
                         fi
-                        if mv -T "$tmp" "$src" 2>/dev/null; then
+                        if err=$(mv -T "$tmp" "$src" 2>&1); then
                           echo "$how"
                         elif [ -d "$src" ]; then
                           rm -rf "$tmp"
                           echo "Another pod prepared $src first; using it"
                         else
-                          echo "Failed to move $tmp to $src"
+                          echo "Failed to move $tmp to $src: $err"
                           exit 1
                         fi
                       fi
