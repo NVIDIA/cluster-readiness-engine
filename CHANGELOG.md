@@ -30,7 +30,8 @@ followed them.
 
 - `nvcrectl certification run --wait` fails when it cannot write the
   `--results-file` it was asked for, as `certification report` already did. It used
-  to print a warning and exit 0 with no file
+  to print a warning and exit 0 with no file. `certification run` also rejects
+  `--results-file` without `--wait`, which used to exit 0 having written nothing
   ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
 - The controller caches only the Pods that carry the `nvcre.nvidia.com/job` label,
   the workload pods NVCRE creates, instead of every Pod in the cluster. Its memory now

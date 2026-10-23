@@ -1294,23 +1294,27 @@ func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
 	require.NoError(t, validateReportPaths("", xmlPath))
 }
 
-// TestNewRunCommandJUnitRequiresWait checks flag validation before configuration loading.
+// TestNewRunCommandJUnitRequiresWait checks that both report file flags require --wait, before configuration loading.
 func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
-	const junitFlag = "--junit-file"
-	for _, waitFlag := range []string{"", "--wait=false"} {
-		cmd := newRunCommand("dev")
-		cmd.SilenceUsage, cmd.SilenceErrors = true, true
-		args := []string{testCategoryFlag, testCategoryNCCLAllReduce, junitFlag, "results.xml"}
-		if waitFlag != "" {
-			args = append(args, waitFlag)
+	const junitFlag, resultsFlag = "--junit-file", "--results-file"
+	for _, fileFlag := range []string{junitFlag, resultsFlag} {
+		for _, waitFlag := range []string{"", "--wait=false"} {
+			cmd := newRunCommand("dev")
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			args := []string{testCategoryFlag, testCategoryNCCLAllReduce, fileFlag, "results.out"}
+			if waitFlag != "" {
+				args = append(args, waitFlag)
+			}
+			cmd.SetArgs(args)
+			require.EqualError(t, cmd.Execute(), fileFlag+" requires --wait")
 		}
-		cmd.SetArgs(args)
-		require.EqualError(t, cmd.Execute(), "--junit-file requires --wait")
 	}
 	// Valid combinations reach the existing configuration loader unchanged.
 	for _, args := range [][]string{
 		{testWaitFlag, junitFlag, "results.xml"},
 		{testWaitFlag, junitFlag, ""},
+		{testWaitFlag, resultsFlag, "results.json"},
+		{resultsFlag, ""},
 		{},
 	} {
 		missing := filepath.Join(t.TempDir(), "missing-cert.yaml")

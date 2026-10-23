@@ -62,7 +62,9 @@ Testcase details hold the category's own JSON, not the whole report, so the
 file grows linearly with the category count. The certification-level case
 holds the full report once.
 
-The CLI rejects `--results-file` and `--junit-file` naming the same file before
+`certification run` rejects `--junit-file` or `--results-file` without
+`--wait`, since without it the command returns before any report exists. It
+rejects `--results-file` and `--junit-file` naming the same file before
 creating the Certification. It checks again after writing the JSON and before
 writing the XML, with `os.SameFile`, which catches two spellings of one file on
 a case-insensitive filesystem or through a symlinked directory.

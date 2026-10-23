@@ -873,8 +873,15 @@ Use --wait to watch for completion and print a report.
 Use --cleanup to teardown installed components after completion.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if junitFile != "" && !doWait {
-				return fmt.Errorf("--junit-file requires --wait")
+			// Without --wait the command returns before any report exists, so
+			// either file flag would exit 0 having written nothing.
+			if !doWait {
+				if junitFile != "" {
+					return fmt.Errorf("--junit-file requires --wait")
+				}
+				if resultsFile != "" {
+					return fmt.Errorf("--results-file requires --wait")
+				}
 			}
 			if err := validateReportPaths(resultsFile, junitFile); err != nil {
 				return err

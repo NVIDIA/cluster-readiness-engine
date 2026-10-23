@@ -115,7 +115,7 @@ nvcrectl certification report <name> [<name>...] [flags]
 | `--results-file` | — | Write the report as JSON to this file path |
 | `--junit-file` | — | Write the report as JUnit XML to this file path |
 
-`--results-file` and `--junit-file` must name different files. On both `run --wait` and `report`, failing to write a requested file fails the command, so a zero exit means every requested file was written.
+`--results-file` and `--junit-file` must name different files. `run` rejects either flag without `--wait`, and on both `run --wait` and `report`, failing to write a requested file fails the command, so a zero exit means every requested file was written.
 
 The JUnit file has one suite per certification and one test case per category. A succeeded category passes and a failed one is a `<failure>` with its reason. An unfinished category is an `<error>` while the certification runs, and a `<failure>` carrying the certification's own failure reason once it has failed. A suite gets one extra `certification` case only when its categories do not show the result: a certification that failed before any category did, or one still finalizing after every category finished. An `INCOMPLETE` run, which exits 0, has no failures or errors; its suite lists `excludedNodes` and `exclusionReason` under `<properties>`. See [ADR-108](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/108-junit-certification-reports.md).
 
