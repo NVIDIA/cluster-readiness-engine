@@ -342,13 +342,19 @@ duplicate-parameter handling.
 
 | Platform | GPU | Framework | Effect |
 |----------|-----|-----------|--------|
-| AWS | all | all | Removes the EFA OFI NCCL plugin (`rm -rf /opt/amazon`, `unset NCCL_NET_PLUGIN`) |
-| AWS | all | MPI | Forwards `-x NCCL_NET_PLUGIN=none` to workers via mpirun |
+| AWS | B300 | all | Requests 16 EFA devices per worker and supplies EFA transport settings; the caller's image must provide and select a compatible OFI NCCL plugin |
+| AWS | GB300 | all | Removes the EFA OFI NCCL plugin (`rm -rf /opt/amazon`, `unset NCCL_NET_PLUGIN`) |
+| AWS | GB300 | MPI | Forwards `-x NCCL_NET_PLUGIN=none` to workers via mpirun |
 | AWS | GB300 | MPI | Pins OpenMPI transport to TCP on `eth0` (`--mca pml ob1`, `--mca btl tcp,self`, …), disables UCC/HCOLL (SIGSEGV in `MPI_Init` on RoCE otherwise), and forwards the RoCE NCCL env (`NCCL_SOCKET_IFNAME=eth0`, `NCCL_IB_GID_INDEX=3`, …) via `mpirun -x` |
 | AWS | GB200/GB300 | all | ComputeDomain + DRA resource claims; GB300 adds the RoCE `ResourceClaimTemplate` |
 
 Use `nvcrectl workloadrun render --platform aws my-workload.yaml` to preview
 the exact rendered Workflow, including the platform-applied mpirun args.
+
+For AWS B300, see the [image and plugin requirements](../concepts/platform-detection.md#architecture-specific-resources).
+An image that installs the AWS plugin as `libnccl-net-ofi.so`, such as NGC PyTorch
+`26.04-py3`, needs `NCCL_NET_PLUGIN=ofi` in `spec.env`. A successful run alone does
+not prove EFA use; inspect the NCCL data-path logs for socket fallback.
 
 ## View results
 

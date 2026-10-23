@@ -15,6 +15,15 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- AWS B300 (`p6-b300.48xlarge`) NCCL catalog entries and WorkloadRun overrides request
+  16 `vpc.amazonaws.com/efa` devices per worker, matching the instance's 16 EFA-capable
+  secondary network cards. The NCCL entries previously fell into the AWS H100 block,
+  which requests 32 and cannot schedule on these nodes; they now pin a CUDA 13
+  nccl-tests image with native B300 code. `nvcrectl workflow render` gains an
+  `aws-b300` mock node.
+
 ### Changed
 
 - The controller caches only the Pods that carry the `nvcre.nvidia.com/job` label,
