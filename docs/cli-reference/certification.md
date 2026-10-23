@@ -97,6 +97,8 @@ nvcrectl certification render [flags] <cert-file>
 
 A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on the submitted workload object, on the Job template, and on the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
 
+Each rendered Workflow carries annotations that record how overrides were matched: `nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`, and `nvcrectl.nvidia.com/applied-overrides`, a JSON list of the overrides that matched, omitted when none did. Offline, the platform and architecture come from `--platform`, `--gpu-arch` and the target `nodeSelector`; without `--platform` the render detects `onprem` and applies the on-prem overrides, or `forge` when the `nodeSelector` carries a Forge marker (`nke.nvidia.com/site-name`, or a `kubernetes.io/hostname` containing `forge`), which `--platform onprem` does not override. Pass `--platform` to preview a cloud target. With `--dry-run` they are detected from the discovered nodes, and `--platform` still wins over the detected platform.
+
 ## nvcrectl certification report
 
 Fetches a completed Certification from the cluster and generates a pass/fail report. Multiple names can be provided to combine them into a single report.
