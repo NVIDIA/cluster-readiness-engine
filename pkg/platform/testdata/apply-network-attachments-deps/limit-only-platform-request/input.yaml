@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A platform fragment that sets only the limit (the request then defaults to
+# it). The sum starts from the limit and is written to both, so the request
+# still equals the limit, as an extended resource requires.
+networkAttachments:
+  - {network: nvcre/ib0, resourceName: nvidia.com/mlnxnics}
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    metadata:
+                      annotations:
+                        k8s.v1.cni.cncf.io/networks: ib-net
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
+                          resources:
+                            limits:
+                              nvidia.com/mlnxnics: "8"

@@ -1,0 +1,90 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "torch-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "annotations": {
+                          "k8s.v1.cni.cncf.io/networks": "r0"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "busybox",
+                            "name": "sidecar"
+                          },
+                          {
+                            "image": "pytorch",
+                            "name": "node",
+                            "resources": {
+                              "limits": {
+                                "example.com/r0": "1"
+                              },
+                              "requests": {
+                                "example.com/r0": "1"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "name": "worker",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "annotations": {
+                          "k8s.v1.cni.cncf.io/networks": "r0"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "pytorch",
+                            "name": "trainer",
+                            "resources": {
+                              "limits": {
+                                "example.com/r0": "1"
+                              },
+                              "requests": {
+                                "example.com/r0": "1"
+                              }
+                            }
+                          },
+                          {
+                            "image": "busybox",
+                            "name": "sidecar"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

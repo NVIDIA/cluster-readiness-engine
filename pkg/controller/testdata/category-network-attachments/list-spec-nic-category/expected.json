@@ -1,0 +1,19 @@
+[
+  {
+    "category": "communication/nccl-all-reduce",
+    "workflow": "c3-communication-nccl-all-4092a",
+    "networkAttachments": [
+      "nvcre/r0=nvidia.com/r0"
+    ]
+  },
+  {
+    "category": "communication/nccl-all-reduce",
+    "workflow": "c3-communication-nccl-all-a9e50",
+    "nicResourceName": "rdma/ib"
+  },
+  {
+    "category": "communication/nccl-all-reduce",
+    "workflow": "c3-communication-nccl-all-f491e",
+    "nicResourceName": "rdma/roce"
+  }
+]

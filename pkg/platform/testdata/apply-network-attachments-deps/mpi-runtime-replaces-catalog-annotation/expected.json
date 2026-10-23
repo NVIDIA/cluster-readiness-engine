@@ -1,0 +1,74 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "nccl-all-reduce-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "annotations": {
+                          "example.com/keep": "yes",
+                          "k8s.v1.cni.cncf.io/networks": "nvcre/r0,nvcre/r1,nvcre/r1"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nccl-tests",
+                            "name": "node",
+                            "resources": {
+                              "limits": {
+                                "nvidia.com/gpu": "8",
+                                "nvidia.com/r0": "1",
+                                "nvidia.com/r1": "2"
+                              },
+                              "requests": {
+                                "nvidia.com/gpu": "8",
+                                "nvidia.com/r0": "1",
+                                "nvidia.com/r1": "2"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "name": "launcher",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nccl-tests",
+                            "name": "node"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

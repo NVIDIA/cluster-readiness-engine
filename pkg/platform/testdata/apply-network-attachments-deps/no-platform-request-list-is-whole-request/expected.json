@@ -1,0 +1,54 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "nccl-all-reduce-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "annotations": {
+                          "k8s.v1.cni.cncf.io/networks": "nvcre/ib0"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nccl-tests",
+                            "name": "node",
+                            "resources": {
+                              "limits": {
+                                "nvidia.com/gpu": "8",
+                                "nvidia.com/mlnxnics": "1"
+                              },
+                              "requests": {
+                                "nvidia.com/gpu": "8",
+                                "nvidia.com/mlnxnics": "1"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

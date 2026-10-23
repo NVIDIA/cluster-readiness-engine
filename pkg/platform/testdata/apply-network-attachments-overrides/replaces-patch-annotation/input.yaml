@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No WorkloadRun platform override renders a networks annotation today. If one
+# did, the list replaces it, as it does on the runtime, so the order of the
+# pod's interfaces is the list's.
+networkAttachments:
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+  - {network: nvcre/r1, resourceName: nvidia.com/r1}
+overrides:
+  - dependencies:
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: wr-runtime
+        spec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        metadata:
+                          annotations:
+                            k8s.v1.cni.cncf.io/networks: sriov-net
+                            example.com/keep: "yes"
+                        spec:
+                          containers:
+                            - name: node
+                              image: nccl-tests

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# network=resource, namespaced or not, with one network listed twice for two
+# interfaces on one rail.
+networkAttachments: ["nvcre/r0=nvidia.com/r0", "r1=nvidia.com/r1", "r1=nvidia.com/r1"]

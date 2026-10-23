@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Azure's WorkloadRun override requests nvidia.com/mlnxnics: 8 on the worker,
+# and a second platform's patch requests it as a limit only. Each is raised by
+# the one entry on that resource, in limits and requests, so the override
+# leaves 9 whichever one matches. The entry on nvidia.com/r0 is not requested
+# by either patch and is not added to them. A launcher replicatedJob in a
+# patch is left alone.
+networkAttachments:
+  - {network: nvcre/ib-extra, resourceName: nvidia.com/mlnxnics}
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+overrides:
+  - dependencies:
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: wr-runtime
+        spec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: node
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: 8
+                                requests:
+                                  nvidia.com/mlnxnics: 8
+  - dependencies:
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: wr-runtime
+        spec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: node
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "4"
+                - name: launcher
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: node
+                              resources:
+                                limits:
+                                  nvidia.com/mlnxnics: "4"
