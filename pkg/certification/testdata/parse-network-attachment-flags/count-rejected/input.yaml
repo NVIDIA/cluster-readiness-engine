@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The old network=resource:count form is rejected with a pointer to repeating
+# the entry.
+networkAttachments: ["r0=nvidia.com/r0:2"]

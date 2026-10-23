@@ -1,0 +1,48 @@
+[
+  [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": true,
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "wr-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "name": "node",
+                              "resources": {
+                                "limits": {
+                                  "nvidia.com/mlnxnics": 8
+                                },
+                                "requests": {
+                                  "nvidia.com/mlnxnics": 8
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+]

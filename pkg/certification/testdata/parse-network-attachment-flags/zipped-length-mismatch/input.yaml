@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One network short: an error, never a silent truncation.
+multusNetworks: [r0, r1]
+extendedResources: [nvidia.com/r0, nvidia.com/r1, nvidia.com/r2]

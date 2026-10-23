@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Azure and TogetherAI render nvidia.com/mlnxnics: "8" on the worker. An entry
+# backed by that same resource adds an interface, so the request grows to 9 in
+# both limits and requests rather than dropping to 1. An entry on another
+# resource (nvidia.com/r0) is requested on its own, and nvidia.com/gpu is
+# untouched.
+networkAttachments:
+  - {network: nvcre/ib0, resourceName: nvidia.com/mlnxnics}
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    metadata:
+                      annotations:
+                        k8s.v1.cni.cncf.io/networks: ib-net
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
+                          resources:
+                            limits:
+                              nvidia.com/gpu: "8"
+                              nvidia.com/mlnxnics: "8"
+                            requests:
+                              nvidia.com/gpu: "8"
+                              nvidia.com/mlnxnics: "8"
