@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same resource listed twice on top of a platform request of 8 sums to 10.
+# The rendered quantities are JSON numbers here rather than strings, which the
+# helper accepts the same way.
+networkAttachments:
+  - {network: nvcre/ib0, resourceName: nvidia.com/mlnxnics}
+  - {network: nvcre/ib1, resourceName: nvidia.com/mlnxnics}
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    metadata:
+                      annotations:
+                        k8s.v1.cni.cncf.io/networks: ib-net
+                    spec:
+                      containers:
+                        - name: node
+                          image: nccl-tests
+                          resources:
+                            limits:
+                              nvidia.com/mlnxnics: 8
+                            requests:
+                              nvidia.com/mlnxnics: 8

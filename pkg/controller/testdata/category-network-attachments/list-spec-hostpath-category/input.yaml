@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reverse: the list at the spec level and hostPath in one category. That
+# category fails the check, which fails the whole Certification; one that sets
+# its own nicResourceName drops the inherited list in ResolveOptions and may
+# use hostPath.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: c3
+spec:
+  networkAttachments:
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+  categories:
+  - domain: communication
+    variant: nccl-all-reduce
+    options:
+      rdmaDeviceAccess: hostPath
+  - domain: communication
+    variant: nccl-all-gather
+    options:
+      rdmaDeviceAccess: hostPath
+      nicResourceName: rdma/ib

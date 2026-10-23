@@ -63,6 +63,13 @@ type BuildConfig struct {
 	// {{- if eq .RDMADeviceAccess "hostPath" }}.
 	RDMADeviceAccess string
 
+	// NetworkAttachments is the resolved networkAttachments list (issue
+	// #400). Build only uses it to suppress the catalog's own NIC wiring
+	// that an explicit list replaces (the OCI sriov-net attachments); the
+	// attachments themselves are written after overrides resolve, by
+	// platform.ApplyNetworkAttachmentsToDependencies.
+	NetworkAttachments []nvcrev1alpha1.NetworkAttachment
+
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order. The controller
 	// detects them from node allocatable; empty means the templates render

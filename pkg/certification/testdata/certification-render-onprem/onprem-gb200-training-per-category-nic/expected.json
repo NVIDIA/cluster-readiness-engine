@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "onprem-cert-training-nemo-bfd13",
+    "workflow": "onprem-cert-training-nemo-8e124",
     "targetNodeSelector": {
       "nvidia.com/gpu.product": "NVIDIA-GB200"
     },
