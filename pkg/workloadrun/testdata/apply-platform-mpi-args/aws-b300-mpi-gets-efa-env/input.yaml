@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI WorkloadRun on AWS B300 (EFA) must receive the -x'd EFA transport env
+# (FI_PROVIDER, FI_EFA_USE_DEVICE_RDMA, FI_EFA_FORK_SAFE) prepended ahead of the
+# user's own mpiArgs, the same selection H100 and GB200 get on AWS.
+run:
+  metadata:
+    name: wr-mpi-b300
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /usr/local/bin/all_reduce_perf_mpi
+        mpirunPath: /usr/local/mpi/bin/mpirun
+        mpiArgs: ["--tag-output"]
+platform: aws
+gpuArch: b300
+gpusPerNode: 8
+mlnxPerNode: 8
+enableMNNVL: false
+frameworkType: mpi
