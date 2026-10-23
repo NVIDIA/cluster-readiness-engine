@@ -149,20 +149,28 @@ the rejected AWS NCCL candidate compiled only for SM80–SM103 could not run
 these RTX GPUs (see ADR-103).
 The two-node validation used host driver 580.173.02 with the image's CUDA
 compatibility libraries. The catalog forwards PATH and LD_LIBRARY_PATH to
-SSH-launched MPI ranks so those image paths remain available. These overrides do not
-claim support for the NVSwitch loopback or Nemotron 5 56B entries.
+SSH-launched MPI ranks so those image paths remain available. The
+`nccl-loopback-nvswitch` entry has no dedicated AWS RTX override and renders
+its generic base configuration. On g7e, that configuration can exercise PCIe;
+success does not validate NVSwitch hardware. Use `nccl-loopback` for the
+validated EFA loopback path. Nemotron 5 56B has not been validated for this cell.
 
 The AWS RTX 8B runtime includes a guarded Megatron core_v0.15.2 DDP stream
 ordering backport after the clone init container. It prevents parameter-buffer
 copies racing initialization and optimizer setup; the original parameter
-integrity checks stay enabled. An unexpected training.py source hash fails
-startup instead of applying the patch to another version. Two-node validation
+integrity checks stay enabled. The patch writes only the inspected training.py
+version. Other sources are left unchanged when both DDP stream waits are already
+present as Python calls; otherwise the init container fails with an explanation.
+This restriction also applies to `sourceRepo` and pre-seeded workspaces (see
+[Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)). Two-node validation
 passes all sixteen ranks and ten training steps. This is a smoke test;
 training qualification and thresholds remain separate work. See ADR-103 for
 the upstream references, source guards and CUDA graph limitation.
 
 WorkloadRun applies the same four-device request and EFA transport settings
-while preserving the caller's workload image. The caller must supply an
+while preserving the caller's workload image. Its MPI, torch and exec workers
+request `IPC_LOCK` for RDMA memory registration; only MPI also requests
+`SYS_CHROOT` for sshd. The caller must supply an
 EFA-capable image with compatible CUDA, libfabric and aws-ofi-nccl libraries;
 the overlay does not install userspace libraries into arbitrary images. MPI
 transport settings reach worker ranks through `mpirun -x`, while torch and

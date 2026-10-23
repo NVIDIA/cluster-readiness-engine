@@ -423,6 +423,19 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
      sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
    ```
 
+For AWS RTX PRO 6000, the 8B category runs `megatron-ddp-stream-order` after
+source resolution, including for `sourceRepo`, in-image and pre-seeded sources.
+It applies the DDP stream-ordering backport only to the inspected
+`core_v0.15.2` training.py hash. An already-patched source is left unchanged;
+another revision is also left unchanged if it contains both
+`ddp_stream.wait_stream(current_stream)` and
+`current_stream.wait_stream(ddp_stream)` as Python calls. Sources without this
+recognized synchronization and without the inspected hash fail initialization.
+A different upstream fix may use another structure and is not automatically
+recognized. Inspect the `megatron-ddp-stream-order` init container's logs for
+the explanation if the training pod stalls at startup. Mirroring the pinned
+source does not require a different hash or bypass this check.
+
 The rest of the training path makes no other network calls: the training script builds the local checkout with `pip install -e . --no-deps --no-build-isolation` rather than installing from PyPI, and trains on mock data with a null tokenizer, so no dataset or tokenizer downloads occur.
 
 ## Health checks

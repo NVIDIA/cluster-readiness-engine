@@ -17,6 +17,10 @@
                   containers:
                   - name: node
                     image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
                   initContainers:
                   - name: megatron-clone
                     image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
@@ -28,6 +32,7 @@
                     command: [python3, -c]
                     args:
                     - |
+                      import ast
                       import hashlib
                       from pathlib import Path
 
@@ -39,7 +44,23 @@
                       if digest == patched:
                           print("Megatron DDP stream ordering already applied")
                       elif digest != original:
-                          raise RuntimeError("AWS RTX DDP stream patch requires the inspected core_v0.15.2 source")
+                          waits = {
+                              ast.unparse(node)
+                              for node in ast.walk(ast.parse(source))
+                              if isinstance(node, ast.Call)
+                              and isinstance(node.func, ast.Attribute)
+                              and node.func.attr == "wait_stream"
+                          }
+                          if {
+                              "ddp_stream.wait_stream(current_stream)",
+                              "current_stream.wait_stream(ddp_stream)",
+                          } <= waits:
+                              print("Megatron DDP stream waits already present; leaving source unchanged")
+                          else:
+                              raise RuntimeError(
+                                  "AWS RTX DDP stream patch requires the inspected core_v0.15.2 source "
+                                  "or both existing DDP stream waits"
+                              )
                       else:
                           before = "        with torch.cuda.stream(torch.cuda.Stream()):\n            model = [\n"
                           after = (

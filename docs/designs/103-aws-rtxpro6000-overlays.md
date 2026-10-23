@@ -80,6 +80,8 @@ After design approval and node inspection:
 - Add framework-appropriate overrides in
   `pkg/platform/overrides/workloadrun.yaml`, preserving a caller's workload
   image while documenting its required EFA/CUDA stack for EFA runs.
+  Request `IPC_LOCK` on each EFA worker; preserve MPI's `SYS_CHROOT` when
+  restating capabilities. Keep capabilities out of the shared resource fragment.
 - Add `pkg/render/nodes/aws-rtxpro6000.yaml` from observed node facts, plus
   code-grounded documentation of the supported cell and software requirements.
 - Add TestCaseParser unit/integration cases for eight GPUs, the observed
@@ -88,8 +90,9 @@ After design approval and node inspection:
 - In the AWS RTX 8B runtime only, order Megatron core_v0.15.2's DDP
   initialization stream before parameter copies and before optimizer setup.
   Apply this two-wait backport in an init container after cloning Megatron.
-  Guard the original and patched training.py with SHA-256 checks; fail on an
-  unexpected source version. Retain all parameter integrity assertions.
+  Guard changes to training.py with SHA-256 checks. Leave another source
+  unchanged only when both DDP stream waits are already present as Python
+  calls; otherwise fail initialization. Retain all parameter integrity assertions.
 - Identify golden changes before regeneration: new AWS cell expected output,
   catalog override counts, and offline available-combination/error lists from
   adding the mock node. Regenerate only deliberately changed expectations
@@ -108,6 +111,11 @@ The additional AWS cell can run 16 ranks over two eight-GPU nodes. No new
 public API, dependency upgrade or global RTX default is intended. Supporting
 this cell requires a compatible image and verified host stack; it must not
 be presented as production-qualified solely from offline goldens.
+
+The `nccl-loopback-nvswitch` entry has no dedicated AWS RTX overlay and
+renders its generic base configuration. On g7e it can exercise PCIe, so a
+passing result does not establish NVSwitch support. The validated EFA
+loopback is `nccl-loopback`.
 
 ## Alternatives considered
 
@@ -185,8 +193,12 @@ matches upstream issue #2044 and the synchronization fixes discussed in
 PR #2852. The AWS RTX runtime backports two stream dependencies: the DDP
 stream waits for the current stream before construction, and the current
 stream waits for DDP construction before continuing. The source and result
-hashes pin the transformation to the inspected version; other clouds and
-caller-provided WorkloadRun code receive no source patch.
+hashes pin the transformation to the inspected version. An alternative
+source containing both explicit stream waits is recognized from Python
+calls and left unchanged, including for mirrored or pre-seeded workspaces.
+Other source revisions require inspection; different upstream fixes are not
+assumed equivalent. Other clouds and caller-provided WorkloadRun code receive
+no source patch.
 
 With these dependencies, all sixteen ranks retain identical, correct
 normalization weights and pass the original parameter-hash assertion. The

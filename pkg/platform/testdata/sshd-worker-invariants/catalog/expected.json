@@ -532,6 +532,16 @@
       ]
     },
     {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"rtxpro6000\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
       "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3",
       "replicatedJob": "node",
       "container": "node",
@@ -608,6 +618,16 @@
       "capabilitiesAdded": [
         "NET_ADMIN",
         "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"rtxpro6000\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
       ]
     }
   ],
