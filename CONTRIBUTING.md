@@ -197,6 +197,14 @@ make ci
 
 The target chains `make verify` (generated files, `go.mod` tidiness, license headers), `make lint`, `make build`, and `make test`. Run it before every push. It needs no cluster and no container runtime.
 
+CI also runs CRD Compatibility, which installs every chart CRD on each Kubernetes minor from `MIN_K8S_VERSION` up to the version `make test` uses ([ADR-105](docs/designs/105-kubernetes-floor-and-crd-cel-cost-budget.md)). `make ci` does not run it, because `make test` installs the CRDs on one Kubernetes version only:
+
+```bash
+make test-crd-compat
+```
+
+Its first run downloads one envtest bundle per minor; after that it takes about a minute. Run it whenever you change anything under `api/`. An older API server can refuse a CRD that the version `make test` uses accepts, because the cost it estimates for a CEL validation rule differs between minors.
+
 UAT is the fifth check and `make ci` does not run it:
 
 ```bash

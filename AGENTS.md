@@ -8,6 +8,7 @@ This file provides guidance to AI coding agents (Claude Code and others) when wo
 make manifests generate   # MUST run after editing *_types.go or kubebuilder markers
 make test                 # Unit tests + integration tests (requires envtest)
 make test-integration     # Integration tests only (envtest + golden files)
+make test-crd-compat      # Install every chart CRD on each Kubernetes minor from MIN_K8S_VERSION up
 make lint                 # golangci-lint
 make lint-fix             # Auto-fix lint issues
 make build                # Build binary to bin/manager
@@ -143,6 +144,7 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
+- **No CEL on `resource.Quantity` or other int-or-string fields**: API servers through 1.33 cost any CEL rule on an int-or-string value as a 3 MiB string whatever its `maxLength`, so a rule nested under a list goes over budget and the API server refuses the whole CRD (ADR-105). Validate those fields with OpenAPI markers (`Pattern`) or in the controller. Run `make test-crd-compat` after any CRD schema change; `make test` only installs the CRDs on one Kubernetes version.
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
 - **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.

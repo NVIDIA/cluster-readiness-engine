@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Twelve violations, six in each category: the message lists the first ten
+# and counts the rest. It becomes the Failed condition message on the
+# cluster, which is capped at 32768 bytes, so it must stay bounded however
+# many categories are wrong (ADR-105).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits: {cpu: "-2", memory: "-2Gi"}
+          requests: {cpu: "-1", memory: "-1Gi"}
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        resources:
+          limits: {cpu: "-2", memory: "-2Gi"}
+          requests: {cpu: "-1", memory: "-1Gi"}
