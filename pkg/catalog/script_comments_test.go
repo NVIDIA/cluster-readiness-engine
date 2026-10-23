@@ -21,11 +21,12 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// shellAssignment matches an environment-style shell assignment anywhere in a
-// line. A whitespace trim that eats the newline after a comment leaves the
+// shellAssignment matches a shell assignment to any variable name anywhere in
+// a line. A whitespace trim that eats the newline after a comment leaves the
 // next line's assignment at the end of the comment, as in
-// "# ... at render time.TOTAL_GPUS=8".
-var shellAssignment = regexp.MustCompile(`[A-Z_][A-Z0-9_]*=`)
+// "# ... at render time.TOTAL_GPUS=8". Lowercase names count too: the
+// nemotron5 init container script assigns src=, tmp= and repo=.
+var shellAssignment = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*=`)
 
 type scriptCommentsInput struct {
 	GPUProducts      []string `json:"gpuProducts"`
