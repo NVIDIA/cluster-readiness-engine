@@ -29,7 +29,7 @@ This lookup is skipped entirely when every node already carries the label (every
 
 Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read `ResourceSlice`s from, so on a label-less platform like Nscale, offline render requires `--gpu-arch` to resolve architecture at all. `--gpu-arch` cannot be combined with `--dry-run`, which discovers real nodes and runs the same fallback the controllers do.
 
-The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `nvcrectl workflow render` (client-side), these values are also written as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
+The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. `nvcrectl workflow render` and `nvcrectl certification render`, offline or with `--dry-run`, also write these values as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on each rendered Workflow for inspection. An offline `certification render` detects from a synthetic node built from `--platform`, `--gpu-arch` and the target `nodeSelector`. Without `--platform` that node has no `providerID`, so it detects as `onprem` and the on-prem overrides apply, unless the `nodeSelector` carries a Forge marker (`nke.nvidia.com/site-name`, or a `kubernetes.io/hostname` containing `forge`): the node then detects as `forge`, with or without `--platform onprem`.
 
 ## Override matching
 
@@ -150,7 +150,7 @@ The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
 `NCCL_IB_DISABLE=1`. The PyTorch image includes an external RDMA plugin that
 otherwise attempts to initialize even on this TCP-only network.
 
-The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
+The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. `nvcrectl workflow render` and `nvcrectl certification render` also write the same information to the `nvcrectl.nvidia.com/applied-overrides` annotation on each rendered Workflow, and omit the annotation when no override matched.
 
 ### Akamai RTX PRO 6000 TCP
 
