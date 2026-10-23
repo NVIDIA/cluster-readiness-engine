@@ -545,9 +545,6 @@ func TestChartImagePullSecretsDefaultEmpty(t *testing.T) {
 	require.Equal(t, []any{}, list)
 }
 
-// managerContainerName is the controller container in the chart's Deployment.
-const managerContainerName = valuesKeyManager
-
 // rbacKindRoleBinding is the kind of the chart's per-namespace run binding.
 const rbacKindRoleBinding = "RoleBinding"
 
