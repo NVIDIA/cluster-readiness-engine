@@ -15,8 +15,24 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- Native JUnit XML certification reports through `--junit-file` on
+  `nvcrectl certification run --wait` and `certification report`. Each category is
+  a test case that reports its own outcome, and the XML agrees with the exit code:
+  an `INCOMPLETE` run has no failures or errors and lists its excluded nodes as suite
+  properties. `results.json` gains `failureReason`, the Certification's own Failed
+  condition message, which also explains a certification that failed before any
+  category did, and a per-category `runtimeSeconds`
+  ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
+
 ### Changed
 
+- `nvcrectl certification run --wait` fails when it cannot write the
+  `--results-file` it was asked for, as `certification report` already did. It used
+  to print a warning and exit 0 with no file. `certification run` also rejects
+  `--results-file` without `--wait`, which used to exit 0 having written nothing
+  ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
 - The controller caches only the Pods that carry the `nvcre.nvidia.com/job` label,
   the workload pods NVCRE creates, instead of every Pod in the cluster. Its memory now
   follows the GPU node count and NVCRE's own workload pods, from runs in progress and

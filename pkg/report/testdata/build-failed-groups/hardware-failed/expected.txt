@@ -46,6 +46,7 @@
       "status": "Failed",
       "failureReason": "1 groups failed across 1 iterations",
       "runtime": "10m 0s",
+      "runtimeSeconds": 600,
       "testScale": "full-scale",
       "nodesPerJob": 2,
       "jobs": 1,
@@ -63,5 +64,6 @@
     }
   ],
   "failedNodes": [],
-  "result": "FAILED"
+  "result": "FAILED",
+  "failureReason": "1 of 1 certification categories failed"
 }

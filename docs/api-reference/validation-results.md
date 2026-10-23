@@ -619,6 +619,7 @@ Top-level fields:
 | `failedNodes` | []string | Deduped union of failed node names across all categories |
 | `failedNodeDetails` | []object | The per-node reason and message behind those names: `name`, `reason`, and optional `message` (omitted when no node failed) |
 | `result` | string | `PASSED`, `INCOMPLETE`, `FAILED`, or `RUNNING` |
+| `failureReason` | string | The Certification's own `Failed` condition message, set only when `result` is `FAILED`. It is the only record of why the controller failed the certification itself, for example a Workflow it could not create or a category that found no matching nodes (omitted when empty) |
 | `nodeResults` | []object | Per-node pass/fail entries: `name`, `group`, `rack` (optional), `status` (`Passed` or `Failed`). Written for WorkloadRun reports only |
 
 `failedNodes` stays a list of names so existing consumers keep working;
@@ -636,6 +637,7 @@ Each entry in `categories`:
 | `status` | string | Category status (`Succeeded`, `Failed`, ...) |
 | `failureReason` | string | Populated from the Workflow `Failed` condition message (omitted when empty) |
 | `runtime` | string | Total runtime across all iterations |
+| `runtimeSeconds` | int | `runtime` in whole seconds. `runtime` drops the seconds past an hour, so read this to compute with the duration (omitted when zero) |
 | `testScale` | string | Test scale, when set |
 | `nodesPerJob` | int | Nodes per job group |
 | `jobs` | int | Number of jobs run |

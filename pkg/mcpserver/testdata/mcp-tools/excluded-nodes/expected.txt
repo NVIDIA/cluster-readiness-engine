@@ -35,6 +35,7 @@
         "jobs": 1,
         "nodesPerJob": 2,
         "runtime": "10m 0s",
+        "runtimeSeconds": 600,
         "status": "Succeeded",
         "testScale": "full-scale",
         "variant": "nccl-all-reduce"

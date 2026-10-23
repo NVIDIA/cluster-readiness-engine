@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"os"
 	"path/filepath"
@@ -47,6 +48,7 @@ const (
 	testCertNamespace         = "test-ns"
 	testStartupStallFlag      = "--startup-stall-timeout-seconds"
 	testCertFileFlag          = "--cert-file"
+	testWaitFlag              = "--wait"
 )
 
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
@@ -827,6 +829,7 @@ func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 	assert.True(t, wc.sawLiveDeadline)
 }
 
+// TestExecuteCertificationRunReportsBeforeCleanup checks that partial reports survive certification cleanup.
 func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{Name: testCertNamespace}
 	wc := newCertificationFakeClient(t, namespace)
@@ -839,10 +842,11 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 		},
 	}
 	var out bytes.Buffer
+	junitFile := filepath.Join(t.TempDir(), "results.xml")
 	cfg := &certRunConfig{
 		cert: cert, namespace: namespace.Name,
 		doWait: true, doCleanup: true, timeout: 0,
-		out: &out, watchClient: wc,
+		out: &out, watchClient: wc, junitFile: junitFile,
 	}
 
 	err := executeCertificationRun(cfg)
@@ -861,6 +865,31 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 
 	gotNamespace := &corev1.Namespace{}
 	require.NoError(t, wc.Get(context.Background(), client.ObjectKeyFromObject(namespace), gotNamespace))
+
+	// The partial native report survives deletion and cannot appear as a pass.
+	data, err := os.ReadFile(junitFile)
+	require.NoError(t, err)
+	var junit struct {
+		Suites []struct {
+			Errors int `xml:"errors,attr"`
+		} `xml:"testsuite"`
+	}
+	require.NoError(t, xml.Unmarshal(data, &junit))
+	require.Len(t, junit.Suites, 1)
+	assert.Positive(t, junit.Suites[0].Errors)
+}
+
+// TestFinishCertificationWaitJUnitWriteError checks that JUnit write failures propagate to the caller.
+func TestFinishCertificationWaitJUnitWriteError(t *testing.T) {
+	cert := &nvcrev1alpha1.Certification{Name: "test-cert", Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert, namespace: cert.Namespace, out: &out,
+		junitFile: filepath.Join(t.TempDir(), "missing", "results.xml"),
+	}
+	err := finishCertificationWait(context.Background(), wc, cfg, cert, nil)
+	require.ErrorContains(t, err, "write JUnit file")
 }
 
 func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
@@ -1256,4 +1285,136 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 		assert.Nil(t, cert.Spec.NodesPerJob)
 	})
 
+}
+
+// TestReportPathsRejectOverwrite checks that both report paths reject collisions without modifying existing data.
+func TestReportPathsRejectOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report")
+	require.NoError(t, os.WriteFile(path, []byte("existing report"), 0600))
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	relative, err := filepath.Rel(cwd, path)
+	require.NoError(t, err)
+	for _, junitPath := range []string{path, relative} {
+		require.ErrorContains(t, handleReport(context.Background(), nil, nil, path, junitPath, nil, &bytes.Buffer{}), "must use different paths")
+		require.ErrorContains(t, runReport(nil, nil, path, junitPath), "must use different paths")
+		data, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		assert.Equal(t, "existing report", string(data))
+	}
+}
+
+// TestReportPathsPreserveDistinctArtifacts checks that separate JSON and XML destinations both receive valid reports.
+func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath, xmlPath := filepath.Join(dir, "report.json"), filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	require.NoError(t, handleReport(context.Background(), wc, cert, jsonPath, xmlPath, nil, &bytes.Buffer{}))
+	jsonData, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	assert.True(t, json.Valid(jsonData))
+	xmlData, err := os.ReadFile(xmlPath)
+	require.NoError(t, err)
+	var output any
+	require.NoError(t, xml.Unmarshal(xmlData, &output))
+	require.NoError(t, validateReportPaths(jsonPath, ""))
+	require.NoError(t, validateReportPaths("", xmlPath))
+}
+
+// TestNewRunCommandJUnitRequiresWait checks that both report file flags require --wait, before configuration loading.
+func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
+	const junitFlag, resultsFlag = "--junit-file", "--results-file"
+	for _, fileFlag := range []string{junitFlag, resultsFlag} {
+		for _, waitFlag := range []string{"", "--wait=false"} {
+			cmd := newRunCommand("dev")
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			args := []string{testCategoryFlag, testCategoryNCCLAllReduce, fileFlag, "results.out"}
+			if waitFlag != "" {
+				args = append(args, waitFlag)
+			}
+			cmd.SetArgs(args)
+			require.EqualError(t, cmd.Execute(), fileFlag+" requires --wait")
+		}
+	}
+	// Valid combinations reach the existing configuration loader unchanged.
+	for _, args := range [][]string{
+		{testWaitFlag, junitFlag, "results.xml"},
+		{testWaitFlag, junitFlag, ""},
+		{testWaitFlag, resultsFlag, "results.json"},
+		{resultsFlag, ""},
+		{},
+	} {
+		missing := filepath.Join(t.TempDir(), "missing-cert.yaml")
+		cmd := newRunCommand("dev")
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetArgs(append(args, testCertFileFlag, missing))
+		err := cmd.Execute()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), missing)
+		assert.NotContains(t, err.Error(), "requires --wait")
+	}
+}
+
+// TestFinishCertificationWaitReportErrorGuidance checks timeout guidance and preservation of both errors.
+func TestFinishCertificationWaitReportErrorGuidance(t *testing.T) {
+	for _, timedOut := range []bool{false, true} {
+		cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+		wc := newCertificationFakeClient(t, cert)
+		var out bytes.Buffer
+		cfg := &certRunConfig{cert: cert, namespace: cert.Namespace, out: &out,
+			junitFile: filepath.Join(t.TempDir(), "missing", "results.xml")}
+		waitErr := errors.New("watch disconnected")
+		if timedOut {
+			waitErr = &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+		}
+		err := finishCertificationWait(context.Background(), wc, cfg, cert, waitErr)
+		require.ErrorIs(t, err, waitErr)
+		var pathErr *os.PathError
+		require.ErrorAs(t, err, &pathErr)
+		assert.Equal(t, timedOut, strings.Contains(out.String(), "Monitor its progress:"))
+		assert.Equal(t, timedOut, strings.Contains(out.String(), "Stop it:"))
+	}
+}
+
+// TestReportPathsRejectAliasedFile checks that two spellings of one file are
+// caught after the JSON write, before the XML overwrites it.
+func TestReportPathsRejectAliasedFile(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(dir, link))
+	jsonPath, junitPath := filepath.Join(dir, "report"), filepath.Join(link, "report")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	require.ErrorIs(t, err, errSameReportPaths)
+	data, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	assert.True(t, json.Valid(data), "JSON report must survive")
+}
+
+// TestNewRunCommandRejectsSameReportPaths checks that a path collision fails
+// before the certification is created, not after it has run.
+func TestNewRunCommandRejectsSameReportPaths(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-cert.yaml")
+	cmd := newRunCommand("dev")
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	cmd.SetArgs([]string{testWaitFlag, testCertFileFlag, missing,
+		"--results-file", "out/report", "--junit-file", "out/report"})
+	require.ErrorIs(t, cmd.Execute(), errSameReportPaths)
+}
+
+// TestHandleReportJSONWriteErrorFails checks that a failed --results-file write
+// fails the command, as a failed --junit-file write does, without skipping the
+// JUnit file.
+func TestHandleReportJSONWriteErrorFails(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "missing", "report.json")
+	junitPath := filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	require.ErrorContains(t, err, "write results file")
+	_, statErr := os.Stat(junitPath)
+	require.NoError(t, statErr, "JUnit file must still be written")
 }
