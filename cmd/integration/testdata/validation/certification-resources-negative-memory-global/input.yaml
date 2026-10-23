@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Negative spec-level memory request with no limit set: rejected at
-# admission by the per-field non-negative Pattern (ADR-101).
+# admission by the per-field non-negative Pattern (ADR-105).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

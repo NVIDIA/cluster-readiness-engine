@@ -107,7 +107,7 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 	go test ./cmd/integration/ -v -timeout 600s -count=1
 
 # Every minor, not only the oldest: the API server's CEL cost estimator differs
-# between minors, and a rule can fit on 1.29 yet be refused by 1.30 (ADR-101).
+# between minors, and a rule can fit on 1.29 yet be refused by 1.30 (ADR-105).
 .PHONY: test-crd-compat
 test-crd-compat: envtest ## Install every chart CRD on each Kubernetes minor from MIN_K8S_VERSION to ENVTEST_K8S_VERSION.
 	@set -e; \
@@ -432,7 +432,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
 # MIN_K8S_VERSION is the oldest Kubernetes minor NVCRE supports, the one
 # docs/getting-started/install.md states (test/crdcompat fails if they differ).
 # test-crd-compat installs every chart CRD on each minor from here up to
-# ENVTEST_K8S_VERSION (ADR-101).
+# ENVTEST_K8S_VERSION (ADR-105).
 MIN_K8S_VERSION ?= 1.29
 
 GOLANGCI_LINT_VERSION ?= v2.14.0

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Memory request above the memory limit: accepted at admission, rejected by
-# the controller (ADR-101). Fails if a CEL rule comparing quantities returns.
+# the controller (ADR-105). Fails if a CEL rule comparing quantities returns.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

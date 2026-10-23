@@ -3,7 +3,7 @@
 
 # A per-category CPU request above its limit. Admission accepts it: the CRD
 # cannot compare the two without a CEL rule that Kubernetes 1.29 through 1.33
-# refuse to install (ADR-101). The controller must fail the Certification with
+# refuse to install (ADR-105). The controller must fail the Certification with
 # InvalidResources before it creates any Workflow.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

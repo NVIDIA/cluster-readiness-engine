@@ -3,7 +3,7 @@
 
 # CPU request above the CPU limit: accepted at admission. No CEL rule may
 # compare quantities, because Kubernetes 1.29 through 1.33 refuse the CRD over
-# it (ADR-101); the controller rejects the pair instead, see
+# it (ADR-105); the controller rejects the pair instead, see
 # reconcile/certification-invalid-resources. Fails if a CEL rule returns.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

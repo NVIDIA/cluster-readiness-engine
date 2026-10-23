@@ -713,7 +713,7 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 
 	// And reject the resources the controller would fail the Certification
 	// over: a negative quantity, or a request above its limit. No CEL rule
-	// covers them (ADR-101), so without this a render looks fine and the
+	// covers them (ADR-105), so without this a render looks fine and the
 	// cluster refuses the run only after it is submitted.
 	if err := controller.ValidateCertificationResources(&cert.Spec); err != nil {
 		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)

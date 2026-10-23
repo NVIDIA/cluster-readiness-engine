@@ -3,7 +3,7 @@
 
 # The largest exponents the Pattern allows, two digits either way, are
 # accepted: ParseQuantity decodes both to the value written, at once
-# (ADR-101). Submitted raw, like the rejected boundary cases.
+# (ADR-105). Submitted raw, like the rejected boundary cases.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

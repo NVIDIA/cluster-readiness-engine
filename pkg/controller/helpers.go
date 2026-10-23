@@ -84,7 +84,7 @@ const (
 
 	// ReasonInvalidResources marks a Certification whose resources the CRD
 	// schema cannot reject on every supported API server: a request above its
-	// limit, or a negative integer quantity (ADR-101). Set before any Workflow
+	// limit, or a negative integer quantity (ADR-105). Set before any Workflow
 	// is created, like ReasonCategoryNotFound.
 	ReasonInvalidResources = "InvalidResources"
 

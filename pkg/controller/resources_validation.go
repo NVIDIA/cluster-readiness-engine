@@ -17,7 +17,7 @@ import (
 //
 // These were CEL rules once, and API servers through 1.33 refused the whole
 // CRD over them, because they cost any CEL on an int-or-string value as a
-// 3 MiB string (ADR-101). The schema's Pattern still rejects a negative
+// 3 MiB string (ADR-105). The schema's Pattern still rejects a negative
 // string at admission; a negative integer and the request/limit comparison
 // are only caught here. The controller runs this before it creates any
 // Workflow and nvcrectl runs it when it reads a certification file, so both

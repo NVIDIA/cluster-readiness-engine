@@ -3,7 +3,7 @@
 
 # Quantities are int-or-string. Submitted raw, so the API server receives
 # the integers 128 and 256 rather than strings: the inverted pair is
-# accepted at admission and rejected by the controller (ADR-101).
+# accepted at admission and rejected by the controller (ADR-105).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

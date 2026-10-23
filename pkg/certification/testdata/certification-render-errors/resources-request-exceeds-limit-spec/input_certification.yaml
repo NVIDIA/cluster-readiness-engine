@@ -3,7 +3,7 @@
 
 # A spec-level CPU request above its limit. The CRD cannot reject the pair
 # without a CEL rule that Kubernetes 1.29 through 1.33 refuse to install
-# (ADR-101), so the offline render refuses it instead of rendering a run the
+# (ADR-105), so the offline render refuses it instead of rendering a run the
 # controller would fail.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

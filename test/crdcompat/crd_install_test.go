@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package crdcompat checks that every CRD the chart ships installs on every
-// Kubernetes minor NVCRE supports (ADR-101).
+// Kubernetes minor NVCRE supports (ADR-105).
 //
 // The API server estimates the cost of each CEL validation rule when a CRD is
 // created and refuses the whole CRD when a rule is over budget, and the

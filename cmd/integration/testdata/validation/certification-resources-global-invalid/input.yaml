@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The spec-level (global) resources block behaves the same: an inverted pair
-# is accepted at admission and rejected by the controller (ADR-101).
+# is accepted at admission and rejected by the controller (ADR-105).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

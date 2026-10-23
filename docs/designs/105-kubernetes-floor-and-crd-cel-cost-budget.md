@@ -1,4 +1,4 @@
-# ADR-101: Every CRD Installs on Every Supported Kubernetes Minor, and No CEL Reads a Quantity
+# ADR-105: Every CRD Installs on Every Supported Kubernetes Minor, and No CEL Reads a Quantity
 
 > **Status:** Accepted
 

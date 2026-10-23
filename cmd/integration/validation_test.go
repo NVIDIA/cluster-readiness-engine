@@ -39,7 +39,7 @@ type validationCause struct {
 // string is rejected at admission by pattern, and that an override whose
 // request exceeds its matching limit is accepted there: no CEL rule may read a
 // quantity, because Kubernetes 1.29 through 1.33 refuse the CRD over it, so
-// the controller rejects the pair instead (ADR-101, issue #83). The maxBytes
+// the controller rejects the pair instead (ADR-105, issue #83). The maxBytes
 // cases check that documented values pass the pattern and invalid units are
 // rejected (issue #283). The gangScheduler cases check that the field stays
 // optional, that a scheduler name is mandatory once the field is set, and that
@@ -124,7 +124,7 @@ func TestCertificationValidation(t *testing.T) {
 // written. input.yaml goes through the typed Certification first, which turns
 // a bare integer quantity into a string and refuses a quantity Go cannot
 // parse before it ever reaches the API server; the cases that test what
-// admission alone stops need neither to happen (ADR-101).
+// admission alone stops need neither to happen (ADR-105).
 const rawInputFile = "input_raw.yaml"
 
 // validationInput returns the one object a validation case submits: the

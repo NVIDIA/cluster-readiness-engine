@@ -187,7 +187,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 		}
 	}
 
-	// Fail fast on resources the CRD schema cannot reject (ADR-101), before any
+	// Fail fast on resources the CRD schema cannot reject (ADR-105), before any
 	// category runs. Terminal like an unknown category, since the spec is
 	// immutable, so return only a failed status write: that is retried, and a
 	// recorded Failed needs no requeue.

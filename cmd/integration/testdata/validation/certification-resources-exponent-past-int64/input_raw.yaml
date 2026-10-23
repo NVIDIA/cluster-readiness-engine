@@ -4,7 +4,7 @@
 # An exponent past int64 matches a pattern with an unbounded exponent, but
 # ParseQuantity refuses it, so the object would break every typed List of
 # Certifications in its namespace. The two-digit cap rejects it at admission
-# (ADR-101). Submitted raw: the typed decode would refuse it before it reached
+# (ADR-105). Submitted raw: the typed decode would refuse it before it reached
 # the API server.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

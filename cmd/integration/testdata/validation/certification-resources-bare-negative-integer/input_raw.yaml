@@ -3,7 +3,7 @@
 
 # An unquoted negative integer is accepted at admission: the Pattern binds
 # strings only, controller-gen cannot emit a minimum on a quantity, and no CEL
-# rule may read one (ADR-101). The controller rejects it with InvalidResources.
+# rule may read one (ADR-105). The controller rejects it with InvalidResources.
 # Submitted raw, so the API server receives the integer -1, not the string.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

@@ -4,7 +4,7 @@
 # A fractional exponent matches the controller-gen Quantity pattern but
 # resource.ParseQuantity refuses it, so a Certification holding it would
 # break every typed List in its namespace, the controller informer included.
-# The Pattern must reject it at admission (ADR-101). Submitted raw: the typed
+# The Pattern must reject it at admission (ADR-105). Submitted raw: the typed
 # decode would refuse it before it reached the API server.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification

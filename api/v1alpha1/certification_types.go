@@ -109,7 +109,7 @@ type CertificationCategoryStatus struct {
 // CategoryResourceList holds CPU and memory quantities for one side
 // (limits or requests) of a training container's resources.
 //
-// No CEL rule may read these fields (ADR-101). They are int-or-string, and
+// No CEL rule may read these fields (ADR-105). They are int-or-string, and
 // API servers through 1.33 cost any CEL on such a value as a 3 MiB string
 // whatever its maxLength, which puts a rule nested under categories over the
 // validation budget and makes the API server refuse the whole CRD. The
@@ -160,7 +160,7 @@ type CategoryResourceList struct {
 // exceed the limit. The controller fails the Certification with reason
 // InvalidResources before it creates any Workflow, and nvcrectl refuses the
 // file before submitting it; the check is not a CEL rule because no CEL rule
-// may read a quantity (ADR-101). A request set without its matching limit is
+// may read a quantity (ADR-105). A request set without its matching limit is
 // only checked against the resolved default at pod admission, so raise the
 // limit alongside the request when overriding upward.
 type CategoryResources struct {
@@ -586,7 +586,7 @@ type CertificationSpec struct {
 	// The MaxItems bound keeps the CEL rules nested under each category (the
 	// env and workload label rules) within the API server's validation cost
 	// budget, which charges each such rule once per possible item. Every chart
-	// CRD must install on every supported Kubernetes minor (ADR-101).
+	// CRD must install on every supported Kubernetes minor (ADR-105).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
