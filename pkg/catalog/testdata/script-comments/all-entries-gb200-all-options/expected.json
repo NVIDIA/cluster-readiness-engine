@@ -1,0 +1,41 @@
+{
+  "entries": [
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-GB200-NVL72",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
+      "scripts": [
+        ".dependencies[].data.train.sh"
+      ]
+    }
+  ],
+  "violations": []
+}

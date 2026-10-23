@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An architecture outside the GB200/GB300 family on AWS: the annotations must
+# report aws and l20, and only the generic AWS block (gpuArchitecture notIn
+# [gb200,gb300]) matches. Before offline render wrote these annotations, this
+# render printed none of them.
+platform: aws
