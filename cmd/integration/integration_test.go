@@ -55,7 +55,7 @@ import (
 
 const metricLabelNamespace = "namespace"
 
-const nvcreCRDDirectory = "../../helm/cluster-readiness-engine/crds"
+const nvcreCRDDirectory = "../../helm/cluster-readiness-engine/charts/crds/crds"
 
 const eventCaseTimeout = 3 * time.Minute
 

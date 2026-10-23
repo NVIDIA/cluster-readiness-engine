@@ -1,0 +1,5 @@
+# crds.enabled=false kept from an earlier run: no flag on this run, and the
+# installed release's value still tells setup init to leave the CRDs alone.
+release:
+  crds:
+    enabled: false

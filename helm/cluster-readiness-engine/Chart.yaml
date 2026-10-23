@@ -7,3 +7,9 @@ description: NVCRE GPU cluster burn-in certification controller
 type: application
 version: 0.0.0
 appVersion: "dev"
+# The CRDs live in a local subchart so crds.enabled=false can turn them off in
+# every tool that renders the chart (ADR-107).
+dependencies:
+  - name: crds
+    version: 0.0.0
+    condition: crds.enabled

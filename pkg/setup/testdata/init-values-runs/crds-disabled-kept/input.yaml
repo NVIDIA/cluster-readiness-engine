@@ -1,0 +1,10 @@
+# crds.enabled=false kept on the release (ADR-107 decision 7): the first run
+# has no flags, and init neither fetches nor applies the CRDs (no `show
+# crds` call) and passes no --skip-crds. The second run sets it back to true,
+# and init applies the CRDs again.
+release:
+  crds:
+    enabled: false
+runs:
+  - args: []
+  - args: [--set, crds.enabled=true]

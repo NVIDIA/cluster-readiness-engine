@@ -1,0 +1,11 @@
+{
+  "action": "apply",
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds",
+    "platform/nvcre-crds"
+  ],
+  "output": [
+    "[helm] Warning: the NVCRE CRDs do not share one Helm owner (bandwidthmeasurements.nvcre.nvidia.com: nvcre/nvcre-crds, certifications.nvcre.nvidia.com: nvcre/nvcre-crds, goodputmeasurements.nvcre.nvidia.com: nvcre/nvcre-crds, jobs.nvcre.nvidia.com: platform/nvcre-crds, logprofiles.nvcre.nvidia.com: nvcre/nvcre-crds, workflows.nvcre.nvidia.com: nvcre/nvcre-crds, workloadruns.nvcre.nvidia.com: nvcre/nvcre-crds); nvcrectl will apply them."
+  ]
+}

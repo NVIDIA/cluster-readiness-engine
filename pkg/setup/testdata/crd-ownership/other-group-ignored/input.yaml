@@ -1,0 +1,13 @@
+# Only nvcre.nvidia.com CRDs count: another group's Helm-owned CRD is not
+# an owner of the NVCRE CRDs, so its state is never read.
+crds:
+  - {name: jobsets.jobset.x-k8s.io, group: jobset.x-k8s.io, owner: kubeflow-system/kubeflow-trainer}
+  - {name: bandwidthmeasurements.nvcre.nvidia.com}
+  - {name: certifications.nvcre.nvidia.com}
+  - {name: goodputmeasurements.nvcre.nvidia.com}
+  - {name: jobs.nvcre.nvidia.com}
+  - {name: logprofiles.nvcre.nvidia.com}
+  - {name: workflows.nvcre.nvidia.com}
+  - {name: workloadruns.nvcre.nvidia.com}
+releases:
+  kubeflow-system/kubeflow-trainer: failed

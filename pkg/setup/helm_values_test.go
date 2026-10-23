@@ -60,11 +60,13 @@ func (o valuesCaseOptions) valuesOptions() valuesOptions {
 
 // valuesCaseResult is the structured output of a chart-values test case.
 type valuesCaseResult struct {
-	Error    string          `json:"error,omitempty"`
-	Values   map[string]any  `json:"values,omitempty"`
-	Image    string          `json:"image,omitempty"`
-	Summary  []string        `json:"summary,omitempty"`
-	Rendered *renderedFields `json:"rendered,omitempty"`
+	Error  string         `json:"error,omitempty"`
+	Values map[string]any `json:"values,omitempty"`
+	Image  string         `json:"image,omitempty"`
+	// CRDsDisabled is true when the values set crds.enabled=false (ADR-107).
+	CRDsDisabled bool            `json:"crdsDisabled,omitempty"`
+	Summary      []string        `json:"summary,omitempty"`
+	Rendered     *renderedFields `json:"rendered,omitempty"`
 }
 
 func summaryLines(out string) []string {
@@ -320,14 +322,14 @@ func TestPrepareNVCREValuesWithHelm(t *testing.T) {
 
 		var out bytes.Buffer
 		var result valuesCaseResult
-		valuesFile, image, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
+		prepared, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
 			values: ChartValues{Files: files, SetJSON: in.SetJSON, Set: in.Set, Reset: in.Options.Reset},
 			opts:   in.Options.valuesOptions(),
 		}, &out)
 		if err != nil {
 			result.Error = err.Error()
 		} else {
-			data, err := os.ReadFile(valuesFile)
+			data, err := os.ReadFile(prepared.file)
 			if err != nil {
 				return err
 			}
@@ -337,9 +339,10 @@ func TestPrepareNVCREValuesWithHelm(t *testing.T) {
 			if err := assertNoValuesPrinted(result.Values, out.String()); err != nil {
 				return err
 			}
-			result.Image = image.String()
+			result.Image = prepared.image.String()
+			result.CRDsDisabled = prepared.crdsDisabled
 			result.Summary = summaryLines(out.String())
-			rendered := renderChart(realHelm, chart, valuesFile)
+			rendered := renderChart(realHelm, chart, prepared.file)
 			result.Rendered = &rendered
 		}
 		b, err := marshalValues(result)
@@ -486,7 +489,7 @@ func TestValuesSourcesReadOnce(t *testing.T) {
 
 			ws, err := newValuesWorkspace()
 			require.NoError(t, err)
-			valuesFile, _, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
+			prepared, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
 				values: ChartValues{Files: []string{source}},
 				opts:   valuesCaseOptions{}.valuesOptions(),
 				in:     in,
@@ -500,7 +503,7 @@ func TestValuesSourcesReadOnce(t *testing.T) {
 			assert.Equal(t, content+"\n", runs[0], "the operator probe")
 			assert.True(t, strings.HasSuffix(runs[1], content+"\n"), "the second probe: %q", runs[1])
 
-			require.FileExists(t, valuesFile)
+			require.FileExists(t, prepared.file)
 			require.NoError(t, filepath.WalkDir(ws.dir, func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return err
@@ -526,7 +529,7 @@ func TestValuesSourcesReadOnce(t *testing.T) {
 // the upgrade is one -f: no --set or --set-json, so it needs nothing beyond
 // Helm 3.8 (ADR-098).
 func TestNVCREUpgradeArgsAddOnlyAValuesFile(t *testing.T) {
-	args := nvcreHelmUpgradeArgs("", "0.8.0", "/tmp/values.json")
+	args := nvcreHelmUpgradeArgs("", "0.8.0", "/tmp/values.json", false)
 	assert.NotContains(t, args, helmFlagSet)
 	assert.NotContains(t, args, helmFlagSetJSON)
 	assert.Equal(t, []string{helmFlagValues, "/tmp/values.json"}, args[len(args)-2:])
@@ -633,8 +636,9 @@ func TestRunInitValuesPreflight(t *testing.T) {
 
 	t.Run("summary with auto-approve", func(t *testing.T) {
 		out, _, err := runInitWithFakeHelm(t, `{}`, "", "deps", true, ChartValues{}, "")
-		// The fake helm prints no CRDs, so the helm phase fails after preflight.
-		require.ErrorContains(t, err, "no CustomResourceDefinition")
+		// The kubeconfig points nowhere, so init fails after the summary and
+		// the prompt, at the first cluster read: the CRD ownership check.
+		require.ErrorContains(t, err, "read NVCRE CRDs")
 		assert.Contains(t, out, "  manager.resources.limits.memory  (installed release)\n")
 		assert.NotContains(t, out, "8Gi")
 	})
@@ -696,7 +700,7 @@ func TestPrepareNVCREValuesErrors(t *testing.T) {
 			defer ws.cleanup()
 
 			var out bytes.Buffer
-			_, _, err = prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
+			_, err = prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{
 				values: tc.values,
 				opts:   valuesCaseOptions{}.valuesOptions(),
 				in:     tc.in,
@@ -829,7 +833,7 @@ func TestRenderMatchesPreviousSetupInit(t *testing.T) {
 			defer ws.cleanup()
 
 			opts := valuesCaseOptions{Image: tc.image, PullSecret: tc.pullSecret, RBACScope: tc.rbacScope}.valuesOptions()
-			valuesFile, _, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{opts: opts}, io.Discard)
+			prepared, err := prepareNVCREValues(helm, "", "", ws, nvcreValuesInput{opts: opts}, io.Discard)
 			require.NoError(t, err)
 
 			image := tc.image
@@ -844,7 +848,7 @@ func TestRenderMatchesPreviousSetupInit(t *testing.T) {
 			}
 			previous := render(previousSetupInitArgs(tc.release, image,
 				tc.pullSecret || tc.previousPullSecret, tc.rbacScope)...)
-			require.Equal(t, previous, render(helmFlagValues, valuesFile))
+			require.Equal(t, previous, render(helmFlagValues, prepared.file))
 		})
 	}
 }

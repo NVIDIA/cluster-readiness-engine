@@ -1,0 +1,7 @@
+{
+  "action": "leave",
+  "skipCRDs": false,
+  "output": [
+    "[helm] The release's values turn the chart's CRDs off (crds.enabled); leaving the NVCRE CRDs to whatever manages them."
+  ]
+}

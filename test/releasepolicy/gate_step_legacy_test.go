@@ -33,12 +33,17 @@ const (
 
 	stubImage = "ghcr.io/nvidia/cluster-readiness-engine/manager"
 	stubChart = "ghcr.io/nvidia/cluster-readiness-engine/cluster-readiness-engine"
+	// The CRDs chart is verified in the same step as the main chart (ADR-107).
+	stubCRDsChart = "ghcr.io/nvidia/cluster-readiness-engine/cluster-readiness-engine-crds"
 
 	// Distinct from validDigest (the index) so a single surviving tree/crane
 	// call cannot reproduce the observable behaviour of all three.
 	amd64Digest  = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
 	arm64Digest  = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
 	tagAltDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	// Distinct from validDigest so a check that only ever reached the main
+	// chart cannot pass for the CRDs chart too.
+	crdsChartDigest = "sha256:5555555555555555555555555555555555555555555555555555555555555555"
 
 	emptyTree = "📦 Supply Chain Security Related artifacts\n" +
 		"No Supply Chain Security Related Artifacts found\n"
@@ -239,6 +244,8 @@ func chartEnv(s registryStub) []string {
 		"OIDC_ISSUER=" + wantIssuer,
 		"CHART_NAME=" + stubChart,
 		"CHART_DIGEST=" + validDigest,
+		"CRDS_CHART_NAME=" + stubCRDsChart,
+		"CRDS_CHART_DIGEST=" + crdsChartDigest,
 		"STUB_TREE=" + s.tree,
 		"STUB_TREE_FAIL=" + s.treeFail,
 		"STUB_TREE_FAIL_REFS=" + s.treeFailRefs,
@@ -275,6 +282,19 @@ func logHasVerify(log string) bool {
 // tag-binding `verify --output json`. The positive unsigned-registry cases
 // must use this: otherwise that one call satisfies them with all four
 // verify() calls deleted.
+// logHasVerifyOf reports a signature or attestation check of one subject.
+// A step that checks several subjects in turn has already verified the
+// earlier ones when a later one fails, so the later rows ask about theirs.
+func logHasVerifyOf(log, ref string) bool {
+	for line := range strings.SplitSeq(strings.TrimSpace(log), "\n") {
+		if (strings.HasPrefix(line, "verify ") || strings.HasPrefix(line, "verify-attestation ")) &&
+			strings.HasSuffix(line, " "+ref) {
+			return true
+		}
+	}
+	return false
+}
+
 func logHasDigestVerify(log string) bool {
 	for line := range strings.SplitSeq(strings.TrimSpace(log), "\n") {
 		if strings.HasPrefix(line, "verify-attestation ") {
@@ -371,6 +391,9 @@ func TestGateRegistryRecheckRejectsUnsigned(t *testing.T) {
 		for _, tc := range []struct{ name, fail, want string }{
 			{"chart signature", "sign:" + stubChart + "@" + validDigest, "chart signature does not verify"},
 			{"chart provenance", "provenance:" + stubChart + "@" + validDigest, "chart provenance does not verify"},
+			{"CRDs chart signature", "sign:" + stubCRDsChart + "@" + crdsChartDigest, "CRDs chart signature does not verify"},
+			{"CRDs chart provenance", "provenance:" + stubCRDsChart + "@" + crdsChartDigest,
+				"CRDs chart provenance does not verify"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				out, failed, log, _ := runRegistryStep(t, step, chartEnv(registryStub{verifyFail: tc.fail}))
@@ -523,6 +546,8 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 			name, sidecar, want string
 			env                 []string
 			step                string
+			// later is set for a subject the step checks after another one.
+			later string
 		}{
 			{
 				name:    "index .sig",
@@ -570,6 +595,16 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 				}),
 				step: chartStep,
 			},
+			{
+				name:    "CRDs chart .att",
+				sidecar: sidecarTag(stubCRDsChart, crdsChartDigest, "att"),
+				want:    "CRDs Helm chart",
+				env: chartEnv(registryStub{
+					craneLegacy: sidecarTag(stubCRDsChart, crdsChartDigest, "att"),
+				}),
+				step:  chartStep,
+				later: stubCRDsChart + "@" + crdsChartDigest,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				out, failed, log, craneLog := runRegistryStep(t, tc.step, tc.env)
@@ -582,7 +617,11 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 				if !strings.Contains(out, tc.want) {
 					t.Errorf("want the error to name %q, got:\n%s", tc.want, out)
 				}
-				if logHasVerify(log) {
+				verified := logHasVerify(log)
+				if tc.later != "" {
+					verified = logHasVerifyOf(log, tc.later)
+				}
+				if verified {
 					t.Errorf("the gate called cosign verify after seeing a legacy tag:\n%s", log)
 				}
 				if !strings.Contains(craneLog, tc.sidecar) {
@@ -597,6 +636,8 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 			name, ref, want string
 			env             []string
 			step            string
+			// later is set for a subject the step checks after another one.
+			later bool
 		}{
 			{
 				name: "index",
@@ -643,6 +684,16 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 				}),
 				step: chartStep,
 			},
+			{
+				name: "CRDs chart",
+				ref:  stubCRDsChart + "@" + crdsChartDigest,
+				want: "CRDs Helm chart",
+				env: chartEnv(registryStub{
+					treeFailRefs: stubCRDsChart + "@" + crdsChartDigest,
+				}),
+				step:  chartStep,
+				later: true,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				out, failed, log, _ := runRegistryStep(t, tc.step, tc.env)
@@ -655,7 +706,11 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 				if !strings.Contains(out, tc.want) {
 					t.Errorf("want the error to name %q, got:\n%s", tc.want, out)
 				}
-				if logHasVerify(log) {
+				verified := logHasVerify(log)
+				if tc.later {
+					verified = logHasVerifyOf(log, tc.ref)
+				}
+				if verified {
 					t.Errorf("the gate called verify without inspecting attachments:\n%s", log)
 				}
 			})
@@ -703,9 +758,13 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 			name string
 			env  []string
 			step string
+			// later is set for a subject the step checks after another one.
+			later string
 		}{
-			{"image", imageEnv(registryStub{craneError: sidecarTag(stubImage, validDigest, "sig")}), imageStep},
-			{"chart", chartEnv(registryStub{craneError: sidecarTag(stubChart, validDigest, "sig")}), chartStep},
+			{"image", imageEnv(registryStub{craneError: sidecarTag(stubImage, validDigest, "sig")}), imageStep, ""},
+			{"chart", chartEnv(registryStub{craneError: sidecarTag(stubChart, validDigest, "sig")}), chartStep, ""},
+			{"CRDs chart", chartEnv(registryStub{craneError: sidecarTag(stubCRDsChart, crdsChartDigest, "sig")}),
+				chartStep, stubCRDsChart + "@" + crdsChartDigest},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				out, failed, log, _ := runRegistryStep(t, tc.step, tc.env)
@@ -715,7 +774,11 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 				if !strings.Contains(out, errInspect) {
 					t.Errorf("want an inspect-failure error, got:\n%s", out)
 				}
-				if logHasVerify(log) {
+				verified := logHasVerify(log)
+				if tc.later != "" {
+					verified = logHasVerifyOf(log, tc.later)
+				}
+				if verified {
 					t.Errorf("the %s gate called verify after a crane inspect failure:\n%s", tc.name, log)
 				}
 			})

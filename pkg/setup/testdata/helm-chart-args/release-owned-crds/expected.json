@@ -1,0 +1,44 @@
+{
+  "nvcreUpgradeArgs": [
+    "upgrade",
+    "--install",
+    "nvcre",
+    "oci://ghcr.io/nvidia/cluster-readiness-engine",
+    "--namespace",
+    "nvcre",
+    "--create-namespace",
+    "--version",
+    "0.9.0",
+    "--wait",
+    "--timeout",
+    "5m0s",
+    "-f",
+    "/tmp/nvcrectl-values-1/values.json",
+    "--skip-crds"
+  ],
+  "nvcreShowCRDsArgs": [
+    "show",
+    "crds",
+    "oci://ghcr.io/nvidia/cluster-readiness-engine",
+    "--version",
+    "0.9.0"
+  ],
+  "trainerUpgradeArgs": [
+    "upgrade",
+    "--install",
+    "kubeflow-trainer",
+    "oci://ghcr.io/kubeflow/charts/kubeflow-trainer",
+    "--namespace",
+    "kubeflow-system",
+    "--create-namespace",
+    "--version",
+    "2.2.1",
+    "--set",
+    "manager.tolerations[0].operator=Exists",
+    "--set",
+    "jobset.controller.tolerations[0].operator=Exists",
+    "--wait",
+    "--timeout",
+    "5m0s"
+  ]
+}

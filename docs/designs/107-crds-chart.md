@@ -1,6 +1,6 @@
 # ADR-107: Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart
 
-> **Status:** Proposed
+> **Status:** Accepted
 >
 > **Amends:** [ADR-064](064-helm-chart-distribution.md), decision 1, the bullet that puts the CRDs in the chart's `crds/` directory. The rest of ADR-064 stands.
 
@@ -17,7 +17,7 @@ This affects nearly every upgrade. Every minor release from v0.5.0 to v0.8.0 cha
 | Install path | CRDs updated on upgrade? |
 |---|---|
 | `nvcrectl setup init` | Yes: it server-side-applies them before every upgrade (`pkg/setup/helm.go:155-167`, issue #145) |
-| `helm` or Helmfile | No. The operator applies them by hand (`docs/operations/deployment.md:165`) |
+| `helm` or Helmfile | No. The operator applies them by hand (`docs/operations/deployment.md`, **Bypass `setup init`**) |
 | Argo CD | Yes: it renders `crds/` with `--include-crds` on every sync |
 | Flux | Only with `upgrade.crds: CreateReplace`; the default is `Skip` |
 
@@ -54,7 +54,7 @@ Out of scope: the CRDs' content, nvcrectl's apply for CRDs no release owns, Trai
    - `helm show crds` ignores dependency conditions and still returns the subchart's CRDs. Scripts built on it do not see the value. Such a script, like AICR's `apply-crds.sh`, is retired in the same change that sets `crds.enabled=false`, or it keeps applying the CRDs under its own field manager. nvcrectl reads the value itself (decision 7).
    - CRDs-chart users set it. A per-tool skip flag is not enough: AICR cannot set one per component, its Argo CD Applications always include CRDs, and on Helm 4 a missed skip strips the CRDs chart's ownership (Context).
 
-4. **One source.** `make manifests` writes to the subchart. `make helm-package` copies those files into the CRDs chart, so both charts always carry identical CRDs.
+4. **One source.** `make manifests` writes to the subchart and copies those files into the CRDs chart's `files/`. Both copies are committed, so `make verify-codegen` fails when they drift, and `test/helm` renders the real charts from the source tree. Both charts always carry identical CRDs.
 
 5. **Order: CRDs first on upgrade, controller first on rollback.** Both charts release at the same version. Newer CRDs with an older controller are safe while schema changes are additive, because new fields are optional. A release that removes a field the previous controller still writes would have those writes pruned in this window, on upgrade and on rollback alike. So a field is removed from the CRDs only once the controller of the previous release no longer writes it. The reverse, an older schema under a newer controller, is the failure this record prevents.
 
@@ -62,7 +62,13 @@ Out of scope: the CRDs' content, nvcrectl's apply for CRDs no release owns, Trai
 
    On Helm 4, CRDs that nvcrectl, AICR's script or a manual `kubectl apply --server-side` also applied need `--force-conflicts` too. It goes on the takeover and again on the first CRDs-chart upgrade that changes the schema: when that writer's schema matched the chart's, forcing the takeover alone leaves it a co-owner. The writer must be stopped first, or the conflict returns. The flag only reaches the seven CRDs in the CRDs chart's release.
 
-7. **nvcrectl skips its CRD apply when a Helm release owns the CRDs.** When all seven NVCRE CRDs carry the same `meta.helm.sh/release-name` and `meta.helm.sh/release-namespace`, and that release is `deployed`, `setup init` does not apply the CRDs and prints which release manages them. Both checks are needed, because `crds.keep` (decision 2) leaves the annotations on the CRDs after `helm uninstall`, so annotations alone can name a release that is gone. In every other case nvcrectl applies the CRDs as today and omits `--skip-crds`: no annotations, a release that no longer exists or is `uninstalled` (kept by `helm uninstall --keep-history`), or ownership split across CRDs or releases. A stale schema is the failure this record prevents, and keeping the CRDs current outranks avoiding a later Helm 4 conflict, which decision 6 recovers from. For split ownership it prints a warning naming each CRD's owner. If the owning release is `failed` after a partial upgrade, or `pending-*` while another operation runs, `setup init` stops before changing anything and prints the release's status and decision 6's recovery. Applying the CRDs itself could downgrade CRDs the failed upgrade already moved, and upgrading the controller over partly upgraded CRDs breaks decision 5's order. When it does skip, it also passes `--skip-crds` to `helm upgrade --install`, so a first install of the main release does not re-apply the subchart's CRDs, which on Helm 4 would strip the CRDs chart's ownership. Otherwise it applies them as today. This keeps `nvcrectl-setup` from re-taking `spec.versions` on clusters that use the CRDs chart. `--skip-crds` is a flag, not a value, so it does not persist in the release's values across runs (ADR-098).
+7. **nvcrectl skips its CRD apply when a Helm release owns the CRDs.** `setup init` decides in this order, and the first rule that applies wins:
+   1. **Any owner failed or mid-operation: stop.** nvcrectl reads the status of every release named by the `meta.helm.sh/release-name` and `meta.helm.sh/release-namespace` of any NVCRE CRD, including a release that owns only some of them. If one is `failed`, `pending-*` or otherwise mid-operation, or its status cannot be read, `setup init` stops before changing anything and prints the release's status and decision 6's recovery. This holds for split ownership and with `crds.enabled=false` alike: a Helm 4 adoption that conflicts partway leaves some CRDs owned by a `failed` release and the rest unowned. Applying the CRDs could downgrade the ones the failed operation already moved, and upgrading the controller over partly upgraded CRDs breaks decision 5's order.
+   2. **One deployed release owns every CRD the chart carries: skip.** Every CRD in the chart being installed must exist and name the same `deployed` release. Then `setup init` does not apply the CRDs, prints which release manages them, and passes `--skip-crds` to `helm upgrade --install`, so a first install of the main release does not re-apply the subchart's CRDs, which on Helm 4 would strip the CRDs chart's ownership. The set is the chart's, not a fixed seven: a missing CRD, such as one a newer chart adds before the CRDs chart is upgraded, fails this rule, and nvcrectl prints which CRDs the release does not own.
+   3. **`crds.enabled=false`: leave them.** The operator manages the CRDs outside nvcrectl (below).
+   4. **Otherwise: apply as today, without `--skip-crds`.** That covers no annotations; a release that no longer exists or is `uninstalled` (kept by `helm uninstall --keep-history`), because `crds.keep` (decision 2) leaves the annotations on the CRDs after `helm uninstall`; ownership split across CRDs or deployed releases, with a warning naming each CRD's owner; and a deployed release that does not own the chart's full set. A stale schema is the failure this record prevents, and keeping the CRDs current outranks avoiding a later Helm 4 conflict, which decision 6 recovers from.
+
+   Skipping keeps `nvcrectl-setup` from re-taking `spec.versions` on clusters that use the CRDs chart. `--skip-crds` is a flag, not a value, so it does not persist in the release's values across runs (ADR-098).
 
    nvcrectl also honors `crds.enabled=false`. When the release's effective values set it, from this run or kept from an earlier one, the operator manages the CRDs outside nvcrectl. nvcrectl then does not fetch or apply them either, and prints that it left them alone. The release-status stop above still applies when a release owns the CRDs. nvcrectl does not install or version-check the CRDs chart (Alternatives, 10).
 
@@ -84,7 +90,8 @@ helm/cluster-readiness-engine/
 helm/cluster-readiness-engine-crds/
 ├── Chart.yaml
 ├── values.yaml          # crds.keep: true
-└── templates/crds.yaml  # renders files/*.yaml; files/ is staged at package time, not committed
+├── files/*.yaml         # copied from the subchart by make manifests, committed
+└── templates/crds.yaml  # renders files/*.yaml; fails when files/ is empty
 ```
 
 `templates/crds.yaml` reads each file with `.Files.Get` and `fromYaml`, so CRD text never passes through the template engine. It adds the `helm.sh/chart`, `app.kubernetes.io/*` labels and the keep annotation, and writes the result with `toYaml`.
@@ -98,7 +105,7 @@ The CRD path also changes in:
 - `docs/operations/faq.md:68`;
 - comments in `pkg/setup`.
 
-nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, so that code is unaffected. A CRDs chart release Secret is about 500 KB of Helm's 1 MiB limit.
+nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, so that code is unaffected. A CRDs chart release Secret holds the rendered manifest and the chart's `files/` as base64, which compresses worse than YAML: about 686 KB of Helm's 1 MiB limit for the seven CRDs at 1.89 MB raw. The headroom is about 1.5x, and every minor release adds CRD fields.
 
 ### Build and release
 
@@ -110,19 +117,22 @@ nvcrectl reads the CRDs through `helm show crds`, which includes the subchart, s
 
 ### nvcrectl
 
-Before `fetchChartCRDs`, `installHelmRelease` reads the seven CRDs' `meta.helm.sh/release-name` and `meta.helm.sh/release-namespace`. When all seven name the same release, it reads that release's status with `helm status`. What happens next depends on the status:
-- **`deployed`:** it skips `applyChartCRDs`, and `nvcreHelmUpgradeArgs` adds `--skip-crds`.
-- **`failed` or `pending-*`:** `setup init` stops.
-- **`uninstalled`** (left by `helm uninstall --keep-history`) **or no release:** it applies the CRDs as today, without `--skip-crds`. Separately, it skips `fetchChartCRDs` and `applyChartCRDs` when the merged values preflight already builds (ADR-098) set `crds.enabled` to `false`. The annotation parsing is shared with `jobset_ownership.go`.
+The decision takes two stages, so that a stop happens before anything changes and the skip is checked against the chart actually installed:
+
+- **Before the `deps` phase,** after the confirmation prompt, `setup init` lists the CRDs of the `nvcre.nvidia.com` group and reads each one's Helm ownership with `completeHelmOwner`, shared with `jobset_ownership.go`. It reads every distinct owner's status with `helm status` and stops on rule 1. When one `deployed` release owns every CRD in the cluster, the plan is release-owned for now.
+- **In the helm phase,** `installHelmRelease` fetches the chart's CRDs with `fetchChartCRDs`, a read, unless rule 3 already applies. `confirmReleaseOwned` keeps a release-owned plan only when every CRD the chart carries exists and names that release (rule 2). Then `applyChartCRDs` is skipped and `nvcreHelmUpgradeArgs` adds `--skip-crds`. Otherwise the plan falls back to rule 3 or 4.
+
+Rule 3 reads `crds.enabled` from the merged values preflight already builds (ADR-098).
 
 ### Documentation
 
-- **`deployment.md`:** an "Install with Helm directly" section replaces the clause at line 165. It covers:
+- **`deployment.md`:** a "Keep the CRDs current with the CRDs chart" section, which the **Bypass `setup init`** clause now links to, replaces the manual CRD step. It covers:
   - the commands below and decision 5's order;
   - adoption per decision 6;
   - the Helm 4 conflict error, `conflict with "kubectl": .spec.versions`;
   - a `kubectl --show-managed-fields` check that lists any other owner of `spec.versions`;
-  - recovery from a conflict. Helm applies the seven CRDs one at a time, so a conflict on one leaves the others upgraded: the prototype's Helm 4 run upgraded six and failed on `logprofiles`. That mixed state is safe under decision 5, because the controller has not moved and every CRD is at its old version or newer. The CRDs-chart upgrade is rerun with `--force-conflicts` after the check names only retired writers, and the main chart is upgraded only once that rerun succeeds.
+  - recovery from a conflict. Helm applies the seven CRDs one at a time, so a conflict on one leaves the others upgraded: the prototype's Helm 4 run upgraded six and failed on `logprofiles`. That mixed state is safe under decision 5, because the controller has not moved and every CRD is at its old version or newer. The CRDs-chart upgrade is rerun with `--force-conflicts` after the check names only retired writers, and the main chart is upgraded only once that rerun succeeds;
+  - the Argo CD handoff, with the CRDs Application's `targetRevision` moved before the main Application's on upgrade.
 - **`NOTES.txt`:** names the CRDs chart.
 - **`RELEASE.md`:** both charts.
 - **Release notes:** the path inside the packaged chart moves from `crds/` to `charts/crds/crds/`.
@@ -149,14 +159,14 @@ Nothing changes for an operator who does nothing. The CRDs chart is opt-in, and 
 | nvcrectl users | Upgrade nvcrectl to a version with decision 7, then adopt per decision 6 |
 | Tooling reading `crds/` from the unpacked chart | Switch to `helm show crds` |
 
-**Argo CD handoff.** While both Applications render the CRDs, self-heal lets either one reclaim Argo CD's tracking for them, whatever the tracking mode. A main Application that still tracks them when they leave its desired state prunes them, and every NVCRE object with them. Ordering alone does not prevent that, so:
+**Argo CD handoff.** The main Application never owns the CRDs, so it has nothing to prune when they leave its desired state. Argo CD's repo-server labels or annotates every rendered resource except CRDs (`!kube.IsCRD(target)` in `reposerver/repository/repository.go`). With annotation tracking, the default since Argo CD 3.0, no Application owns the CRDs. With label tracking, the CRDs Application owns them through the CRDs chart's own `app.kubernetes.io/instance` label, set to its release name: the CRDs Application's name, unless its `helm.releaseName` overrides it. That release name must not be the main Application's name.
+
+A cascading delete of either Application keeps the CRDs whatever the tracking mode, for a separate reason: `shouldBeDeleted` in `controller/appcontroller.go` excludes CRDs (`!kube.IsCRD(obj)`) and resources annotated `helm.sh/resource-policy: keep`, which the CRDs chart sets (decision 2). Both checks are present from v2.10.0 through v3.5.6. The handoff is two steps, and pruning can stay on (Notes):
 
 1. Add the CRDs Application with `ServerSideApply=true`. The Workflow and Job CRDs exceed the 256 KiB client-side apply limit; Applications that render the main chart's CRDs today already need it. Let it sync.
-2. Disable automated pruning on the main Application.
-3. Set `crds.enabled=false` on the main Application and sync it. It no longer renders the CRDs, so it can no longer reclaim them.
-4. Sync the CRDs Application, so its tracking metadata is the last written.
-5. Confirm the CRDs show as resources of the CRDs Application only.
-6. Re-enable pruning on the main Application.
+2. Set `crds.enabled=false` on the main Application and let it sync.
+
+Do the second step soon after the first. While both Applications render the CRDs, both apply them under the same field manager, `argocd-controller`, so each sync rewrites the other's labels and the `keep` annotation. That is harmless and ends at the switch.
 
 On Helm 4, installing the main chart with `crds.enabled=true` beside the CRDs chart strips the CRDs chart's ownership until its next upgrade. In that window, `helm uninstall` of the CRDs chart deletes the CRDs. The docs make `crds.enabled=false` part of every CRDs-chart install.
 
@@ -170,11 +180,11 @@ The details belong in AICR's tracker ([NVIDIA/aicr#2525](https://github.com/NVID
 
 ### Tests
 
-- **`test/helm`, golden files:**
+- **`test/helm`, golden files:** both charts are rendered from the source tree, where `files/` is committed (decision 4).
   - the CRDs chart with `crds.keep` true and false;
-  - the main chart with `crds.enabled` true and false.
-- **`test/helm`, assertion:** the CRDs chart's CRDs are identical, by name and `spec`, to the subchart's.
-- **`pkg/setup`, golden cases:** `setup init` with CRDs that are unowned, owned by a `deployed` release, owned by a `failed` or `pending-*` release, annotated for a release that was uninstalled, partly owned, and owned by two releases, plus unowned CRDs with `crds.enabled=false` set on this run or kept from an earlier one. Each case covers whether the CRDs are applied and the Helm arguments in `testdata/helm-chart-args`: `--skip-crds` only when the CRDs are release-owned, on both a first install and an upgrade of the main release.
+  - the main chart with `crds.enabled` true and false, rendered with `--include-crds`, without which `helm template` leaves `crds/` out for either value.
+- **`test/helm`, assertion:** `files/` is byte-identical to the subchart's `crds/`, and the CRDs chart's rendered CRDs are identical, by name and `spec`, to the subchart's.
+- **`pkg/setup`, golden cases:** with all seven CRDs, `setup init` with CRDs that are unowned, owned by a `deployed` release, owned by a `failed` or `pending-*` release, annotated for a release that was uninstalled, partly owned, and owned by two releases; partly owned by a `failed` release, with and without `crds.enabled=false`; a `deployed` owner with a CRD missing, with only one of seven, or with a chart that adds or drops a CRD; plus unowned CRDs with `crds.enabled=false` set on this run or kept from an earlier one. Each case covers whether the CRDs are applied and the Helm arguments in `testdata/helm-chart-args`: `--skip-crds` only when the CRDs are release-owned, on both a first install and an upgrade of the main release.
 
 ## Rationale
 
@@ -217,7 +227,7 @@ The details belong in AICR's tracker ([NVIDIA/aicr#2525](https://github.com/NVID
 6. **Remove the CRDs from the main chart now,** as #357 literally asks. Deferred: it breaks main-chart-only installs. The subchart makes this a later default flip.
 7. **Keep top-level `crds/` and have users skip it.** This was the first draft. Rejected: AICR cannot skip per component, and on Helm 4 a missed skip strips ownership.
 8. **Argo CD `Prune=false,Delete=false` on the CRDs.** Rejected:
-   - shipping them in the chart is not needed to protect the migration; disabling pruning on the main Application for the switch does that;
+   - not needed: the main Application never owns the CRDs, so it cannot prune them at the switch, and Argo CD never deletes a CRD when it deletes an Application, whatever the tracking mode (Notes);
    - cascade deletion is the Argo CD operator's choice.
 9. **Reset `managedFields` before adoption instead of forcing.** Rejected: the API server records the existing fields under `before-first-apply`, which conflicts the same way (Notes).
 10. **nvcrectl installs the CRDs chart, or checks its version against the controller.** Deferred: no known cluster runs nvcrectl together with the CRDs chart. Decision 7 is enough to keep the two from conflicting.
@@ -238,6 +248,20 @@ The prototype used both charts built from the CRDs at `3e78eef2`, on throwaway K
 | Other writer, same schema; adopt, then upgrade to v2 | Succeeds | **Upgrade conflicts**, even after a forced takeover. One forced upgrade fixes it |
 | Reset `managedFields`, then adopt without force | Not tested | Conflicts (`before-first-apply`) |
 
+### Argo CD handoff results
+
+Run on a throwaway Kind cluster with Argo CD v3.5.6 and both charts from this change, served from an in-cluster OCI registry. The main Application synced automatically with prune and self-heal, and with `ServerSideApply=true`. The existing objects were the chart's four LogProfiles, plus a LogProfile and a Certification that Argo CD does not manage. The pass criterion set before this guidance could ship held in every run: all seven CRDs kept their UIDs, so none was deleted and recreated, and every object survived.
+
+| Run | Pruning | Tracking | Result |
+|---|---|---|---|
+| The six-step sequence first proposed, pruning disabled for the switch | Off, then on again | Annotation | Passed |
+| Two-step handoff | On throughout | Annotation | Passed |
+| Two-step handoff, the main Application listing all 7 CRDs before the switch and none after | On throughout | Label | Passed; its sync pruned no CRD |
+| Cascading delete of the CRDs Application | n/a | Label | CRDs and objects kept |
+| Cascading delete of the CRDs Application | n/a | Annotation | CRDs and objects kept |
+
+The record as proposed assumed self-heal let either Application reclaim tracking of the CRDs, and disabled pruning around the switch to guard against it. Neither Application ever wrote tracking metadata on a CRD, so that guard is unnecessary and the handoff above drops it. Under label tracking the CRDs Application owned the CRDs through the chart's own label. The cascading deletes kept the CRDs because Argo CD's deletion skips CRDs, not because of tracking.
+
 ### Other notes
 
 - **A controller-side schema check is deferred.** It would make silent pruning visible on every path, including main-chart-only Helm, and needs its own design.
@@ -245,7 +269,9 @@ The prototype used both charts built from the CRDs at `3e78eef2`, on throwaway K
 - **Not tested:**
   - Flux `CreateReplace` as a prior writer;
   - mixing Helm versions on one CRDs-chart release;
-  - the Argo CD migration with automated pruning enabled. Before the `deployment.md` guidance ships, it is run end to end on a cluster with existing NVCRE objects. It passes only if all seven CRDs and every existing object survive the handoff and the re-enabling of pruning.
+  - Argo CD before v2.10.0, and Argo CD installed from its Helm chart;
+  - label tracking with a CRDs Application whose `helm.releaseName` equals the main Application's name;
+  - under label tracking, a later CRDs chart that stops rendering a CRD. The CRDs Application owns it then, so its own pruning could delete it. No release removes a CRD today.
 
 ## References
 

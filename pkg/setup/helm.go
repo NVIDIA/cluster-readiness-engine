@@ -119,7 +119,9 @@ type helmInstallParams struct {
 	// valuesFile holds every value the release is given: the kept values,
 	// this run's values and nvcrectl's own, merged in preflight (ADR-098).
 	valuesFile string
-	out        io.Writer
+	// crds is preflight's decision on the CRDs (ADR-107 decision 7).
+	crds crdPlan
+	out  io.Writer
 }
 
 // installHelmRelease installs or upgrades NVCRE via the helm CLI, after
@@ -152,21 +154,34 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		defer helmRegistryLogout(helmPath, defaultImageRegistry, p.out)
 	}
 
-	// Helm applies the chart's crds/ directory only on the first install, so
-	// `helm upgrade --install` alone would leave the CRDs at the old schema
-	// after an upgrade (issue #145). Reconcile them from the same chart
-	// source on every run; server-side apply is idempotent, so first-install
-	// behavior is unchanged.
-	_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
-	crds, err := fetchChartCRDs(helmPath, p.chartRef, chartVersion, p.out)
-	if err != nil {
-		return "", err
-	}
-	if err := applyChartCRDs(p.ctx, p.c, crds, p.out); err != nil {
-		return "", err
+	// Helm applies the CRDs in the crds subchart's crds/ directory only on
+	// the first install, so `helm upgrade --install` alone would leave the
+	// CRDs at the old schema after an upgrade (issue #145). Reconcile them
+	// from the same chart source on every run; server-side apply is
+	// idempotent, so first-install behavior is unchanged. A Helm release
+	// that owns them, or crds.enabled=false, takes that job over (ADR-107).
+	// A release-owned plan still reads the chart's CRDs, to confirm the
+	// release owns every one of them before the apply is skipped.
+	plan := p.crds
+	if plan.action != crdActionLeave {
+		manifests, err := fetchChartCRDs(helmPath, p.chartRef, chartVersion, p.out)
+		if err != nil {
+			return "", err
+		}
+		crds, err := chartCRDObjects(manifests)
+		if err != nil {
+			return "", err
+		}
+		plan = confirmReleaseOwned(plan, chartCRDNames(crds), p.out)
+		if plan.action == crdActionApply {
+			_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
+			if err := applyChartCRDs(p.ctx, p.c, manifests, p.out); err != nil {
+				return "", err
+			}
+		}
 	}
 
-	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, p.valuesFile)
+	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, p.valuesFile, plan.skipCRDs())
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
@@ -178,8 +193,11 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 // nvcreHelmUpgradeArgs returns the `helm upgrade --install` argument list for
 // the NVCRE release. An empty chartRef means the published GHCR chart. Every
 // value reaches the upgrade through valuesFile, so nvcrectl's only addition
-// is one -f, which any Helm 3 accepts (ADR-098).
-func nvcreHelmUpgradeArgs(chartRef, chartVersion, valuesFile string) []string {
+// is one -f, which any Helm 3 accepts (ADR-098). skipCRDs adds --skip-crds,
+// so a first install does not re-apply the subchart's CRDs over a release
+// that owns them, which on Helm 4 strips that release's ownership (ADR-107).
+// It is a flag, not a value, so it never persists in the release's values.
+func nvcreHelmUpgradeArgs(chartRef, chartVersion, valuesFile string, skipCRDs bool) []string {
 	if chartRef == "" {
 		chartRef = helmChartOCI
 	}
@@ -193,6 +211,9 @@ func nvcreHelmUpgradeArgs(chartRef, chartVersion, valuesFile string) []string {
 	}
 	if valuesFile != "" {
 		args = append(args, helmFlagValues, valuesFile)
+	}
+	if skipCRDs {
+		args = append(args, "--skip-crds")
 	}
 	return args
 }

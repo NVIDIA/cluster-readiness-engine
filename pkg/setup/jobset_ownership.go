@@ -33,6 +33,9 @@ const (
 // adopt an existing resource, alongside the two release annotations.
 const helmManagedByLabel = "app.kubernetes.io/managed-by"
 
+// helmManagedByValue is the managed-by label value Helm writes.
+const helmManagedByValue = "Helm"
+
 type jobSetMode string
 
 const (
@@ -365,7 +368,7 @@ func objectKeyNames(refs []client.ObjectKey) string {
 
 func hasAnyHelmOwnershipMetadata(object client.Object) bool {
 	annotations := object.GetAnnotations()
-	return object.GetLabels()[helmManagedByLabel] == "Helm" ||
+	return object.GetLabels()[helmManagedByLabel] == helmManagedByValue ||
 		annotations["meta.helm.sh/release-name"] != "" || annotations["meta.helm.sh/release-namespace"] != ""
 }
 
@@ -432,7 +435,7 @@ func unknownJobSet(reason string) jobSetObservation {
 }
 
 func completeHelmOwner(obj client.Object) helmOwner {
-	if obj.GetLabels()[helmManagedByLabel] != "Helm" {
+	if obj.GetLabels()[helmManagedByLabel] != helmManagedByValue {
 		return helmOwner{}
 	}
 	annotations := obj.GetAnnotations()
