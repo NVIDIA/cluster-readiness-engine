@@ -87,7 +87,11 @@ After design approval and node inspection:
 - Request one EFA interface per pair of selected GPUs, rounded up, through
   the shared resource fragment: one/two/four interfaces for two/four/eight
   GPUs. EC2 reports one EFA interface for g7e.8xlarge and g7e.12xlarge, two
-  for g7e.24xlarge, and four for g7e.48xlarge; g7e.2xlarge and g7e.4xlarge
+  for g7e.24xlarge, and four for g7e.48xlarge. AWS lists one/two/four/eight
+  GPUs respectively for those EFA-capable sizes, so the request stays within
+  the interface limit when `gpusPerNode` stays within physical GPU capacity.
+  Smaller shapes need an explicit `gpusPerNode` override because the RTX
+  architecture default remains eight. The g7e.2xlarge and g7e.4xlarge sizes
   have no EFA support. A positive resource request requires the device plugin
   to advertise sufficient capacity; no TCP fallback is provided. Smaller
   shapes and partial GPU allocations have render checks but no live
@@ -102,9 +106,13 @@ After design approval and node inspection:
   unchanged only when its `get_model` AST matches the inspected synchronized
   implementation, including wait placement around DDP construction; otherwise
   fail initialization. Retain all parameter integrity assertions.
-  Hold the same `/mnt/workspace/.megatron-lm.lock` used by workspace
-  preparation, and read the source only after acquiring it. Write and sync
-  a sibling temporary file, preserve permissions, then use `os.replace` so
+  Hold `/mnt/workspace/.megatron-lm.lock` to serialize against other patch
+  guards, and read the source only after acquiring it. On this branch,
+  `megatron-clone` does not take that lock;
+  [PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555) adds
+  the clone-side holder to coordinate workspace preparation with patching.
+  Write and sync a sibling temporary file, preserve permissions, then use
+  `os.replace` so
   readers cannot observe a truncated module. Remove the temporary file on
   failure; bound the whole init command with a 1200-second timeout.
   Concurrency tests verify two guards apply the patch once and a replacement
@@ -245,6 +253,7 @@ configuration. NKX-18021 owns training qualification and thresholds.
 - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html
 - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/gpu-instances-started.html
 - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa.html
+- https://aws.amazon.com/ec2/instance-types/g7e/
 - https://github.com/NVIDIA/Megatron-LM/issues/2044
 - https://github.com/NVIDIA/Megatron-LM/pull/2852
 - `docs/designs/031-platform-aware-nccl-config.md`

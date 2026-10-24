@@ -143,12 +143,27 @@ profile: the AWS cell selects the OFI plugin and the EFA provider. Multi-node
 NVLink and NVLS are disabled because g7e GPUs communicate through PCIe and EFA.
 
 EFA requests scale with `gpusPerNode`: one interface per pair of GPUs,
-rounded up, so eight GPUs request four interfaces. EC2 advertises one EFA
-interface on `g7e.8xlarge` and `g7e.12xlarge`, two on `g7e.24xlarge`, and four
-on `g7e.48xlarge`. The smaller `g7e.2xlarge` and `g7e.4xlarge` do not support
-EFA. Target nodes must advertise enough EFA devices for the request; the
-overlay does not fall back to TCP. Live validation and bandwidth baselines
-cover only full eight-GPU `g7e.48xlarge` workers.
+rounded up. The [AWS G7e specifications](https://aws.amazon.com/ec2/instance-types/g7e/)
+list **two GPUs** for `g7e.12xlarge`, which requests one EFA interface at full
+GPU allocation.
+The physical GPU counts and EC2 `DescribeInstanceTypes` EFA limits are:
+
+| Instance type | GPUs per instance | Maximum EFA interfaces | EFA request using all GPUs |
+| --- | --- | --- | --- |
+| `g7e.8xlarge` | 1 | 1 | 1 |
+| `g7e.12xlarge` | 2 | 1 | 1 |
+| `g7e.24xlarge` | 4 | 2 | 2 |
+| `g7e.48xlarge` | 8 | 4 | 4 |
+
+Smaller shapes require an explicit `gpusPerNode` override; the RTX architecture
+still defaults to eight GPUs and does not detect the instance size. Keep the
+requested GPU count within the node's physical capacity. The smaller
+`g7e.2xlarge` and `g7e.4xlarge` do not support EFA. AWS also lists
+[GPUDirect RDMA support](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa.html)
+for multi-GPU G7e sizes, but not `g7e.8xlarge`. Target nodes must advertise
+enough EFA devices for the request; the overlay does not fall back to TCP.
+Live validation and bandwidth baselines cover only full eight-GPU
+`g7e.48xlarge` workers; the table does not qualify smaller shapes.
 
 The NCCL all-reduce, all-gather, all-to-all, EFA loopback and Nemotron 5 8B
 entries pin NVIDIA PyTorch 26.03 with EFA 1.46.0 and NCCL 2.29.7 by digest.
@@ -179,9 +194,13 @@ AST matches the inspected synchronized implementation, including both waits
 around DDP construction; otherwise the init container fails with an explanation.
 The source restriction also applies to `sourceRepo` and pre-seeded workspaces
 (see [Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)).
-The guard takes the shared `/mnt/workspace/.megatron-lm.lock`, then reads
-and validates the source under that lock. It writes a sibling temporary file
-and atomically replaces the target, preserving its permissions. Concurrent
+The guard takes `/mnt/workspace/.megatron-lm.lock` to serialize against other
+patch guards, then reads and validates the source under that lock. On this
+branch, `megatron-clone` does not take the lock;
+[PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555) adds the
+clone-side holder so workspace preparation and patch guards share the lock.
+The guard writes a sibling temporary file and atomically replaces the target,
+preserving its permissions. Concurrent
 readers see a complete file; concurrent guards recheck the updated digest.
 The init command times out after 1200 seconds if preparation cannot finish.
 Two-node validation
