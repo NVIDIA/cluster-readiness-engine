@@ -1,5 +1,5 @@
 {
-  "containersScanned": 8,
+  "containersScanned": 10,
   "sshdWorkers": 0,
   "containers": [
     {
@@ -15,6 +15,17 @@
     },
     {
       "source": "override {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ]
+    },
+    {
+      "source": "override {\"gpuArchitecture\":{\"equals\":\"rtxpro6000\"},\"platform\":{\"equals\":\"aws\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",

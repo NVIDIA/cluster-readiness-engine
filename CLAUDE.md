@@ -259,7 +259,7 @@ spec:
 
 1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
 
-2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
+2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should appear for GB200, H100 and RTX PRO 6000 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 
    `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
@@ -267,6 +267,7 @@ spec:
    - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`
    - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
+   - RTX PRO 6000: eight GPUs per worker, `vpc.amazonaws.com/efa: 4`, NO hugepages, NO ComputeDomain
 
 4. **Spot-check with grep**. Use only markers that really are EFA specific:
 
@@ -285,12 +286,12 @@ spec:
 
    Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:
 
-   | Pattern | gb200 | gb300 |
-   |---|---|---|
-   | `FI_EFA` | 2 | 0 |
-   | `hugepages` | 2 | 0 |
-   | `vpc.amazonaws.com/efa` | 2 | 0 |
-   | `roce` | 0 | 6 |
+   | Pattern | gb200 | gb300 | rtxpro6000 |
+   |---|---|---|---|
+   | `FI_EFA` | 2 | 0 | 2 |
+   | `hugepages` | 2 | 0 | 0 |
+   | `vpc.amazonaws.com/efa` | 2 | 0 | 2 |
+   | `roce` | 0 | 6 | 0 |
 
 ### Override Semantics (Critical)
 

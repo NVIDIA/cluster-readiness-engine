@@ -1,0 +1,372 @@
+{
+  "Job/aws-rtx-exec-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-exec-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "aws-rtx-exec"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "aws-rtx-node-1,aws-rtx-node-2"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "aws-rtx-exec",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "aws-rtx-exec-runtime-e2379-job",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+            "command": [
+              "/bin/bash",
+              "-c"
+            ],
+            "args": [
+              "echo test"
+            ],
+            "env": [
+              {
+                "name": "FI_PROVIDER",
+                "value": "efa"
+              },
+              {
+                "name": "FI_EFA_USE_DEVICE_RDMA",
+                "value": "1"
+              },
+              {
+                "name": "FI_EFA_FORK_SAFE",
+                "value": "1"
+              },
+              {
+                "name": "NCCL_NET_PLUGIN",
+                "value": "ofi"
+              },
+              {
+                "name": "NCCL_NVLS_ENABLE",
+                "value": "0"
+              }
+            ],
+            "numNodes": 2,
+            "numProcPerNode": 8
+          },
+          "runtimePatches": [
+            {
+              "manager": "nvcre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "aws-rtx-node-1",
+                                                "aws-rtx-node-2"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/aws-rtx-exec-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "aws-rtx-exec-job-workload",
+        "namespace": "default"
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
+    }
+  },
+  "TrainingRuntime/aws-rtx-exec-runtime-e2379-job": {
+    "apiVersion": "trainer.kubeflow.org/v1alpha1",
+    "kind": "TrainingRuntime",
+    "metadata": {
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "labels": {
+        "app": "aws-rtx-exec",
+        "nvcre.nvidia.com/workflow": "aws-rtx-exec",
+        "trainer.kubeflow.org/framework": "torch"
+      },
+      "name": "aws-rtx-exec-runtime-e2379-job",
+      "namespace": "default",
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "aws-rtx-exec-job",
+          "uid": ""
+        }
+      ]
+    },
+    "spec": {
+      "mlPolicy": {
+        "numNodes": 2,
+        "torch": {
+          "numProcPerNode": 8
+        }
+      },
+      "template": {
+        "spec": {
+          "replicatedJobs": [
+            {
+              "groupName": "default",
+              "name": "node",
+              "replicas": 1,
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "app": "aws-rtx-exec",
+                    "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                  }
+                },
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "env": [
+                            {
+                              "name": "NCCL_DEBUG",
+                              "value": "INFO"
+                            },
+                            {
+                              "name": "NCCL_CUMEM_ENABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_C2C",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_NET_GDR_LEVEL",
+                              "value": "PHB"
+                            },
+                            {
+                              "name": "NCCL_P2P_NET_CHUNKSIZE",
+                              "value": "2097152"
+                            },
+                            {
+                              "name": "NCCL_SHM_DISABLE",
+                              "value": "1"
+                            },
+                            {
+                              "name": "NCCL_MNNVL_ENABLE",
+                              "value": "0"
+                            },
+                            {
+                              "name": "NCCL_SOCKET_IFNAME",
+                              "value": "eth0"
+                            },
+                            {
+                              "name": "USER_SETTING",
+                              "value": "preserved"
+                            }
+                          ],
+                          "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+                          "name": "node",
+                          "resources": {
+                            "limits": {
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            },
+                            "requests": {
+                              "nvidia.com/gpu": "8",
+                              "vpc.amazonaws.com/efa": "4"
+                            }
+                          },
+                          "securityContext": {
+                            "capabilities": {
+                              "add": [
+                                "IPC_LOCK"
+                              ]
+                            }
+                          },
+                          "volumeMounts": [
+                            {
+                              "mountPath": "/dev/shm",
+                              "name": "dshm"
+                            }
+                          ]
+                        }
+                      ],
+                      "securityContext": {
+                        "seccompProfile": {
+                          "type": "RuntimeDefault"
+                        }
+                      },
+                      "terminationGracePeriodSeconds": 30,
+                      "volumes": [
+                        {
+                          "emptyDir": {
+                            "medium": "Memory"
+                          },
+                          "name": "dshm"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "WorkloadRun/aws-rtx-exec": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-rtx-exec",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        }
+      },
+      "image": "nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112",
+      "framework": {
+        "exec": {
+          "command": [
+            "/bin/bash",
+            "-c"
+          ],
+          "args": [
+            "echo test"
+          ]
+        }
+      },
+      "numNodes": 2,
+      "env": [
+        {
+          "name": "USER_SETTING",
+          "value": "preserved"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkflowCreated",
+          "message": "Workflow aws-rtx-exec created"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        }
+      ],
+      "workflowRef": {
+        "name": "aws-rtx-exec",
+        "namespace": "default"
+      },
+      "detectedPlatform": "aws",
+      "detectedGPUArchitecture": "rtxpro6000"
+    }
+  }
+}

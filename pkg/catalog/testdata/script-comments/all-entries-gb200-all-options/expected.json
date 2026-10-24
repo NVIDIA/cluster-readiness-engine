@@ -33,7 +33,8 @@
     {
       "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     }
   ],

@@ -183,37 +183,43 @@
     {
       "entry": "training/nemotron5-8b@NVIDIA-A100-SXM4-80GB",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     },
     {
       "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     },
     {
       "entry": "training/nemotron5-8b@NVIDIA-GB300",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     },
     {
       "entry": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     },
     {
       "entry": "training/nemotron5-8b@NVIDIA-L40S",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     },
     {
       "entry": "training/nemotron5-8b@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
       "scripts": [
-        ".dependencies[].data.train.sh"
+        ".dependencies[].data.train.sh",
+        ".overrides[].dependencies[].spec.template.spec.replicatedJobs[].template.spec.template.spec.initContainers[].args[]"
       ]
     }
   ],

@@ -1829,6 +1829,129 @@
               }
             }
           }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "FI_PROVIDER",
+                        "value": "efa"
+                      },
+                      {
+                        "name": "FI_EFA_USE_DEVICE_RDMA",
+                        "value": "1"
+                      },
+                      {
+                        "name": "FI_EFA_FORK_SAFE",
+                        "value": "1"
+                      },
+                      {
+                        "name": "NCCL_NET_PLUGIN",
+                        "value": "ofi"
+                      },
+                      {
+                        "name": "NCCL_NVLS_ENABLE",
+                        "value": "0"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-unpinned-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "limits": {
+                                        "nvidia.com/gpu": "8",
+                                        "vpc.amazonaws.com/efa": "4"
+                                      },
+                                      "requests": {
+                                        "nvidia.com/gpu": "8",
+                                        "vpc.amazonaws.com/efa": "4"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-unpinned-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         }
       ]
     },

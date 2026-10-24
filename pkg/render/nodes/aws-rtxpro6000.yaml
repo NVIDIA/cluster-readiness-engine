@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+metadata:
+  labels:
+    node.kubernetes.io/instance-type: g7e.48xlarge
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+spec:
+  providerID: aws://us-west-2a/i-template
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+  allocatable:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"

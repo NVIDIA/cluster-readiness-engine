@@ -241,7 +241,7 @@ overrides:
     platform:
       equals: aws
     gpuArchitecture:
-      notIn: [gb200, gb300]
+      notIn: [gb200, gb300, rtxpro6000]
   dependencies:
 {{ lib "deps/aws-efa-runtime-patch-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -736,6 +736,43 @@ overrides:
       minGroupSize: {{ .MinGroupSize }}
       topologyKey: topology.nks.nscale.com/accelerator-domain
 {{- end }}
+# --- AWS + RTX PRO 6000 (g7e: eight GPUs and four EFA devices) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/aws-rtxpro6000-efa-resources.yaml" . | indent 2 }}
+{{ lib "deps/aws-rtxpro6000-nccl-image.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+            command:
+            - timeout
+            - "3600"
+            - /usr/local/mpi/bin/mpirun
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . | indent 12 }}
+{{ lib "nccl/mpi-disable-ucc-hcoll-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-rtxpro6000-efa-env.yaml" . | toMpiArgs | indent 12 }}
+            # SSH-launched ranks need the pinned image's userspace library paths.
+            - -x
+            - PATH
+            - -x
+            - LD_LIBRARY_PATH
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - NCCL_MNNVL_ENABLE=0
+            - -x
+            - NCCL_SOCKET_IFNAME=eth0
+            - /usr/local/bin/alltoall_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
 # Renders nothing unless the option is set. Last in the list so the privileged
 # flag and the /dev/infiniband mount survive every platform patch above.

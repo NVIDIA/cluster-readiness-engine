@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-rtx-lb-communication-12bb7
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-rtx-lb
+    namespace: default
+  - kind: Job
+    name: aws-rtx-lb-communication-12bb7-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: nccl-loopback-runtime-12bb7-job
+    namespace: default

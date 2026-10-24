@@ -1503,6 +1503,98 @@
               "equals": "nscale"
             }
           }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-gb300-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "limits": {
+                                        "nvidia.com/gpu": "4",
+                                        "vpc.amazonaws.com/efa": "2"
+                                      },
+                                      "requests": {
+                                        "nvidia.com/gpu": "4",
+                                        "vpc.amazonaws.com/efa": "2"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-gb300-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK",
+                                          "SYS_CHROOT"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         }
       ]
     },
