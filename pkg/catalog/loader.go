@@ -128,6 +128,11 @@ type TemplateData struct {
 	// Templates use: {{- if eq .RDMADeviceAccess "hostPath" }}
 	RDMADeviceAccess string
 
+	// HasNetworkAttachments is true when the options list networkAttachments
+	// explicitly. Fragments that render a default NIC wiring the list
+	// replaces wrap it in {{- if not .HasNetworkAttachments }}.
+	HasNetworkAttachments bool
+
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order (always
 	// GKETCPXONICsPerNode entries at Build time: detected, or
@@ -496,6 +501,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		MlnxPerNode:                config.MlnxPerNode,
 		NicResourceName:            config.NicResourceName,
 		RDMADeviceAccess:           config.RDMADeviceAccess,
+		HasNetworkAttachments:      len(config.NetworkAttachments) > 0,
 		GKETCPXONetworks:           config.GKETCPXONetworks,
 		EnableMNNVL:                config.EnableMNNVL,
 		EnableCheckpoint:           config.EnableCheckpoint,

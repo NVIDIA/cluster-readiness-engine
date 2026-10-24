@@ -1,0 +1,1 @@
+workloadrun wr-netatt: networkAttachments[0].resourceName "kubernetes.io/r0" must not use the reserved kubernetes.io or k8s.io domains

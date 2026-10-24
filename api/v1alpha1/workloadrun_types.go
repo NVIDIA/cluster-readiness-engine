@@ -187,6 +187,7 @@ type WorkloadOrchestration struct {
 }
 
 // WorkloadRunSpec defines the desired state of WorkloadRun.
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.nicResourceName)",message="networkAttachments and nicResourceName are mutually exclusive"
 type WorkloadRunSpec struct {
 	// target specifies which nodes to run the workload on.
 	// When omitted, all GPU nodes (nvidia.com/gpu.present=true) are selected.
@@ -255,6 +256,31 @@ type WorkloadRunSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
+
+	// networkAttachments attaches the workload's worker pods to Multus
+	// secondary networks and requests the extended resource behind each one
+	// (issue #400), for fabrics that expose one resource and one
+	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
+	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
+	// annotation in list order, which decides which network becomes net1, net2
+	// and so on, and each entry requests one unit of its resourceName on the
+	// worker container. Multus finds each network's device through the
+	// resourceName its NetworkAttachmentDefinition declares, so an entry's
+	// resourceName must be that resource. The list is mutually exclusive with
+	// nicResourceName and disables NIC resource auto-detection. A platform NIC
+	// request the WorkloadRun overrides render without Multus stays alongside
+	// the attachments, and an entry on that same resource adds to it. Set
+	// mlnxPerNode: 0 to drop the platform request, which a site whose Multus
+	// networks are those same NICs needs so that only the listed entries are
+	// requested. spec.overrides apply
+	// after the list, as they do after every other field, so an override that
+	// sets the networks annotation or one of these resources on the runtime
+	// replaces it. At most 16 entries.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 
 	// imagePullSecrets references secrets for pulling the container image.
 	// They apply to every pod of the run: the node pods on every framework and,

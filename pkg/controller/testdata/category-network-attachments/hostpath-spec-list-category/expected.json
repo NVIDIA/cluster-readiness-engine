@@ -1,0 +1,24 @@
+[
+  {
+    "category": "communication/nccl-all-reduce",
+    "workflow": "c3-communication-nccl-all-7100b",
+    "networkAttachments": [
+      "nvcre/r0=nvidia.com/r0"
+    ],
+    "rdmaDeviceAccess": "hostPath",
+    "error": "networkAttachments cannot be combined with rdmaDeviceAccess: hostPath, including when one is set at the spec level and the other in the category's options; set rdmaDeviceAccess: devicePlugin in a category that inherits hostPath with a list, or nicResourceName in a category that inherits the list and needs hostPath"
+  },
+  {
+    "category": "communication/nccl-all-gather",
+    "workflow": "c3-communication-nccl-all-4ebff",
+    "rdmaDeviceAccess": "hostPath"
+  },
+  {
+    "category": "communication/nccl-alltoall",
+    "workflow": "c3-communication-nccl-all-3e534",
+    "networkAttachments": [
+      "nvcre/r0=nvidia.com/r0"
+    ],
+    "rdmaDeviceAccess": "devicePlugin"
+  }
+]

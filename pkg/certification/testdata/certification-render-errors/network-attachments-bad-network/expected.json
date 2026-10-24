@@ -1,0 +1,3 @@
+{
+  "error": "certification test-cert: networkAttachments[0].network \"nvcre/R0\" must be \u003cname\u003e or \u003cnamespace\u003e/\u003cname\u003e with a DNS-1123 namespace and name"
+}

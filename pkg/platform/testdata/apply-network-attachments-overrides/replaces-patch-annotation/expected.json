@@ -1,0 +1,47 @@
+[
+  [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "wr-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "metadata": {
+                          "annotations": {
+                            "example.com/keep": "yes",
+                            "k8s.v1.cni.cncf.io/networks": "nvcre/r0,nvcre/r1"
+                          }
+                        },
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "nccl-tests",
+                              "name": "node"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+]
