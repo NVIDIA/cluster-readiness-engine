@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A torch TrainJob has no launcher. Trainer's webhook rejects a patch for a
+# replicated job the runtime lacks, so no launcher entry may be created and
+# the patches come out unchanged.
+labelKey: "nvcre.nvidia.com/launcher"
+labelValue: "my-job"
+spec:
+  trainJob:
+    runtimePatches:
+      - manager: nvcre.nvidia.com/controller
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        metadata:
+                          labels:
+                            nvcre.nvidia.com/job: my-job

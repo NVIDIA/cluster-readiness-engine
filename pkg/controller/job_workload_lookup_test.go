@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache/informertest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -29,6 +31,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 const (
@@ -183,6 +186,8 @@ type jobLookupOutput struct {
 	// server. restartFromCheckpoint deletes it, so this is the destructive
 	// half of the lookup branch.
 	WorkloadSurvives bool `json:"workloadSurvives"`
+	// FailureLog is the persisted status.failureLog, omitted when unset.
+	FailureLog *nvcrev1alpha1.FailureLog `json:"failureLog,omitempty"`
 }
 
 // readJobOutput reads the persisted Job back through the API server and
@@ -218,6 +223,7 @@ func readJobOutput(
 		out.WorkloadRef = persisted.Status.WorkloadRef.Name
 	}
 	out.RestartCount = persisted.Status.RestartCount
+	out.FailureLog = persisted.Status.FailureLog
 
 	tj := &trainerv1alpha1.TrainJob{}
 	out.WorkloadSurvives = apiServer.Get(ctx,
@@ -240,9 +246,13 @@ func TestJobSetupDefaultsAPIReader(t *testing.T) {
 		Controller: config.Controller{SkipNameValidation: new(true)},
 	})
 	require.NoError(t, err)
-	r := &JobReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
+	// The launcher pod cache resolves the Pod REST mapping when it is built,
+	// which needs an API server; the integration suite builds the default.
+	launchers := &informertest.FakeInformers{}
+	r := &JobReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), LauncherPodCache: launchers}
 	require.NoError(t, r.SetupWithManager(mgr))
 	require.Same(t, mgr.GetAPIReader(), r.APIReader)
+	require.Same(t, launchers, r.LauncherPodCache, "a cache the caller built is kept")
 }
 
 // TestJobWorkloadLookup pins what updateStatusFromWorkload does when the
@@ -257,6 +267,10 @@ func TestJobSetupDefaultsAPIReader(t *testing.T) {
 //
 // The reconciler's Client plays the informer cache and APIReader plays the API
 // server, so each case sets exactly what each side can see.
+//
+// A case that lists launcherPods also wires the reconciler's Clientset to an
+// httptest server serving their logs, so the running branch reaches
+// launcherFailureLog and the record it persists is in the golden (issue #498).
 func TestJobWorkloadLookup(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "job-workload-lookup",
@@ -279,6 +293,13 @@ func TestJobWorkloadLookup(t *testing.T) {
 			// APIError, when set, fails the live read with this message, so a
 			// read that failed for its own reasons cannot pass for an absence.
 			APIError string `yaml:"apiError"`
+			// LauncherPods are MPI launcher pods of the workload, each failed
+			// with exitCode, or running when exitCode is 0.
+			LauncherPods []struct {
+				Name     string `yaml:"name"`
+				ExitCode int32  `yaml:"exitCode"`
+				Log      string `yaml:"log"`
+			} `yaml:"launcherPods"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -296,6 +317,23 @@ func TestJobWorkloadLookup(t *testing.T) {
 		objects := []client.Object{job.DeepCopy()}
 		if input.WorkloadExists {
 			objects = append(objects, newLookupTrainJob(holderOwn))
+		}
+		logs := map[string]string{}
+		for _, lp := range input.LauncherPods {
+			pod := &corev1.Pod{Name: lp.Name, Namespace: testNS, Labels: map[string]string{
+				jobSetNameLabel:        testJobWorkloadName,
+				replicatedJobNameLabel: workload.LauncherJobName,
+			}}
+			pod.Spec.NodeName = "node-" + lp.Name
+			state := corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}
+			if lp.ExitCode != 0 {
+				state = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					ExitCode: lp.ExitCode, Reason: "Error",
+				}}
+			}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: stubContainer, State: state}}
+			logs[lp.Name] = lp.Log
+			objects = append(objects, pod)
 		}
 		// One store, served two ways. The reconciler reads and writes through
 		// cached; the assertions read through apiServer. The only difference
@@ -315,6 +353,13 @@ func TestJobWorkloadLookup(t *testing.T) {
 		r := &JobReconciler{
 			Client: cached, APIReader: apiReader, Scheme: scheme,
 			Recorder: events.NewFakeRecorder(20),
+		}
+		if len(input.LauncherPods) > 0 {
+			cs, err := newPodLogClientset(t, logs)
+			if err != nil {
+				return err
+			}
+			r.Clientset = cs
 		}
 		result, reconcileErr := r.updateStatusFromWorkload(ctx, job)
 

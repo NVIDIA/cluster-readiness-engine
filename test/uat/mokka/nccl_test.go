@@ -35,10 +35,10 @@ func TestNCCLAllReducePass(t *testing.T) {
 }
 
 // TestNCCLAllReduceWorkloadFailed proves a workload that exits non-zero fails
-// the Job with WorkloadFailed. The KWOK lane cannot reach this path: its pods
-// always succeed. It is also the slowest case, because the launcher's
-// crash-loop backoff runs before the failure reaches NVCRE (see
-// workloadFailureTimeout).
+// the Job with WorkloadFailed, promptly (see workloadFailureTimeout), and that
+// status.failureLog carries the launcher's own output rather than a worker's
+// sshd exit while the JobSet tears the workers down (issue #498). The KWOK
+// lane cannot reach this path: its pods always succeed.
 func TestNCCLAllReduceWorkloadFailed(t *testing.T) {
 	requireProfile(t, "h100")
 	ctx := context.Background()
@@ -55,6 +55,12 @@ func TestNCCLAllReduceWorkloadFailed(t *testing.T) {
 	for _, node := range job.Status.FailedNodes {
 		require.Equal(t, nvcrev1alpha1.NodeFailureWorkloadFailed, node.Reason, "failed node %s", node.Name)
 	}
+
+	fl := job.Status.FailureLog
+	require.NotNil(t, fl, "failed Job should carry status.failureLog")
+	require.Contains(t, fl.PodName, "-launcher-", "failureLog should name the launcher pod; got %+v", *fl)
+	require.Contains(t, fl.Tail, "[stub] simulated failure",
+		"failureLog should carry the launcher's mpirun output; got %+v", *fl)
 }
 
 // TestNCCLAllReduceThreshold proves a measured value below the configured

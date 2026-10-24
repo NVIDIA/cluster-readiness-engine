@@ -16,9 +16,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
 )
@@ -85,6 +88,30 @@ func TestCacheOptionsScopesPodsToJobLabel(t *testing.T) {
 		}
 	}
 	t.Fatal("CacheOptions has no Pod entry")
+}
+
+// TestLauncherPodCacheScopesPodsToLauncherLabel pins the launcher pod cache
+// (ADR-102, amendment): it holds Pods labelled nvcre.nvidia.com/launcher and
+// nothing NVCRE's workers or other components run, caches no other kind under
+// a scope, and strips managedFields like the manager's cache.
+func TestLauncherPodCacheScopesPodsToLauncherLabel(t *testing.T) {
+	mgr, err := ctrl.NewManager(&rest.Config{Host: testFakeAPIServerHost}, ctrl.Options{
+		Metrics: metricsserver.Options{BindAddress: "0"},
+	})
+	require.NoError(t, err)
+	opts := launcherPodCacheOptions(mgr)
+	require.Len(t, opts.ByObject, 1, "the launcher pod cache scopes Pods only")
+	assert.NotNil(t, opts.DefaultTransform, "managedFields must be stripped")
+	for obj, byObject := range opts.ByObject {
+		_, ok := obj.(*corev1.Pod)
+		require.True(t, ok, "the launcher pod cache scopes Pods only")
+		require.NotNil(t, byObject.Label)
+		assert.Equal(t, podread.LauncherLabel, byObject.Label.String())
+		assert.True(t, byObject.Label.Matches(labels.Set{podread.LauncherLabel: "j"}), "a launcher")
+		assert.False(t, byObject.Label.Matches(labels.Set{podread.JobLabel: "j"}), "a worker")
+		assert.False(t, byObject.Label.Matches(labels.Set{testJobSetNameLabel: "j-workload"}),
+			"a launcher NVCRE did not label")
+	}
 }
 
 // TestEveryScopedCacheKindIsGuardedOrExempt fails when a kind is cached under

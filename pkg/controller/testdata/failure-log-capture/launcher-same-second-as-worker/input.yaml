@@ -1,0 +1,17 @@
+# FinishedAt has one-second precision. The launcher fails, and JobSet stops the
+# workers' sshd about half a second later, so both usually record the same
+# second. On a tie the first failed container in the list wins, so the
+# launchers are listed before the workers and the launcher is named.
+workloadRef: j-workload
+pods:
+  - name: j-workload-node-0-0
+    exitCode: 137
+    reason: Error
+    finishedAt: 10
+    log: "sshd: terminated\n"
+  - name: j-workload-launcher-0-0
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 10
+    log: "[stub] simulated failure\nmpirun exited with status 1\n"

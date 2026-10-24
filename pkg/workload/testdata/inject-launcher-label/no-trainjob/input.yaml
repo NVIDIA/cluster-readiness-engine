@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A spec without a TrainJob has nothing to label.
+labelKey: "nvcre.nvidia.com/launcher"
+labelValue: "my-job"
+spec: {}
