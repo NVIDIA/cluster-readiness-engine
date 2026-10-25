@@ -107,10 +107,10 @@ After design approval and node inspection:
   implementation, including wait placement around DDP construction; otherwise
   fail initialization. Retain all parameter integrity assertions.
   Hold `/mnt/workspace/.megatron-lm.lock` to serialize against other patch
-  guards, and read the source only after acquiring it. On this branch,
-  `megatron-clone` does not take that lock;
-  [PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555) adds
-  the clone-side holder to coordinate workspace preparation with patching.
+  guards, and read the source only after acquiring it. Workspace preparation
+  takes the same lock in `megatron-clone`, added by
+  [PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555),
+  coordinating workspace preparation with patching.
   Write and sync a sibling temporary file, preserve permissions, then use
   `os.replace` so
   readers cannot observe a truncated module. Remove the temporary file on

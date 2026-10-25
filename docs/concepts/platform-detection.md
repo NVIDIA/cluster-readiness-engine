@@ -143,10 +143,10 @@ profile: the AWS cell selects the OFI plugin and the EFA provider. Multi-node
 NVLink and NVLS are disabled because g7e GPUs communicate through PCIe and EFA.
 
 EFA requests scale with `gpusPerNode`: one interface per pair of GPUs,
-rounded up. The [AWS G7e specifications](https://aws.amazon.com/ec2/instance-types/g7e/)
-list **two GPUs** for `g7e.12xlarge`, which requests one EFA interface at full
-GPU allocation.
-The physical GPU counts and EC2 `DescribeInstanceTypes` EFA limits are:
+rounded up. GPU counts are from the
+[AWS G7e specifications](https://aws.amazon.com/ec2/instance-types/g7e/).
+EFA interface limits follow the instance's network-card count, with one EFA
+interface per card:
 
 | Instance type | GPUs per instance | Maximum EFA interfaces | EFA request using all GPUs |
 | --- | --- | --- | --- |
@@ -195,10 +195,9 @@ around DDP construction; otherwise the init container fails with an explanation.
 The source restriction also applies to `sourceRepo` and pre-seeded workspaces
 (see [Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source)).
 The guard takes `/mnt/workspace/.megatron-lm.lock` to serialize against other
-patch guards, then reads and validates the source under that lock. On this
-branch, `megatron-clone` does not take the lock;
-[PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555) adds the
-clone-side holder so workspace preparation and patch guards share the lock.
+patch guards, then reads and validates the source under that lock.
+Workspace preparation takes the same lock in `megatron-clone`, added by
+[PR #555](https://github.com/NVIDIA/cluster-readiness-engine/pull/555).
 The guard writes a sibling temporary file and atomically replaces the target,
 preserving its permissions. Concurrent
 readers see a complete file; concurrent guards recheck the updated digest.
