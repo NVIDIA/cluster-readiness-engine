@@ -29,6 +29,7 @@ metadata:
     jobset.sigs.k8s.io/replicatedjob-name: launcher
     jobset.sigs.k8s.io/replicatedjob-replicas: "1"
     jobset.sigs.k8s.io/restart-attempt: "0"
+    nvcre.nvidia.com/launcher: gcp-h100-nccl-communicati-76790-job
   ownerReferences:
   - apiVersion: batch/v1
     blockOwnerDeletion: true
@@ -208,7 +209,7 @@ spec:
       readOnly: true
   preemptionPolicy: PreemptLowerPriority
   priority: 0
-  restartPolicy: OnFailure
+  restartPolicy: Never
   schedulerName: default-scheduler
   securityContext: {}
   serviceAccount: default

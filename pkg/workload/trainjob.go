@@ -77,6 +77,27 @@ func (a *TrainJobAdapter) InjectPodLabel(spec *nvcrev1alpha1.WorkloadSpec, key, 
 	podTemplate.Metadata.Labels[key] = value
 }
 
+// InjectLauncherPodLabel sets key=value on the MPI launcher's pod template,
+// through the controller-owned runtimePatch entry for the launcher that
+// SetNodeAffinity and SetTolerations also patch. It does nothing unless the
+// spec registers a launcher (HasLauncherTarget): Trainer's webhook rejects a
+// patch for a replicated job the runtime does not have, so a spec without a
+// launcher must not gain one here. The worker label (InjectPodLabel) is
+// separate and stays on the workers only.
+func InjectLauncherPodLabel(spec *nvcrev1alpha1.WorkloadSpec, key, value string) {
+	if !HasLauncherTarget(spec) {
+		return
+	}
+	podTemplate := ensurePodTemplatePatch(spec.TrainJob, LauncherJobName)
+	if podTemplate.Metadata == nil {
+		podTemplate.Metadata = &metav1.ObjectMeta{}
+	}
+	if podTemplate.Metadata.Labels == nil {
+		podTemplate.Metadata.Labels = make(map[string]string)
+	}
+	podTemplate.Metadata.Labels[key] = value
+}
+
 func (a *TrainJobAdapter) SetNodeSelector(spec *nvcrev1alpha1.WorkloadSpec, selector map[string]string) {
 	if spec.TrainJob == nil {
 		return

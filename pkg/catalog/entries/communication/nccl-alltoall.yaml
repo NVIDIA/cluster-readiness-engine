@@ -93,6 +93,18 @@ dependencies:
               labels:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
             spec:
+              # One replacement pod covers a launcher that starts before it can
+              # reach a worker (DNS, network policy on port 22): the dependsOn
+              # gate only proves each worker's own loopback sshd session.
+              backoffLimit: 1
+              # An evicted or preempted launcher is replaced without counting
+              # against backoffLimit. podFailurePolicy requires restartPolicy Never.
+              podFailurePolicy:
+                rules:
+                - action: Ignore
+                  onPodConditions:
+                  - status: "True"
+                    type: DisruptionTarget
               template:
                 spec:
                   containers:
@@ -126,7 +138,13 @@ dependencies:
                       readOnly: true
                     - mountPath: /root/.ssh
                       name: ssh-keys
-                  restartPolicy: OnFailure
+                  # Fail fast (issue #498). A launcher that exits non-zero after
+                  # the workers are up fails the same way on every retry, so an
+                  # in-place OnFailure restart only crash-loops while every node
+                  # holds its GPUs. Never keeps the failed pod and its log for
+                  # status.failureLog; NVCRE's own retryFailedGroups re-creates
+                  # the whole Job when a retry is wanted.
+                  restartPolicy: Never
                   volumes:
                   - emptyDir: {}
                     name: ssh-keys

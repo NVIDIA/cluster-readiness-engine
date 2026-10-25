@@ -1,0 +1,10 @@
+# The workload still reports running, but its MPI launcher has failed. JobSet
+# deletes the launcher pod about half a second later, before the failure
+# reaches the Job, so the running branch records the launcher now and the
+# persisted status.failureLog names it (issue #498).
+workloadExists: true
+cacheHidesWorkload: false
+launcherPods:
+  - name: job-workload-launcher-0-0-a
+    exitCode: 1
+    log: "mpirun: worker job-workload-node-0-1 unreachable\n"
