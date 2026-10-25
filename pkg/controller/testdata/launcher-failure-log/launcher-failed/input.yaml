@@ -1,0 +1,12 @@
+# The workload still reports running and the workers are up, but the launcher
+# has failed. Its log is read now, before JobSet deletes the pod.
+workloadRef: j-workload
+pods:
+  - name: j-workload-node-0-0
+    running: true
+  - name: j-workload-launcher-0-0
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 10
+    log: "[stub] simulated failure\nmpirun exited with status 1\n"

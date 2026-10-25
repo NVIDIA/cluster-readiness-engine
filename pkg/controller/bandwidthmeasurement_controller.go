@@ -274,6 +274,12 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	// Skip reading logs if the container is currently in a waiting state
 	// (e.g., CrashLoopBackOff). During SSH-related crash loops the logs
 	// contain error messages rather than NCCL output.
+	//
+	// The shipped NCCL launchers no longer restart in place (restartPolicy
+	// Never, issue #498): a failed attempt is a new pod, which the discoverer
+	// above prefers over the failed one once it runs, so for them this check
+	// and the restart handling below stay idle. They remain for a runtime that
+	// still uses OnFailure, such as one a user supplies or patches.
 	containerName := profile.Spec.ContainerName
 	if restarts, waiting := podutil.ContainerRestartStatus(pod, containerName); waiting {
 		log.Info("Container is waiting (CrashLoopBackOff), skipping log read",

@@ -568,6 +568,11 @@
                     "template": {
                       "spec": {
                         "template": {
+                          "metadata": {
+                            "labels": {
+                              "nvcre.nvidia.com/launcher": "aws-nc-gb-ps-communicatio-5ad61-job"
+                            }
+                          },
                           "spec": {
                             "affinity": {
                               "nodeAffinity": {
@@ -919,6 +924,20 @@
                         }
                       },
                       "spec": {
+                        "backoffLimit": 1,
+                        "podFailurePolicy": {
+                          "rules": [
+                            {
+                              "action": "Ignore",
+                              "onPodConditions": [
+                                {
+                                  "status": "True",
+                                  "type": "DisruptionTarget"
+                                }
+                              ]
+                            }
+                          ]
+                        },
                         "template": {
                           "spec": {
                             "containers": [
@@ -978,7 +997,7 @@
                                 ]
                               }
                             ],
-                            "restartPolicy": "OnFailure",
+                            "restartPolicy": "Never",
                             "volumes": [
                               {
                                 "emptyDir": {},

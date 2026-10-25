@@ -1,0 +1,20 @@
+# The replacement workload, created at 100 by a checkpoint restart, failed. The
+# previous generation's launcher is still listed and finished earlier, so it
+# would win the earliest-failure pick; only the current launcher counts.
+workloadRef: j-workload
+workloadCreated: 100
+pods:
+  - name: j-workload-launcher-0-0-old
+    launcher: true
+    created: 10
+    exitCode: 1
+    reason: Error
+    finishedAt: 20
+    log: "failure from before the restart\n"
+  - name: j-workload-launcher-0-0-new
+    launcher: true
+    created: 101
+    exitCode: 1
+    reason: Error
+    finishedAt: 130
+    log: "[stub] simulated failure\n"
