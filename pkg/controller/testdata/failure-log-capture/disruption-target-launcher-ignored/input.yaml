@@ -1,0 +1,23 @@
+# An evicted launcher (DisruptionTarget=True) finished first, but the launcher
+# Job ignored that failure and replaced the pod. When the run then fails, the
+# replacement launcher is the failure recorded, not the evicted pod.
+workloadRef: j-workload
+pods:
+  - name: j-workload-launcher-0-0-a
+    launcher: true
+    disruptionTarget: true
+    exitCode: 137
+    reason: Error
+    finishedAt: 10
+    log: "evicted\n"
+  - name: j-workload-launcher-0-0-b
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 50
+    log: "[stub] simulated failure\nmpirun exited with status 1\n"
+  - name: j-workload-node-0-0
+    exitCode: 137
+    reason: Error
+    finishedAt: 60
+    log: "sshd: terminated\n"

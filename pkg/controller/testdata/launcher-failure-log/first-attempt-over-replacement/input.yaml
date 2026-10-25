@@ -1,0 +1,16 @@
+# Outside KAI the launcher Job allows one replacement pod. When both attempts
+# are still listed, the first failure is the one recorded.
+workloadRef: j-workload
+pods:
+  - name: j-workload-launcher-0-0-b
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 30
+    log: "second attempt\n"
+  - name: j-workload-launcher-0-0-a
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 10
+    log: "first attempt\n"

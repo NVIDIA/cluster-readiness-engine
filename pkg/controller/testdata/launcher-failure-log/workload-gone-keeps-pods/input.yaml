@@ -1,0 +1,12 @@
+# The workload is already gone, so there is no generation to compare against;
+# its failed launcher, still listed, is recorded as before.
+workloadRef: j-workload
+workloadGone: true
+pods:
+  - name: j-workload-launcher-0-0
+    launcher: true
+    created: 10
+    exitCode: 1
+    reason: Error
+    finishedAt: 20
+    log: "[stub] simulated failure\n"

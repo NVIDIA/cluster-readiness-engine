@@ -255,8 +255,9 @@ type ExecutionSpec struct {
 	TimeoutPerJob *metav1.Duration `json:"timeoutPerJob,omitempty"`
 
 	// retryFailedGroups is the number of times to retry a failed group's job.
-	// After the workload controller exhausts its own restarts (backoffLimit),
-	// the orchestration re-creates the entire job up to this many times.
+	// Once the workload has failed, after any pod retries its Job's own
+	// backoffLimit allows, the orchestration re-creates the entire job up to
+	// this many times.
 	// 0 means no retries. Default is 0.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=0

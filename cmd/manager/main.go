@@ -263,6 +263,14 @@ func newRootCommand() *cobra.Command {
 			// check on a Forbidden workload create and the Workflow's access
 			// check share cached answers (ADR-092, issue #488).
 			accessReviewer := controller.NewAccessReviewer(mgr.GetClient())
+			// The manager's cache holds only job-labelled Pods and refuses every
+			// Pod informer (ADR-102). The Job controller's watch on failed MPI
+			// launchers runs on a second cache holding only launcher-labelled
+			// Pods, which nothing reads from.
+			launcherPodCache, err := controller.NewLauncherPodCache(mgr)
+			if err != nil {
+				return fmt.Errorf("unable to set up the launcher pod cache: %w", err)
+			}
 			if err := (&controller.JobReconciler{
 				Client:                   mgr.GetClient(),
 				APIReader:                mgr.GetAPIReader(),
@@ -272,6 +280,7 @@ func newRootCommand() *cobra.Command {
 				MaxConcurrentReconciles:  concurrency.maxConcurrentReconciles,
 				WorkloadCreationDeadline: workloadCreationDeadline,
 				AccessReviewer:           accessReviewer,
+				LauncherPodCache:         launcherPodCache,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Job: %w", err)
 			}

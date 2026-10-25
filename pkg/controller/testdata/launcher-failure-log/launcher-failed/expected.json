@@ -1,0 +1,7 @@
+{
+  "podName": "j-workload-launcher-0-0",
+  "nodeName": "node-j-workload-launcher-0-0",
+  "exitCode": 1,
+  "reason": "Error",
+  "tail": "[stub] simulated failure\nmpirun exited with status 1\n"
+}

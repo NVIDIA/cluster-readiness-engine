@@ -1,0 +1,19 @@
+# A checkpoint restart deleted the workload and created its replacement under
+# the same name at 100. The launcher that failed before the restart is still
+# listed, because the old pods are garbage-collected in the background, and
+# matches the same JobSet labels. It belongs to the replaced generation and is
+# not recorded; the current launcher is still running.
+workloadRef: j-workload
+workloadCreated: 100
+pods:
+  - name: j-workload-launcher-0-0-old
+    launcher: true
+    created: 10
+    exitCode: 1
+    reason: Error
+    finishedAt: 20
+    log: "failure from before the restart\n"
+  - name: j-workload-launcher-0-0-new
+    launcher: true
+    created: 100
+    running: true

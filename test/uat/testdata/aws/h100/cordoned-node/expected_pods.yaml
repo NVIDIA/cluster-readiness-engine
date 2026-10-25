@@ -136,7 +136,7 @@ spec:
   hostname: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0-0
   preemptionPolicy: PreemptLowerPriority
   priority: 0
-  restartPolicy: OnFailure
+  restartPolicy: Never
   schedulerName: default-scheduler
   securityContext: {}
   serviceAccount: default

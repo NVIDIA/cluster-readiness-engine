@@ -1,0 +1,15 @@
+{
+  "requeueAfter": "15s",
+  "phase": "InProgress",
+  "reason": "WorkloadRunning",
+  "workloadRef": "job-workload",
+  "restartCount": 0,
+  "workloadSurvives": true,
+  "failureLog": {
+    "podName": "job-workload-launcher-0-0-a",
+    "nodeName": "node-job-workload-launcher-0-0-a",
+    "exitCode": 1,
+    "reason": "Error",
+    "tail": "mpirun: worker job-workload-node-0-1 unreachable\n"
+  }
+}
