@@ -405,6 +405,19 @@ func BuildWorkflowSpec(
 		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
+
+	// networkAttachments go on the runtime and into every platform override
+	// patch that requests the same resource, as in the controller, so the
+	// overrides applied after this (here with --platform, or by the Workflow
+	// controller) add to the request instead of replacing it. The user's
+	// spec.overrides are appended untouched and still win.
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, err
+	}
+	if err := platform.ApplyNetworkAttachmentsToOverrides(wrOverrides, spec.NetworkAttachments); err != nil {
+		return nil, err
+	}
+
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
@@ -663,19 +676,11 @@ func runWorkloadRunRenderDryRun(
 	// GB200/GB300 or x86 HGX B200/B300 target, the single candidate (rdma/* or
 	// nvidia.com/mlnxnics) allocatable at the resolved mlnxPerNode count on
 	// every discovered node is used. On zero or multiple candidates nothing
-	// is injected and the note below matches the controllers'
+	// is injected and the printed note matches the controllers'
 	// NICResourceDetection event. The offline render (no --dry-run) has no
-	// cluster and stays field-only.
-	if name, refusalMessage, ran := controller.ResolveNICResourceName(
-		run.Spec.NicResourceName, effectivePlatform, gpuArch, nodes, mlnxPerNode); ran {
-		if name == "" {
-			_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
-		} else {
-			_, _ = fmt.Fprintf(os.Stderr,
-				"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
-			run.Spec.NicResourceName = &name
-		}
-	}
+	// cluster and stays field-only. An explicit networkAttachments list owns
+	// the NIC wiring (issue #400), so then applyWRNICDetection does nothing.
+	applyWRNICDetection(run, effectivePlatform, gpuArch, nodes, mlnxPerNode)
 
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
@@ -1483,6 +1488,11 @@ func readWorkloadRun(file string) (*nvcrev1alpha1.WorkloadRun, error) {
 		return nil, fmt.Errorf("workloadrun %s: %w", run.Name, err)
 	}
 
+	// networkAttachments: the CRD rules, mirrored for the offline path.
+	if err := validateWRNetworkAttachments(&run.Spec); err != nil {
+		return nil, fmt.Errorf("workloadrun %s: %w", run.Name, err)
+	}
+
 	return &run, nil
 }
 
@@ -1902,4 +1912,48 @@ func newWorkloadRunCancelCommand() *cobra.Command {
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+// validateWRNetworkAttachments mirrors the CRD rules on
+// WorkloadRunSpec.networkAttachments: each entry's pattern, the 16-entry cap,
+// and the exclusion with nicResourceName.
+func validateWRNetworkAttachments(spec *nvcrev1alpha1.WorkloadRunSpec) error {
+	if spec.NetworkAttachments == nil {
+		return nil
+	}
+	if len(spec.NetworkAttachments) == 0 {
+		return fmt.Errorf("networkAttachments must not be empty when set")
+	}
+	if err := platform.ValidateNetworkAttachments(spec.NetworkAttachments); err != nil {
+		return err
+	}
+	if spec.NicResourceName != nil {
+		return fmt.Errorf("networkAttachments and nicResourceName are mutually exclusive")
+	}
+	return nil
+}
+
+// applyWRNICDetection fills run.Spec.NicResourceName from node allocatable
+// on the dry-run path, printing the controllers' NICResourceDetection note
+// when detection refuses. An explicit networkAttachments list owns the NIC
+// wiring (issue #400), so with one set there is nothing to detect, as in the
+// controller and in the Certification dry-run's applyNICDetection.
+func applyWRNICDetection(
+	run *nvcrev1alpha1.WorkloadRun, platformName, gpuArch string, nodes []corev1.Node, mlnxPerNode int32,
+) {
+	if len(run.Spec.NetworkAttachments) > 0 {
+		return
+	}
+	name, refusalMessage, ran := controller.ResolveNICResourceName(
+		run.Spec.NicResourceName, platformName, gpuArch, nodes, mlnxPerNode)
+	if !ran {
+		return
+	}
+	if name == "" {
+		_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
+	run.Spec.NicResourceName = &name
 }

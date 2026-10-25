@@ -46,6 +46,7 @@ const (
 	testCertTimeoutCert       = "timeout-cert"
 	testCertNamespace         = "test-ns"
 	testStartupStallFlag      = "--startup-stall-timeout-seconds"
+	testCertFileFlag          = "--cert-file"
 )
 
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
@@ -983,7 +984,7 @@ func TestNewRunCommandValidation(t *testing.T) {
 	t.Run("cert-file and category are mutually exclusive", func(t *testing.T) {
 		cmd := newRunCommand("dev")
 		cmd.SetArgs([]string{
-			"--cert-file", "cert.yaml",
+			testCertFileFlag, "cert.yaml",
 			testCategoryFlag, testCategoryNCCLAllReduce,
 		})
 		err := cmd.Execute()
@@ -1025,13 +1026,41 @@ func TestNewRunCommandValidation(t *testing.T) {
 		t.Run("cert-file conflicts with startup-stall window "+value, func(t *testing.T) {
 			cmd := newRunCommand("dev")
 			cmd.SetArgs([]string{
-				"--cert-file", filepath.Join(t.TempDir(), "missing.yaml"),
+				testCertFileFlag, filepath.Join(t.TempDir(), "missing.yaml"),
 				testStartupStallFlag, value,
 			})
 			err := cmd.Execute()
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "--cert-file")
+			assert.Contains(t, err.Error(), testCertFileFlag)
 			assert.Contains(t, err.Error(), testStartupStallFlag)
+			var pathErr *os.PathError
+			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
+		})
+	}
+
+	// The network-attachment flags are only read on the --category branch, so
+	// with --cert-file they would parse and then be silently dropped. Each
+	// form, the zipped pair included, has to be refused up front, before the
+	// file is read.
+	for _, flagArgs := range [][]string{
+		{"--network-attachments", "nvcre/r0=nvidia.com/r0"},
+		{"--multus-networks", "nvcre/r0", "--extended-resources", "nvidia.com/r0"},
+		{"--multus-networks", "nvcre/r0"},
+		{"--extended-resources", "nvidia.com/r0"},
+	} {
+		name := flagArgs[0]
+		if len(flagArgs) > 2 {
+			name += " and " + flagArgs[2]
+		}
+		t.Run("cert-file conflicts with "+name, func(t *testing.T) {
+			cmd := newRunCommand("dev")
+			cmd.SetArgs(append([]string{
+				testCertFileFlag, filepath.Join(t.TempDir(), "missing.yaml"),
+			}, flagArgs...))
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), testCertFileFlag)
+			assert.Contains(t, err.Error(), flagArgs[0])
 			var pathErr *os.PathError
 			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
 		})

@@ -1,0 +1,88 @@
+[
+  [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "wr-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "name": "sidecar",
+                              "resources": {
+                                "limits": {
+                                  "nvidia.com/mlnxnics": "1"
+                                }
+                              }
+                            },
+                            {
+                              "name": "node",
+                              "resources": {
+                                "limits": {
+                                  "nvidia.com/mlnxnics": "9"
+                                },
+                                "requests": {
+                                  "nvidia.com/mlnxnics": "9"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "worker",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "name": "trainer",
+                              "resources": {
+                                "limits": {
+                                  "nvidia.com/mlnxnics": "9"
+                                },
+                                "requests": {
+                                  "nvidia.com/mlnxnics": "9"
+                                }
+                              }
+                            },
+                            {
+                              "name": "sidecar",
+                              "resources": {
+                                "limits": {
+                                  "nvidia.com/mlnxnics": "1"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+]

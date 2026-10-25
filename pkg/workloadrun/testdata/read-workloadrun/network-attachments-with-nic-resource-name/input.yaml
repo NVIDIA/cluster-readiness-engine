@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# networkAttachments and nicResourceName both describe the NIC wiring, so one
+# spec may set only one of them, as the CRD's CEL rule says.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-netatt
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 2
+  framework:
+    mpi:
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      mpirunPath: /usr/local/mpi/bin/mpirun
+  nicResourceName: nvidia.com/r0
+  networkAttachments:
+    - {network: nvcre/r0, resourceName: nvidia.com/r0}

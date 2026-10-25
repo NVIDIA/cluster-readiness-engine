@@ -1,0 +1,15 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.networkAttachments[0].network",
+      "message": "Invalid value: \"nvcre/R0\": spec.networkAttachments[0].network in body should match '^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'"
+    },
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.networkAttachments[1].resourceName",
+      "message": "Invalid value: \"kubernetes.io/r1\": resourceName must not use the reserved kubernetes.io or k8s.io domains"
+    }
+  ]
+}
