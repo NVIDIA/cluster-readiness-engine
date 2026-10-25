@@ -149,6 +149,16 @@ It moves the threshold without changing the slope: the manager's memory would st
 
 The CEL node health detector keeps an unstructured copy of every Node it evaluates and never evicts it. That is a second, separate memory cost in a large run, not addressed here.
 
+## Amendment: a watch-only cache for MPI launchers (#529)
+
+PR #529 (issue #498) reads a failed MPI launcher's log while the workload still reports running, because JobSet deletes the launcher pod about a second after it fails. That needs a watch on launcher pods, which decision 3 refuses on the manager's cache, and the launchers are not in that cache anyway.
+
+1. **Launchers get a label of their own.** The Job controller sets `nvcre.nvidia.com/launcher: <job name>` on the launcher's pod template, through the controller-owned `launcher` runtimePatch entry that `SetNodeAffinity` and `SetTolerations` patch (`workload.InjectLauncherPodLabel`). It does so only when `HasLauncherTarget` is true, since Trainer's webhook rejects a patch for a replicated job the runtime lacks. `nvcre.nvidia.com/job` stays on the workers only, so node discovery, the drain barrier and failure attribution do not change (see "Label the MPI launchers too" above).
+2. **A second cache holds only those pods and backs only the watch.** `controller.NewLauncherPodCache` builds a cache whose only scope is Pods with the launcher label, adds it to the manager's cache group, and `cmd/manager` passes it to the Job controller (`SetupWithManager` builds it when unset). The controller watches it with `WatchesRawSource(source.Kind(...))`, and the map function takes the Job name from the label. This cache is not wrapped by `NewCache`: a watch on it sees every pod it is meant to see, which is what decision 3 protects. Nothing reads through it.
+3. **The launcher is still read live.** `launcherPods` reads through `podread.WorkloadPods`, and `test/readpolicy` still holds.
+
+Memory follows the launchers of runs in progress and of kept Certifications, at most one or two pods per MPI Job. Launchers of workloads created before this change carry no label and are not watched; their failures are still found live by `captureFailureLog` once the workload reports the failure, if the pod remains.
+
 ## References
 
 - Issue [#504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)

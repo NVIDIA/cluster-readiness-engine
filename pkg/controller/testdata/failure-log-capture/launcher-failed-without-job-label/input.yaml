@@ -1,0 +1,19 @@
+# The launcher carries no nvcre.nvidia.com/job label, only the workers do. When
+# it failed, the capture saw only the workers, recorded NoTerminatedContainer,
+# and named no pod (issue #498, measured on Mokka). It is found by its JobSet
+# labels, and named over the worker whose sshd exited later on the way down.
+workloadRef: j-workload
+pods:
+  - name: j-workload-node-0-0
+    exitCode: 137
+    reason: Error
+    finishedAt: 40
+    log: "sshd: terminated\n"
+  - name: j-workload-node-0-1
+    running: true
+  - name: j-workload-launcher-0-0
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 10
+    log: "[stub] simulated failure\nmpirun exited with status 1\n"
