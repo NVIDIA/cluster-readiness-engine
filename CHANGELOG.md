@@ -25,6 +25,12 @@ followed them.
   condition message, which also explains a certification that failed before any
   category did, and a per-category `runtimeSeconds`
   ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
+- AWS B300 (`p6-b300.48xlarge`) NCCL catalog entries and WorkloadRun overrides request
+  16 `vpc.amazonaws.com/efa` devices per worker, matching the instance's 16 EFA-capable
+  secondary network cards. The NCCL entries previously fell into the AWS H100 block,
+  which requests 32 and cannot schedule on these nodes; they now pin a CUDA 13
+  nccl-tests image with native B300 code. `nvcrectl workflow render` gains an
+  `aws-b300` mock node.
 
 ### Changed
 

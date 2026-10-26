@@ -259,6 +259,71 @@
 {{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
 {{- end }}
 
+# --- AWS + B300 (EFA 16 devices) ---
+# p6-b300.48xlarge has 17 network cards; card 0 is ENA-only. Configure EFA
+# on the 16 secondary cards so the device plugin advertises 16 devices. IPC_LOCK,
+# SYS_CHROOT on MPI, and the same wholesale-restatement caveat, as for GB200
+# and H100 above.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      securityContext:
+                        capabilities:
+                          add:
+                          - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
+                      resources:
+                        limits:
+                          vpc.amazonaws.com/efa: 16
+                        requests:
+                          vpc.amazonaws.com/efa: 16
+
+# --- AWS + B300 (EFA transport selection) ---
+# Split by framework for the same reason as the GB200 pair above.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  mpiArgs:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+{{- end }}
+
 # --- GCP + H100 (FastRak NCCL env vars) ---
 - when:
     platform:
