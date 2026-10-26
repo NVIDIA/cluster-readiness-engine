@@ -91,17 +91,18 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | RTX PRO 6000 Blackwell | AWS g7e.48xlarge | EFA, PCIe GPU peer-to-peer | Eight GPUs and `vpc.amazonaws.com/efa: 4` per worker; no ComputeDomain or multi-node NVLink |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
 | B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`, or one resource and Multus network per rail via `networkAttachments`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
-| GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
-| GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four `network-operator/sriov-net` attachments, ComputeDomain |
-| L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two `network-operator/sriov-net` attachments |
+| GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and as many attachments to the [detected RDMA network](#oci-rdma-network) |
+| GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four attachments to the [detected RDMA network](#oci-rdma-network), ComputeDomain |
+| L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two attachments to the [detected RDMA network](#oci-rdma-network) |
 | B200/GB300 | Nscale | InfiniBand | `gpu.nvidia.com`/`rdma.nscale.com` DRA `ResourceClaimTemplate`s (no `nvidia.com/gpu` extended-resource request; `dcgm-level4` and `nccl-loopback-nvswitch` claim the GPU only, since the first runs `hostNetwork` and the second uses NVLink only), portable IB NCCL env (no HCA pinning) plus QP/channel tuning on the B200 NCCL collectives, arm64/GPU taint tolerations; GB300 additionally gets the ComputeDomain block and uses `topology.nks.nscale.com/accelerator-domain` as the topology key wherever other platforms use `nvidia.com/gpu.clique` (Nscale runs no GFD, so that label never exists). `dcgm-level4` connects to NKS's `nvidia-platform/nvidia-dcgm-dra` DCGM Service instead of `gpu-operator/nvidia-dcgm`, unless `dcgmHost` is set, which wins on every platform |
 
 OCI GB200 is the one OCI architecture that requests no NIC by default. The
-shapes do not consistently expose `nvidia.com/mlnxnics`, and the `sriov-net`
-NetworkAttachmentDefinition that the annotation references is not present on a
-stock cluster, so a default request leaves every worker pod Pending on
-`Insufficient nvidia.com/mlnxnics`. Sites running the SR-IOV device plugin set
-`mlnxPerNode` to their own per-node count.
+shapes do not consistently expose `nvidia.com/mlnxnics`, and a stock cluster
+has no NetworkAttachmentDefinition for it to attach, so a default request would
+fail [detection](#oci-rdma-network) or, with a NetworkAttachmentDefinition in
+place, leave every worker pod Pending on `Insufficient nvidia.com/mlnxnics`.
+Sites running the SR-IOV device plugin set `mlnxPerNode` to their own per-node
+count.
 
 Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
 templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
@@ -249,6 +250,69 @@ collect live baselines before setting them. Offline rendering checks the
 selected configuration, not the physical fabric or its performance.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. `nvcrectl workflow render` and `nvcrectl certification render` also write the same information to the `nvcrectl.nvidia.com/applied-overrides` annotation on each rendered Workflow, and omit the annotation when no override matched.
+
+### OCI RDMA network
+
+On OCI, the NCCL entries, and the Nemotron entries on L40S, L40 and GB300,
+request `nvidia.com/mlnxnics` and attach one Multus secondary network per NIC
+(on GB200 too, once `mlnxPerNode` is set above its default of 0)
+through the `k8s.v1.cni.cncf.io/networks` annotation. The platform owns that
+network and names it: AICR installs the NVIDIA Network Operator into
+`nvidia-network-operator`, for example, and a switchdev cluster provides a
+`host-device` network rather than an SR-IOV one. So the controller does not
+assume a name. It lists NetworkAttachmentDefinitions and keeps those annotated
+`k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics`, the annotation Multus
+needs to hand each attachment the VF allocated for that resource
+([ADR-103](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/103-oci-rdma-network-detection.md)).
+
+The candidates are the matching NetworkAttachmentDefinitions in the
+Certification's namespace if there are any, otherwise the matching ones in
+every namespace.
+
+| Candidates | Result |
+|---|---|
+| Exactly one | Attached. |
+| Several, all equivalent | The first `<namespace>/<name>` in sorted order is attached, and a Normal `SecondaryNetworkDetection` event names the ones skipped. Equivalent means the same `spec.config` apart from its top-level `name`; an empty or non-JSON `spec.config` is never equivalent. |
+| Several that differ | The Certification fails with `SecondaryNetworkDetectionFailed`, naming the candidates and the `spec.config` keys that differ. |
+| None | The Certification fails with `SecondaryNetworkDetectionFailed`, saying what it found. |
+
+Both failures happen before that category's Workflow is created. The no-match
+message lists the ways forward: create a NetworkAttachmentDefinition for
+`nvidia.com/mlnxnics`, name the networks explicitly with
+[`networkAttachments`](../api-reference/certification.md), or set
+`mlnxPerNode: 0`, which certifies without RDMA NICs unless
+`rdmaDeviceAccess: hostPath` is also set on a cluster that exposes
+`/dev/infiniband` without a device plugin. `hostPath` on its own still requests
+`nvidia.com/mlnxnics` and attaches the network, so it does not avoid
+detection. The message for several that differ suggests `networkAttachments` or
+removing the NetworkAttachmentDefinitions that should not be used. When one of
+them is `network-operator/sriov-net`, it also asks you to delete that one if it
+is left over from an earlier setup or was made by hand as a workaround. A
+cluster that serves no NetworkAttachmentDefinition API fails as no match does,
+and a refused list fails with a message asking you to restore the chart's
+grant. Any other list error is retried; `--dry-run` fails on it instead.
+
+Detection runs only for a category whose rendered Workflow attaches the
+network. Other platforms, `dcgm-level4`, Nemotron on H100, A100, B200, B300
+and H200, `mlnxPerNode: 0`, and an explicit `networkAttachments` list never
+list NetworkAttachmentDefinitions. The manager role grants `get` and `list` on
+`network-attachment-definitions.k8s.cni.cncf.io` for it, and nothing more.
+
+`nvcrectl certification render` without `--dry-run` has no cluster to look at.
+It attaches `network-operator/sriov-net`, the name NVCRE used before detection,
+and says so on stderr. With `--dry-run` it detects the network as the
+controller does, using your kubeconfig, and prefers NetworkAttachmentDefinitions
+in the Certification's namespace or, for a manifest that sets none, in
+`--namespace` (`default` unless given). If you may not list
+NetworkAttachmentDefinitions, it prints a warning and renders the default
+instead of failing, since the controller lists with its own service account.
+
+If Multus runs with `namespaceIsolation: true`, a pod may only reference a
+NetworkAttachmentDefinition in its own namespace, or in a namespace listed in
+`globalNamespaces`. `default` is allowed implicitly only while
+`globalNamespaces` is unset. Either list the platform network's namespace in
+`globalNamespaces`, or provide a matching NetworkAttachmentDefinition in the
+Certification's namespace, which detection then prefers over any elsewhere.
 
 ### Akamai RTX PRO 6000 TCP
 

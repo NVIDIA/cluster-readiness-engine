@@ -1,0 +1,18 @@
+{
+  "requeue": true,
+  "nadLists": 1,
+  "conditions": [
+    {
+      "message": "Created Workflow for category communication/nccl-all-reduce (1 of 1)",
+      "reason": "WorkflowCreated",
+      "type": "InProgress"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "oci-cert-communication-nc-db169",
+      "networks": "nvidia-network-operator/rdma-net,nvidia-network-operator/rdma-net",
+      "mlnxnicsRequested": true
+    }
+  ]
+}

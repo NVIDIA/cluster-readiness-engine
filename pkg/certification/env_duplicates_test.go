@@ -166,7 +166,7 @@ func sweepOne(
 			cert.Spec.GpusPerNode = new(gpusPerNode)
 		}
 
-		workflows, err := renderCertification(cert, plat, arch, nil, "")
+		workflows, err := renderCertification(cert, plat, arch, nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			// An entry whose GPU-count or parallelism floor the swept shape
 			// does not meet is the catalog refusing an impossible run, not a

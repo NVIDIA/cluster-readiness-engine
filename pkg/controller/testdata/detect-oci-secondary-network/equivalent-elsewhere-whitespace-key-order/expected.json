@@ -1,0 +1,7 @@
+{
+  "name": "tenant-a/rdma-net",
+  "skipped": [
+    "tenant-b/rdma-net"
+  ],
+  "notice": "OCI RDMA network detection attached tenant-a/rdma-net; equivalent NetworkAttachmentDefinitions for nvidia.com/mlnxnics skipped: tenant-b/rdma-net."
+}

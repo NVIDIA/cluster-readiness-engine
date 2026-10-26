@@ -1,0 +1,16 @@
+{
+  "requeue": true,
+  "nadLists": 0,
+  "conditions": [
+    {
+      "message": "Created Workflow for category training/nemotron5-8b (1 of 1)",
+      "reason": "WorkflowCreated",
+      "type": "InProgress"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "oci-cert-training-nemotron5-8b"
+    }
+  ]
+}

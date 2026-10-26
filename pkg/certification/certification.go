@@ -4,6 +4,7 @@
 package certification
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -218,10 +219,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		tcpxoPluginVersion = detectTCPXOPluginVersion(ctx, dryRunClient, dryRunNodes, platformFlag)
 	}
 
-	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion)
-	if err != nil {
-		return err
-	}
+	// Both paths below render twice when a Workflow attaches the OCI RDMA
+	// network (ADR-103): --dry-run with the network detected as the controller
+	// detects it, offline with catalog.DefaultOCISecondaryNetwork.
+	var workflows []nvcrev1alpha1.Workflow
 
 	// Collect dry-run results per workflow for summary output after YAML.
 	type workflowResults struct {
@@ -236,24 +237,19 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		if len(nodes) == 0 {
 			var nErr error
 			nodes, synthesizedProducts, nErr = controller.DiscoverTargetNodesWithSynthesized(
-				ctx, dryRunClient, workflows[0].Spec.Orchestration.Target)
+				ctx, dryRunClient, &cert.Spec.Target)
 			if nErr != nil {
 				return fmt.Errorf("discover nodes: %w", nErr)
 			}
 		}
 
-		for i := range workflows {
-			// --platform wins over node-based detection for override matching
-			// and the recorded annotations, matching the workloadrun dry-run.
-			meta, err := render.ResolveWorkflowForPlatform(&workflows[i], nodes, platformFlag)
-			if err != nil {
-				return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
-			}
-			render.SetRenderAnnotations(&workflows[i], meta)
-			if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
-				return err
-			}
+		workflows, err = renderDryRun(ctx, cert, nodes, platformFlag, gpuArchOverride, gkeTCPXONetworks,
+			tcpxoPluginVersion, dryRunClient, namespace, os.Stderr)
+		if err != nil {
+			return err
+		}
 
+		for i := range workflows {
 			results, dryRunErr := render.DryRunCreate(
 				ctx, dryRunClient, namespace, &workflows[i].Spec, nodes, synthesizedProducts)
 			if dryRunErr != nil {
@@ -264,7 +260,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				results: results,
 			})
 		}
-	} else if err := resolveWorkflowsOffline(cert, workflows, platformFlag, gpuArchOverride); err != nil {
+	} else if workflows, err = renderOffline(cert, platformFlag, gpuArchOverride, os.Stderr); err != nil {
 		return err
 	}
 
@@ -293,6 +289,64 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	}
 
 	return nil
+}
+
+// renderDryRun renders and resolves every category against the discovered
+// nodes. Node defaults come from the platform the controller detects unless
+// --platform names one, as for the detections that run before it:
+// architecture defaults would request NICs the controller does not, such as
+// eight on OCI GB200, and OCI RDMA network detection would then look for a
+// network the controller never needs (ADR-103). Detection lists through
+// reader and, like the controller, prefers NADs in the Certification's
+// namespace; a manifest that sets none is dry-run in namespace (--namespace,
+// "default" unless given).
+func renderDryRun(
+	ctx context.Context, cert *nvcrev1alpha1.Certification, nodes []corev1.Node, platformFlag, gpuArchOverride string,
+	gkeTCPXONetworks []string, tcpxoPluginVersion string, reader client.Reader, namespace string, stderr io.Writer,
+) ([]nvcrev1alpha1.Workflow, error) {
+	renderPlatform := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		renderPlatform = platformFlag
+	}
+	return renderResolvedDetectingOCINetwork(
+		cert, renderPlatform, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion,
+		func(workflows []nvcrev1alpha1.Workflow) error {
+			for i := range workflows {
+				// --platform wins over node-based detection for override matching
+				// and the recorded annotations, matching the workloadrun dry-run.
+				meta, err := render.ResolveWorkflowForPlatform(&workflows[i], nodes, platformFlag)
+				if err != nil {
+					return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
+				}
+				render.SetRenderAnnotations(&workflows[i], meta)
+				if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		func() (string, error) {
+			return detectOCISecondaryNetwork(ctx, reader, cmp.Or(cert.Namespace, namespace), stderr)
+		})
+}
+
+// renderOffline renders and resolves every category against the synthetic
+// render node. It has no cluster to detect the OCI RDMA network from, so when
+// a Workflow attaches it, by the same sentinel check the controller gates
+// detection on, it renders catalog.DefaultOCISecondaryNetwork instead and says
+// so on stderr (ADR-103). A networkAttachments list that names the default
+// itself attaches nothing through the fragment, so it gets no note.
+func renderOffline(
+	cert *nvcrev1alpha1.Certification, platformFlag, gpuArchOverride string, stderr io.Writer,
+) ([]nvcrev1alpha1.Workflow, error) {
+	return renderResolvedDetectingOCINetwork(cert, platformFlag, gpuArchOverride, nil, "",
+		func(workflows []nvcrev1alpha1.Workflow) error {
+			return resolveWorkflowsOffline(cert, workflows, platformFlag, gpuArchOverride)
+		},
+		func() (string, error) {
+			_, _ = fmt.Fprintln(stderr, ociDefaultNetworkNote)
+			return catalog.DefaultOCISecondaryNetwork, nil
+		})
 }
 
 // resolveWorkflowsOffline applies overrides using a synthetic node derived from
@@ -488,6 +542,100 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 	return version
 }
 
+// renderResolvedDetectingOCINetwork renders and resolves every category for
+// both CLI paths. It renders with the OCI RDMA network named by the sentinel
+// first, and when a resolved Workflow still carries it, renders and resolves
+// again with the name detect returns: the detected network under --dry-run,
+// catalog.DefaultOCISecondaryNetwork offline (ADR-103). Detection does not
+// depend on the category, so one lookup serves them all.
+func renderResolvedDetectingOCINetwork(
+	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
+	tcpxoPluginVersion string, resolve func([]nvcrev1alpha1.Workflow) error, detect func() (string, error),
+) ([]nvcrev1alpha1.Workflow, error) {
+	workflows, err := renderCertification(
+		cert, platformName, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion, catalog.OCISecondaryNetworkUnresolved)
+	if err != nil {
+		return nil, err
+	}
+	if err := resolve(workflows); err != nil {
+		return nil, err
+	}
+	attaches, err := workflowsReferenceNetwork(workflows, catalog.OCISecondaryNetworkUnresolved)
+	if err != nil || !attaches {
+		return workflows, err
+	}
+	network, err := detect()
+	if err != nil {
+		return nil, err
+	}
+	// The first pass already printed the per-category notes.
+	workflows, err = renderCertificationTo(io.Discard, cert, platformName, gpuArchOverride, gkeTCPXONetworks,
+		tcpxoPluginVersion, network)
+	if err != nil {
+		return nil, err
+	}
+	if err := resolve(workflows); err != nil {
+		return nil, err
+	}
+	leftover, err := workflowsReferenceNetwork(workflows, catalog.OCISecondaryNetworkUnresolved)
+	if err != nil {
+		return nil, err
+	}
+	if leftover {
+		return nil, fmt.Errorf("a Workflow still names %s after OCI RDMA network detection picked %s",
+			catalog.OCISecondaryNetworkUnresolved, network)
+	}
+	return workflows, nil
+}
+
+// detectOCISecondaryNetwork picks the OCI RDMA network for the dry-run render
+// path, mirroring the certification controller (ADR-103). The caller runs it
+// only when a resolved Workflow still carries the first pass's sentinel.
+// Every failure is fatal, including a transient list error the controller
+// would retry, since a dry-run runs once. The exception is a refused list:
+// dry-run lists with the user's kubeconfig rather than the controller's
+// service account, so it warns and renders the default instead.
+func detectOCISecondaryNetwork(ctx context.Context, reader client.Reader, namespace string, stderr io.Writer) (string, error) {
+	name, notice, forbidden, err := controller.ResolveOCISecondaryNetwork(ctx, reader, namespace)
+	if err != nil {
+		if forbidden {
+			_, _ = fmt.Fprintf(stderr, "Warning: your kubeconfig may not list NetworkAttachmentDefinitions in every"+
+				" namespace, so --dry-run cannot detect the OCI RDMA network. Rendering the default %s; the controller"+
+				" lists with its own service account and detects the network when it reconciles.\n",
+				catalog.DefaultOCISecondaryNetwork)
+			return catalog.DefaultOCISecondaryNetwork, nil
+		}
+		return "", err
+	}
+	if notice != "" {
+		_, _ = fmt.Fprintln(stderr, notice)
+	}
+	_, _ = fmt.Fprintf(stderr, "Auto-detected OCI RDMA network %s (annotated %s: %s)\n",
+		name, catalog.NADResourceNameAnnotation, catalog.OCIMlnxResourceName)
+	return name, nil
+}
+
+// workflowsReferenceNetwork reports whether any resolved Workflow names network.
+func workflowsReferenceNetwork(workflows []nvcrev1alpha1.Workflow, network string) (bool, error) {
+	for i := range workflows {
+		found, err := catalog.SpecReferencesNetwork(&workflows[i].Spec, network)
+		if err != nil {
+			return false, fmt.Errorf("workflow %s: %w", workflows[i].Name, err)
+		}
+		if found {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ociDefaultNetworkNote is the stderr note offline render prints when a
+// resolved Workflow attaches the OCI RDMA network.
+var ociDefaultNetworkNote = "Note: the OCI RDMA network is rendered as " + catalog.DefaultOCISecondaryNetwork +
+	", a default. The controller detects the NetworkAttachmentDefinition annotated " +
+	catalog.NADResourceNameAnnotation + ": " + catalog.OCIMlnxResourceName +
+	" when it reconciles (ADR-103); run with --dry-run to see which one it picks."
+
 // renderCertification builds all Workflows that the controller would create
 // from catalog entries for the given Certification. The platform argument
 // (from --platform or detected from cluster nodes) is used to resolve
@@ -505,9 +653,26 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 // release detected there (detectTCPXOPluginVersion). Nil and "" render the
 // catalog defaults, which is what an offline render without a cluster always
 // gets.
+//
+// ociSecondaryNetwork is the NetworkAttachmentDefinition the OCI RDMA fragment
+// attaches (ADR-103). Both CLI paths render through
+// renderResolvedDetectingOCINetwork, which passes
+// catalog.OCISecondaryNetworkUnresolved first and then the detected name or
+// catalog.DefaultOCISecondaryNetwork.
 func renderCertification(
 	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
-	tcpxoPluginVersion string,
+	tcpxoPluginVersion, ociSecondaryNetwork string,
+) ([]nvcrev1alpha1.Workflow, error) {
+	return renderCertificationTo(os.Stderr, cert, platformName, gpuArchOverride, gkeTCPXONetworks,
+		tcpxoPluginVersion, ociSecondaryNetwork)
+}
+
+// renderCertificationTo is renderCertification with its per-category notes
+// written to stderr, so a second render of the same Certification can discard
+// the notes the first one already printed.
+func renderCertificationTo(
+	stderr io.Writer, cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string,
+	gkeTCPXONetworks []string, tcpxoPluginVersion, ociSecondaryNetwork string,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
@@ -552,7 +717,7 @@ func renderCertification(
 		// GPUArchitectureDefaults event (ADR-094).
 		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
 			controller.GPUArchFieldHintCertification); msg != "" {
-			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
+			_, _ = fmt.Fprintf(stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
 		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is
@@ -590,6 +755,7 @@ func renderCertification(
 			NetworkAttachments:         opts.NetworkAttachments,
 			GKETCPXONetworks:           gkeTCPXONetworks,
 			TCPXOPluginVersion:         tcpxoPluginVersion,
+			OCISecondaryNetwork:        ociSecondaryNetwork,
 			Resources:                  opts.Resources,
 			EnableMNNVL:                enableMNNVL,
 			EnableCheckpoint:           derefBoolPtr(opts.EnableCheckpoint),

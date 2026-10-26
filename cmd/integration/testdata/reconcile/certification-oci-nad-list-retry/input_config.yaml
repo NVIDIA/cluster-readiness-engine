@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-103 Decision 3: a transient NetworkAttachmentDefinition list error is
+# not terminal. The first two Lists fail with a server error; the reconcile
+# requeues without touching status, and the Workflow is then created with the
+# detected nvidia-network-operator/rdma-net, AICR's layout. The harness fails
+# the case if the injected failures were never served.
+failFirstNADLists: 2
+waitFor:
+  kind: Workflow
+  name: oci-nad-list-retry-commun-6463c
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: oci-nad-list-retry
+    namespace: default
+  - kind: Workflow
+    name: oci-nad-list-retry-commun-6463c
+    namespace: default

@@ -118,6 +118,7 @@ func (r *CertificationReconciler) workflowReader() client.Reader {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=k8s.cni.cncf.io,resources=network-attachment-definitions,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -212,6 +213,16 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 				// surviving error is a real write failure. This branch is
 				// terminal (no requeue): return the error so the Failed status
 				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+		// OCI RDMA network detection failed for a reason a retry would not
+		// change (ADR-103): terminal, and no Workflow was created. The Failed
+		// transition emits the Warning event with the same message.
+		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+			if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -320,6 +331,16 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				// surviving error is a real write failure. This branch is
 				// terminal (no requeue): return the error so the Failed status
 				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+		// OCI RDMA network detection failed for a reason a retry would not
+		// change (ADR-103): terminal, and no Workflow was created. The Failed
+		// transition emits the Warning event with the same message.
+		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+			if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -586,8 +607,13 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		enableMNNVL = DefaultEnableMNNVL(gpuArch)
 	}
 
-	// --- 3. Render templates (entry.Build) ---
-	workflowSpec, buildErr := entry.Build(certification.Spec.Target, catalog.BuildConfig{
+	// --- 3. Render templates (entry.Build) and apply overlays ---
+	// The first pass names the OCI RDMA network with a sentinel. Only a
+	// Workflow that still carries it once overlays are applied attaches that
+	// network, so only then are NetworkAttachmentDefinitions listed and the
+	// spec built again with the detected name (ADR-103). Every other
+	// category, and every other platform, keeps the first pass.
+	buildConfig := catalog.BuildConfig{
 		ImagePullSecrets:           opts.ImagePullSecrets,
 		StorageClassName:           opts.StorageClassName,
 		NodesPerJob:                nodesPerJob,
@@ -622,23 +648,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		MeasurementTimeout:         opts.MeasurementTimeout,
 		SourceRepo:                 opts.SourceRepo,
 		DCGMHost:                   opts.DCGMHost,
-	})
-	if buildErr != nil {
-		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
 	}
-
-	// --- 4. Apply overlays (best-effort, prune applied) ---
-	orch := &nvcrev1alpha1.OrchestrationStatus{
-		DetectedPlatform:        detectedPlatform,
-		DetectedGPUArchitecture: gpuArch,
+	workflowSpec, applied, ociNetwork, err := r.buildWorkflowSpecDetectingOCINetwork(
+		ctx, certification, category, entry, buildConfig, detectedPlatform, gpuArch, nodes)
+	if err != nil {
+		return "", err
 	}
-	octx := BuildOverrideContext(&workflowSpec, orch, nodes)
-	applied, overrideErr := ApplyOverridesWithTracking(&workflowSpec, octx)
-	if overrideErr != nil {
-		return "", fmt.Errorf("applying overrides for %s/%s: %w", category.Domain, category.Variant, overrideErr)
-	}
-	pruneAppliedOverrides(&workflowSpec, applied)
-	pruneUnmatchableOverrides(&workflowSpec, octx)
 
 	// Every post-resolve transform runs in one named stage, in the order
 	// ADR-079 pins. They all belong here rather than earlier because platform
@@ -747,6 +762,10 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
 		// the Workflow already there does not repeat it.
 		r.warnGCPH100DetectionFallbacks(certification, gkeNetworks, tcpxoPlugin)
+		if len(ociNetwork.Skipped) > 0 {
+			r.normalf(certification, ReasonSecondaryNetworkDetection, "%s/%s: %s",
+				category.Domain, category.Variant, ociNetworkSkippedMessage(ociNetwork))
+		}
 		if archFallbackMessage != "" {
 			r.warnf(certification, ReasonGPUArchitectureDefaults,
 				"%s/%s: %s", category.Domain, category.Variant, archFallbackMessage)
@@ -754,6 +773,102 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 
 	return workflowName, nil
+}
+
+// buildResolvedWorkflowSpec renders the catalog entry and applies and prunes
+// the overlays that match the detected platform and GPU architecture. It is
+// the whole of steps 3 and 4 of createWorkflowForCategory, so the second
+// build that follows OCI RDMA network detection resolves exactly as the
+// first one did.
+func buildResolvedWorkflowSpec(
+	entry *catalog.Entry, category nvcrev1alpha1.CertificateCategory, target nvcrev1alpha1.TargetSpec,
+	config catalog.BuildConfig, detectedPlatform, gpuArch string, nodes []corev1.Node,
+) (nvcrev1alpha1.WorkflowSpec, []nvcrev1alpha1.AppliedOverride, error) {
+	spec, err := entry.Build(target, config)
+	if err != nil {
+		return spec, nil, fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, err)
+	}
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		DetectedPlatform:        detectedPlatform,
+		DetectedGPUArchitecture: gpuArch,
+	}
+	octx := BuildOverrideContext(&spec, orch, nodes)
+	applied, err := ApplyOverridesWithTracking(&spec, octx)
+	if err != nil {
+		return spec, nil, fmt.Errorf("applying overrides for %s/%s: %w", category.Domain, category.Variant, err)
+	}
+	pruneAppliedOverrides(&spec, applied)
+	pruneUnmatchableOverrides(&spec, octx)
+	return spec, applied, nil
+}
+
+// buildWorkflowSpecDetectingOCINetwork runs the first pass with the sentinel
+// network, and when its resolved spec still carries it, detects the OCI RDMA
+// network and runs the second pass with that name (ADR-103). The returned
+// selection is empty when detection did not run.
+func (r *CertificationReconciler) buildWorkflowSpecDetectingOCINetwork(
+	ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory,
+	entry *catalog.Entry, config catalog.BuildConfig, detectedPlatform, gpuArch string, nodes []corev1.Node,
+) (nvcrev1alpha1.WorkflowSpec, []nvcrev1alpha1.AppliedOverride, ociNetworkSelection, error) {
+	config.OCISecondaryNetwork = catalog.OCISecondaryNetworkUnresolved
+	spec, applied, err := buildResolvedWorkflowSpec(entry, category, certification.Spec.Target, config, detectedPlatform, gpuArch, nodes)
+	if err != nil {
+		return spec, nil, ociNetworkSelection{}, err
+	}
+	ociNetwork, err := r.resolveOCINetworkIfAttached(ctx, certification, category, &spec)
+	if err != nil {
+		return spec, nil, ociNetworkSelection{}, err
+	}
+	if ociNetwork.Name != "" {
+		config.OCISecondaryNetwork = ociNetwork.Name
+		spec, applied, err = buildResolvedWorkflowSpec(entry, category, certification.Spec.Target, config, detectedPlatform, gpuArch, nodes)
+		if err != nil {
+			return spec, nil, ociNetworkSelection{}, err
+		}
+	}
+	// Whichever pass is kept, never create a Workflow that names the
+	// sentinel. Build is pure in its config, so this only fires on an NVCRE
+	// bug.
+	leftover, err := catalog.SpecReferencesNetwork(&spec, catalog.OCISecondaryNetworkUnresolved)
+	if err != nil {
+		return spec, nil, ociNetworkSelection{}, fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
+	}
+	if leftover {
+		return spec, nil, ociNetworkSelection{}, fmt.Errorf("%s/%s: the Workflow still names %s after OCI RDMA network detection",
+			category.Domain, category.Variant, catalog.OCISecondaryNetworkUnresolved)
+	}
+	return spec, applied, ociNetwork, nil
+}
+
+// resolveOCINetworkIfAttached detects the OCI RDMA network when the first
+// pass's resolved spec still carries catalog.OCISecondaryNetworkUnresolved,
+// and returns an empty selection when it does not. A terminal detection
+// failure comes back as a *secondaryNetworkError, a transient list error as a
+// *retryableCreateError.
+func (r *CertificationReconciler) resolveOCINetworkIfAttached(
+	ctx context.Context, certification *nvcrev1alpha1.Certification,
+	category nvcrev1alpha1.CertificateCategory, spec *nvcrev1alpha1.WorkflowSpec,
+) (ociNetworkSelection, error) {
+	attaches, err := catalog.SpecReferencesNetwork(spec, catalog.OCISecondaryNetworkUnresolved)
+	if err != nil {
+		return ociNetworkSelection{}, fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
+	}
+	if !attaches {
+		return ociNetworkSelection{}, nil
+	}
+	sel, err := resolveOCISecondaryNetwork(ctx, r.workflowReader(), certification.Namespace)
+	if err == nil {
+		return sel, nil
+	}
+	if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+		return ociNetworkSelection{}, &secondaryNetworkError{
+			Message:   fmt.Sprintf("%s/%s: %s", category.Domain, category.Variant, snErr.Message),
+			Forbidden: snErr.Forbidden,
+		}
+	}
+	return ociNetworkSelection{}, &retryableCreateError{
+		err: fmt.Errorf("%s/%s: OCI RDMA network detection: %w", category.Domain, category.Variant, err),
+	}
 }
 
 // warnGCPH100DetectionFallbacks emits one Warning per GCP H100 detection that

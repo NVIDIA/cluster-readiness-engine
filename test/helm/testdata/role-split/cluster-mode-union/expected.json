@@ -1,6 +1,8 @@
 {
   "added": [
     "get namespaces",
+    "get network-attachment-definitions.k8s.cni.cncf.io",
+    "list network-attachment-definitions.k8s.cni.cncf.io",
     "create selfsubjectaccessreviews.authorization.k8s.io"
   ],
   "managerRole": [
@@ -29,6 +31,7 @@
     "get jobs/status.nvcre.nvidia.com",
     "get logprofiles.nvcre.nvidia.com",
     "get namespaces",
+    "get network-attachment-definitions.k8s.cni.cncf.io",
     "get nodes",
     "get persistentvolumes",
     "get pods",
@@ -44,6 +47,7 @@
     "list goodputmeasurements.nvcre.nvidia.com",
     "list jobs.nvcre.nvidia.com",
     "list logprofiles.nvcre.nvidia.com",
+    "list network-attachment-definitions.k8s.cni.cncf.io",
     "list nodes",
     "list persistentvolumes",
     "list pods",

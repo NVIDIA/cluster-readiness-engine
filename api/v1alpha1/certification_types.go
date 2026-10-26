@@ -219,7 +219,8 @@ type CategoryOptions struct {
 	// 0 for OCI GB200).
 	// Setting it to 0 is an opt-out, not a request for zero devices: the catalog
 	// stops requesting nvidia.com/mlnxnics altogether, and on OCI it also drops
-	// the k8s.v1.cni.cncf.io/networks annotation naming the sriov-net attachments.
+	// the k8s.v1.cni.cncf.io/networks annotation that attaches the detected RDMA
+	// network.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
@@ -257,8 +258,9 @@ type CategoryOptions struct {
 	// resourceName its NetworkAttachmentDefinition declares, so an entry's
 	// resourceName must be that resource. The list is mutually exclusive with
 	// nicResourceName and disables NIC resource auto-detection. On OCI it
-	// replaces the default network-operator/sriov-net attachments and their
-	// nvidia.com/mlnxnics request rather than appending to them. On platforms
+	// replaces the detected RDMA network attachments and their
+	// nvidia.com/mlnxnics request rather than appending to them, and the
+	// controller then lists no NetworkAttachmentDefinitions. On platforms
 	// whose catalog requests its own NIC resource without Multus (Azure,
 	// TogetherAI and Forge nvidia.com/mlnxnics, the nscale rdma claim), that
 	// request stays alongside the attachments, and an entry on that same

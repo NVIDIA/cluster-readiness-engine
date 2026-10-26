@@ -159,7 +159,7 @@ func renderAttentionBackend(
 			},
 		},
 	}
-	workflows, err := renderCertification(cert, platformName, arch, nil, "")
+	workflows, err := renderCertification(cert, platformName, arch, nil, "", catalog.DefaultOCISecondaryNetwork)
 	if err != nil {
 		return attentionBackendResult{}, err
 	}

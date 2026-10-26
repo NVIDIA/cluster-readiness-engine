@@ -38,8 +38,8 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
    |---|---|
    | Exactly one | Use it. |
    | Several, all equivalent | Pick the first `<ns>/<name>` in sorted order. Emit a Normal `SecondaryNetworkDetection` event naming the choice and the equivalents it skipped. |
-   | Several that differ | Fail. List the candidates and the top-level config keys that differ. When one of them is `network-operator/sriov-net`, add that a copy created by hand as a workaround for issue #542 should be deleted. |
-   | Zero | Fail. Say what was found (NADs carrying another `resourceName`, or none) and the ways forward: create a NAD for `nvidia.com/mlnxnics`, list the networks explicitly with `networkAttachments`, use `rdmaDeviceAccess: hostPath` on a cluster that exposes `/dev/infiniband` without a device plugin (ADR-088), or set `mlnxPerNode: 0` to certify without RDMA NICs. |
+   | Several that differ | Fail. List the candidates and the top-level config keys that differ. When one of them is `network-operator/sriov-net`, add that it should be deleted if it is left over from an earlier setup or was created by hand as a workaround for issue #542. |
+   | Zero | Fail. Say what was found (NADs carrying another `resourceName`, or none) and the ways forward: create a NAD for `nvidia.com/mlnxnics`, list the networks explicitly with `networkAttachments`, or set `mlnxPerNode: 0`, which certifies without RDMA NICs unless `rdmaDeviceAccess: hostPath` is also set on a cluster that exposes `/dev/infiniband` without a device plugin (ADR-088). `hostPath` alone does not avoid detection: ADR-088 keeps it independent of `mlnxPerNode`, so the fragment still renders. |
    | List error | See Decision 3. Never treated as zero matches. |
 
    **Equivalent** means the same `resourceName` (true by construction) and the same `spec.config` after parsing it as JSON and removing the top-level `name` key. Two NADs that differ only in name, namespace, whitespace or key order are equivalent. A different `type`, `ipam`, or any other top-level key, `cniVersion` included, makes them differ. A config that does not parse as JSON is never equivalent to anything. That includes an empty `spec.config`, where Multus reads the CNI config from disk by the NAD's name: NVCRE cannot see that config, so it cannot check that two such NADs agree, and it fails closed.
@@ -47,7 +47,7 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
    The "differ" and zero-match messages name `networkAttachments` as the fix for a cluster detection cannot read unambiguously.
 
 3. **Fail closed, before any workload exists, and retry only what can change.** A failure returns from `createWorkflowForCategory` between the two passes, so no Workflow is created.
-   - **Terminal:** zero matches, several that differ, `Forbidden`, and the NAD API not being served (`meta.IsNoMatchError`). A retry cannot change these. The function returns a typed `secondaryNetworkError`. Both callers handle it alongside `nameCollisionError`: `setCertificationFailed` with a new reason, `SecondaryNetworkDetectionFailed`, and a Warning event with the same message. The operator fixes the cluster or the spec and re-creates the Certification, since the spec is immutable.
+   - **Terminal:** zero matches, several that differ, `Forbidden`, and the NAD API not being served (`meta.IsNoMatchError`, or `NotFound` for a client that resolved the API before its CRD was removed). A retry cannot change these. The function returns a typed `secondaryNetworkError`. Both callers handle it alongside `nameCollisionError`: `setCertificationFailed` with a new reason, `SecondaryNetworkDetectionFailed`, and a Warning event with the same message. The operator fixes the cluster or the spec and re-creates the Certification, since the spec is immutable.
    - **Retryable:** any other list error (a 5xx, a timeout, a dropped connection). The function returns `retryableCreateError`, and the callers requeue without touching status, the same path a failed live read takes today (#384).
 
    The controller never renders the default name on OCI. The `nvidia.com/mlnxnics` request is never rendered without its attachment, because that would certify a transport other than the one the operator asked for.
@@ -55,7 +55,7 @@ Throughout, the **workload namespace** is the Certification's namespace. The Wor
 4. **No default in the catalog; every caller sets the name.** `buildTemplateData` does not fill in `OCISecondaryNetwork`, and `Build` returns an error when `MlnxPerNode > 0` and the field is empty. Because `Build` renders every platform's override blocks, the OCI block renders on every target, so each caller sets the field explicitly:
    - **Controller:** the sentinel on the first pass, and the detected name on the second when one runs. The controller never passes `DefaultOCISecondaryNetwork`.
    - **Offline `nvcrectl certification render`:** `catalog.DefaultOCISecondaryNetwork = "network-operator/sriov-net"`, today's value. The stderr note, saying the name is a default and the controller detects the real network when it reconciles, is printed only when the default survives in the resolved output, by the same check as Decision 1.
-   - **`--dry-run`:** the controller's two passes and resolution, with its messages, so dry-run predicts reconcile. The one exception is `Forbidden`. Dry-run lists NADs with the user's kubeconfig, not the controller's service account, and a user without cluster-wide `list` on NADs would otherwise see a failure the controller never hits. Dry-run prints a warning for it and renders the default. Every other outcome is fatal, as in the controller.
+   - **`--dry-run`:** the controller's two passes and resolution, with its messages, so dry-run predicts reconcile. The one exception is `Forbidden`. Dry-run lists NADs with the user's kubeconfig, not the controller's service account, and a user without cluster-wide `list` on NADs would otherwise see a failure the controller never hits. Dry-run prints a warning for it and renders the default. Every other outcome is fatal: the terminal ones as in the controller, and a transient list error too, since a dry-run runs once. Dry-run also takes `gpusPerNode` and `mlnxPerNode` defaults from the platform detected on the target nodes unless `--platform` names one, as the controller does. With architecture defaults, OCI GB200 would request eight NICs and look for a network the controller never needs.
 
    This differs from GKE TCPXO, where the controller falls back to the default with a Warning. GKE's default names networks GKE itself provisions on A3 Mega node pools. The OCI default names an object that may not exist, and attaching nothing is the failure this ADR fixes.
 
@@ -101,13 +101,13 @@ This change builds on ADR-104's versions of `oci-mlnxnics-comm.yaml`, `catalog.g
   - several equivalent outside the workload namespace: whitespace and key order, names only
   - several equivalent in the workload namespace, beside a NAD elsewhere that differs: the sorted pick among the local ones, with the event
   - several that differ: IPAM, CNI type, `cniVersion`, config that is not JSON, empty `spec.config`, and a hand-made `network-operator/sriov-net` beside the platform's NAD, which adds the delete hint
-  - list errors: `Forbidden` and NoMatch (terminal), a 5xx and a timeout (retryable)
+  - list errors: `Forbidden`, NoMatch and `NotFound` (terminal), a 5xx and a timeout (retryable)
   - no lookup, where the reader fails the test if called: `mlnxPerNode = 0`, a non-OCI platform, a `networkAttachments` list, and an OCI category whose resolved spec carries no attachment although `mlnxPerNode > 0` (`dcgm-level4` on H100 and GB300, `nemotron5-8b` on H100)
 - `pkg/controller` (golden): an OCI render that attaches carries only the name detection returned, never `DefaultOCISecondaryNetwork` or the sentinel.
 - `pkg/controller` (golden): the gate matrix. Every catalog entry, for every architecture in `gpu-defaults.yaml`, on OCI: whether the first pass carries the sentinel. A new entry or override block that changes it shows up as a golden diff.
 - `pkg/catalog`: `Build` fails when `MlnxPerNode > 0` and `OCISecondaryNetwork` is empty.
-- `pkg/certification` (golden): the detected name flows into the annotation under `--dry-run`, and the existing OCI goldens keep the default offline.
-- Integration: `certification-oci-l40s-nccl` gains a `rdma-net` NAD, so its golden carries the detected name. `certification-oci-dcgm` stays as it is, with no NAD in the cluster, and keeps passing. New cases pin the Failed condition and reason with no matching NAD, and the requeue on a retryable list error.
+- `pkg/certification` (golden): the detected name flows into the annotation under `--dry-run`, and the existing OCI goldens keep the default offline. `--dry-run` without `--platform` on OCI GB200 nodes requests no NICs and lists no NADs, and a Certification that sets its own namespace prefers NADs there.
+- Integration: `certification-oci-l40s-nccl` gains an annotated `network-operator/sriov-net`, the name it attached before, so its golden does not change. `certification-oci-dcgm` stays as it is, with no NAD in the cluster, and keeps passing. New cases pin the Failed condition and reason with no matching NAD, and the requeue on a retryable list error, after which AICR's `nvidia-network-operator/rdma-net` is detected.
 - `test/helm`: the role grants exactly `get` and `list` on NADs.
 
 ## Rationale
@@ -127,6 +127,7 @@ This change builds on ADR-104's versions of `oci-mlnxnics-comm.yaml`, `catalog.g
 - An OCI cluster whose category attaches the RDMA network but has no matching NAD now fails at Workflow creation with a reason and a message, instead of producing pods that start without their RDMA interfaces.
 - The manager needs `get`/`list` on NADs. A chart upgrade carries it. An install that removes it gets an explicit `Forbidden` failure on OCI with NICs and no `networkAttachments`, and nothing changes anywhere else.
 - `--dry-run` now fails on an OCI cluster without a matching NAD, for the categories that attach the network. Offline render output does not change.
+- `--dry-run` without `--platform` previews OCI L40S, GB200 and GB300, and Nscale GB300, with their platform node defaults, as the controller creates them, where it used to preview architecture defaults.
 
 ## Alternatives Considered
 

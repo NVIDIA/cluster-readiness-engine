@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NADs exist, but none pairs with nvidia.com/mlnxnics, and one has no resourceName.
+namespace: default
+nads:
+  - namespace: ns-1
+    name: ib-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: rdma/ib
+    config: '{"cniVersion": "0.3.1", "name": "ib-net", "type": "host-device", "ipam": {}}'
+  - namespace: ns-2
+    name: plain
+    annotations: {}
+    config: '{"cniVersion": "0.3.1", "name": "plain", "type": "host-device", "ipam": {}}'

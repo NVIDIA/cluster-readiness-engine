@@ -1,0 +1,16 @@
+{
+  "requeue": true,
+  "nadLists": 0,
+  "conditions": [
+    {
+      "message": "Created Workflow for category diagnostics/dcgm-level4 (1 of 1)",
+      "reason": "WorkflowCreated",
+      "type": "InProgress"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "oci-cert-diagnostics-dcgm-6b4ec"
+    }
+  ]
+}

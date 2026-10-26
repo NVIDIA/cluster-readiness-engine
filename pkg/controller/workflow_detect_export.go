@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -153,4 +154,28 @@ func DiscoverTargetNodesWithSynthesized(
 ) (nodes []corev1.Node, synthesizedProducts []string, err error) {
 	nodes, _, synthesizedProducts, err = discoverTargetNodes(ctx, reader, reader, target)
 	return nodes, synthesizedProducts, err
+}
+
+// ResolveOCISecondaryNetwork is the exported version of
+// resolveOCISecondaryNetwork for the CLI dry-run path, so "certification
+// render --dry-run" picks the OCI RDMA network exactly as a reconcile of the
+// same Certification would (ADR-103). notice is the SecondaryNetworkDetection
+// event text when several equivalent candidates were found, and empty
+// otherwise. On failure, err carries the controller's message, and forbidden
+// is true when the list itself was refused, which dry-run turns into a
+// warning because it lists with the user's kubeconfig.
+func ResolveOCISecondaryNetwork(
+	ctx context.Context, reader client.Reader, namespace string,
+) (name, notice string, forbidden bool, err error) {
+	sel, err := resolveOCISecondaryNetwork(ctx, reader, namespace)
+	if err != nil {
+		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+			return "", "", snErr.Forbidden, snErr
+		}
+		return "", "", false, err
+	}
+	if len(sel.Skipped) > 0 {
+		notice = ociNetworkSkippedMessage(sel)
+	}
+	return sel.Name, notice, false, nil
 }

@@ -47,6 +47,7 @@ type BuildConfig struct {
 	// and, on OCI, the matching k8s.v1.cni.cncf.io/networks annotation: each
 	// such fragment wraps the request in {{ if gt (int .MlnxPerNode) 0 }}.
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
+	// When it is above 0, OCISecondaryNetwork must be set.
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
@@ -65,7 +66,7 @@ type BuildConfig struct {
 
 	// NetworkAttachments is the resolved networkAttachments list (issue
 	// #400). Build only uses it to suppress the catalog's own NIC wiring
-	// that an explicit list replaces (the OCI sriov-net attachments); the
+	// that an explicit list replaces (the OCI RDMA attachments); the
 	// attachments themselves are written after overrides resolve, by
 	// platform.ApplyNetworkAttachmentsToDependencies.
 	NetworkAttachments []nvcrev1alpha1.NetworkAttachment
@@ -75,6 +76,15 @@ type BuildConfig struct {
 	// detects them from node allocatable; empty means the templates render
 	// DefaultGKETCPXONetworks.
 	GKETCPXONetworks []string
+
+	// OCISecondaryNetwork is the <namespace>/<name> of the
+	// NetworkAttachmentDefinition the OCI RDMA fragment attaches, once per
+	// NIC (ADR-103). It has no default: Build fails when MlnxPerNode is above
+	// 0 and it is empty, so every caller names it. The controller builds
+	// with OCISecondaryNetworkUnresolved first and detects the real name only
+	// when that sentinel survives overlay application; offline render uses
+	// DefaultOCISecondaryNetwork.
+	OCISecondaryNetwork string
 
 	// TCPXOPluginVersion is the GKE TCPXO NCCL plugin release installed on
 	// the GCP H100 target nodes, e.g. "v1.0.17" or its rebuild "v1.0.17-1".

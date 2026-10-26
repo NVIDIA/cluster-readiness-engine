@@ -44,6 +44,13 @@ const (
 	// with the Go-side fallback (four GPUs, no NICs) instead of a known node
 	// shape (ADR-094).
 	ReasonGPUArchitectureDefaults = "GPUArchitectureDefaults"
+
+	// ReasonSecondaryNetworkDetection is the Certification tier's Normal
+	// event when OCI RDMA network detection found several equivalent
+	// NetworkAttachmentDefinitions for nvidia.com/mlnxnics and attached the
+	// first in sorted order (ADR-103). It names the one attached and the
+	// ones skipped.
+	ReasonSecondaryNetworkDetection = "SecondaryNetworkDetection"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's
@@ -94,6 +101,14 @@ const (
 	// than only in the controller log. Mirrors ReasonJobCreationError
 	// (Workflow tier) and ReasonWorkloadCreationError (Job tier).
 	ReasonWorkflowCreationError = "WorkflowCreationError"
+
+	// ReasonSecondaryNetworkDetectionFailed marks a Certification failed
+	// because a category attaches the OCI RDMA network and detection could
+	// not name one: no NetworkAttachmentDefinition for nvidia.com/mlnxnics,
+	// several that differ, or a list the controller is not allowed to make
+	// or the cluster does not serve (ADR-103). The Failed transition emits
+	// it as a Warning event with the same message. No Workflow is created.
+	ReasonSecondaryNetworkDetectionFailed = "SecondaryNetworkDetectionFailed"
 )
 
 // WorkloadRun tier reasons (WorkloadRun → Workflow).

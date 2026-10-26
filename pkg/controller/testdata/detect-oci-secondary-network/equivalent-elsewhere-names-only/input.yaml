@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two NADs elsewhere whose configs differ only in the top-level name are equivalent.
+namespace: default
+nads:
+  - namespace: ns-1
+    name: rdma-one
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-one", "type": "host-device", "ipam": {}}'
+  - namespace: ns-2
+    name: rdma-two
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-two", "type": "host-device", "ipam": {}}'
