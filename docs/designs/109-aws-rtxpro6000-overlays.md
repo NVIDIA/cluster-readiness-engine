@@ -116,7 +116,11 @@ After design approval and node inspection:
   readers cannot observe a truncated module. Remove the temporary file on
   failure; bound the whole init command with a 1200-second timeout.
   Concurrency tests verify two guards apply the patch once and a replacement
-  failure leaves the original source intact.
+  failure leaves the original source intact. If lock acquisition raises
+  `OSError`, log the failure and continue without the lock, matching clone
+  preparation. Hash checks and atomic replacement still apply; concurrent
+  guards can install identical verified bytes. Test both unavailable locking
+  and two unlocked guards reaching replacement together.
 - Identify golden changes before regeneration: new AWS cell expected output,
   catalog override counts, and offline available-combination/error lists from
   adding the mock node. Regenerate only deliberately changed expectations

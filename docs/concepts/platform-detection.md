@@ -201,6 +201,10 @@ Workspace preparation takes the same lock in `megatron-clone`, added by
 The guard writes a sibling temporary file and atomically replaces the target,
 preserving its permissions. Concurrent
 readers see a complete file; concurrent guards recheck the updated digest.
+If lock acquisition raises `OSError`, the guard logs the failure and continues
+without the lock, matching workspace preparation. Concurrent guards can then
+install the same verified patch independently; each replacement remains atomic,
+and the source-hash and AST checks still apply.
 The init command times out after 1200 seconds if preparation cannot finish.
 Two-node validation
 passes all sixteen ranks and ten training steps. This is a smoke test;

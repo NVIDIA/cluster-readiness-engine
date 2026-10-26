@@ -19,7 +19,7 @@ import (
 func TestAWSRTXDDPGuardSharedWorkspace(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	require.NoError(t, err)
-	for _, mode := range []string{"concurrent", "replace-failure"} {
+	for _, mode := range []string{"concurrent", "replace-failure", "lock-unavailable", "lock-unavailable-concurrent"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "training.py")
@@ -83,6 +83,8 @@ expected = Path(fixture).read_text()
 real_flock = fcntl.flock
 def announced_lock(fd, operation):
     print("WAITING", flush=True)
+    if mode.startswith("lock-unavailable"):
+        raise OSError("simulated unsupported workspace locking")
     return real_flock(fd, operation)
 fcntl.flock = announced_lock
 real_replace = os.replace
@@ -94,6 +96,9 @@ def checked_replace(source, dest):
     assert stat.S_IMODE(Path(source).stat().st_mode) == 0o640
     if mode == "replace-failure":
         raise OSError("simulated replacement failure")
+    if mode == "lock-unavailable-concurrent":
+        print("READY", flush=True)
+        assert sys.stdin.readline().strip() == "replace"
     replacements.append(True)
     return real_replace(source, dest)
 os.replace = checked_replace
@@ -123,6 +128,41 @@ if mode == "concurrent":
     assert sum("already applied" in output for output in outputs) == 1, outputs
     assert sum("REPLACEMENTS=1" in output for output in outputs) == 1, outputs
     assert path.read_text() == expected
+elif mode == "lock-unavailable-concurrent":
+    workers = [subprocess.Popen([sys.executable, "-c", wrapper, script_path, target, fixture, mode],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True) for _ in range(2)]
+    outputs = []
+    for worker in workers:
+        lines = []
+        while True:
+            line = worker.stdout.readline()
+            assert line, "guard exited before its atomic replacement"
+            lines.append(line)
+            if line.strip() == "READY":
+                break
+        outputs.append("".join(lines))
+    # Both writers verified the original digest and staged identical complete
+    # files. Neither replacement is allowed until both reach this barrier.
+    assert path.read_text() == original
+    for worker in workers:
+        worker.stdin.write("replace\n")
+        worker.stdin.flush()
+    for worker, prefix in zip(workers, outputs):
+        stdout, stderr = worker.communicate(timeout=20)
+        assert worker.returncode == 0, (prefix + stdout, stderr)
+        assert "preparing without the lock" in prefix
+        assert "Applied Megatron" in stdout
+        assert "REPLACEMENTS=1" in stdout
+    assert path.read_text() == expected
+elif mode == "lock-unavailable":
+    for replacements in (1, 0):
+        run = subprocess.run([sys.executable, "-c", wrapper, script_path, target, fixture, mode],
+                             capture_output=True, text=True, timeout=20)
+        assert run.returncode == 0, run
+        assert "preparing without the lock" in run.stdout
+        assert "REPLACEMENTS=" + str(replacements) in run.stdout
+        assert path.read_text() == expected
 else:
     run = subprocess.run([sys.executable, "-c", wrapper, script_path, target, fixture, mode],
                          capture_output=True, text=True, timeout=20)

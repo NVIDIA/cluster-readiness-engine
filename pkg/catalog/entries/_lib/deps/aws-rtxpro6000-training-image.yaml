@@ -43,7 +43,10 @@
 
                       path = Path("/mnt/workspace/megatron-lm/megatron/training/training.py")
                       with Path("/mnt/workspace/.megatron-lm.lock").open("a") as lock:
-                          fcntl.flock(lock, fcntl.LOCK_EX)
+                          try:
+                              fcntl.flock(lock, fcntl.LOCK_EX)
+                          except OSError as error:
+                              print(f"Locking {lock.name} failed ({error}); preparing without the lock")
                           source = path.read_text()
                           original = "a5cd6e9f0087ddc6d9cfa566fcda871a4b4ab8a3bb41f4923673a8bc76073ff6"
                           patched = "3888d7ff3b58ecdc6ea67edce4c324ced46205f7340a149fbc18160f0da616a0"
