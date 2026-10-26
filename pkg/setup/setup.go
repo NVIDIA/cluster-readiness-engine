@@ -134,7 +134,11 @@ Earlier cleanup is not rolled back.
 
 The NVCRE CRDs are server-side-applied from the chart before every Helm
 upgrade, so re-running init after a version bump also updates the CRD
-schemas (Helm alone only installs CRDs on the first install).
+schemas (Helm alone only installs CRDs on the first install). When a deployed
+Helm release, such as the cluster-readiness-engine-crds chart, owns all of
+the CRDs, init leaves them to it, and it leaves them alone when the release's
+values set crds.enabled=false. A failed or pending owning release stops init
+before anything changes.
 
 Pass chart values for the NVCRE release with --values/-f, --set and --set-json,
 in Helm's syntax and with Helm's precedence. They do not apply to Kubeflow
@@ -262,9 +266,11 @@ func RunInitWithValues(
 	// show the result before anything changes, so a conflict leaves the
 	// cluster untouched (ADR-098 decision 6). Nothing is read when the helm
 	// phase is skipped.
-	var valuesFile string
+	var prepared preparedValues
+	var helmPath string
 	if !skip[phaseHelm] {
-		helmPath, err := ensureHelm()
+		var err error
+		helmPath, err = ensureHelm()
 		if err != nil {
 			return fmt.Errorf("[preflight] %w", err)
 		}
@@ -273,7 +279,7 @@ func RunInitWithValues(
 			return fmt.Errorf("[preflight] %w", err)
 		}
 		defer ws.cleanup()
-		valuesFile, controllerImage, err = prepareNVCREValues(helmPath, kubeconfigPath, kubeContext, ws,
+		prepared, err = prepareNVCREValues(helmPath, kubeconfigPath, kubeContext, ws,
 			nvcreValuesInput{
 				values: values,
 				opts: valuesOptions{
@@ -289,6 +295,7 @@ func RunInitWithValues(
 		if err != nil {
 			return fmt.Errorf("[preflight] %w", err)
 		}
+		controllerImage = prepared.image
 	}
 
 	c, err := newSetupClient(configFlags)
@@ -316,6 +323,18 @@ func RunInitWithValues(
 			return nil
 		}
 		_, _ = fmt.Fprintln(out)
+	}
+
+	// Decide what the helm phase does with the CRDs before the deps phase
+	// changes anything, so a failed or pending CRDs release stops init with
+	// the cluster untouched (ADR-107 decision 7).
+	var crds crdPlan
+	if !skip[phaseHelm] {
+		crds, err = planCRDReconcile(ctx, c, prepared.crdsDisabled,
+			newReleaseStatusQuery(helmPath, kubeconfigPath, kubeContext), out)
+		if err != nil {
+			return fmt.Errorf("[helm] %w", err)
+		}
 	}
 
 	sp := setupPhaseParams{
@@ -352,7 +371,8 @@ func RunInitWithValues(
 		versionOverride: versionOverride,
 		registryToken:   imagePullSecret,
 		chartRef:        chartRef,
-		valuesFile:      valuesFile,
+		valuesFile:      prepared.file,
+		crds:            crds,
 		out:             out,
 	}); err != nil {
 		// Same attempt-then-classify wrapper as the [deps] phase for

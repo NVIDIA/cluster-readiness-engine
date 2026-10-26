@@ -42,6 +42,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
 | `--results-file` | — | Write the certification report as JSON to this path (requires `--wait`) |
+| `--junit-file` | — | Write the certification report as JUnit XML to this path (requires `--wait`) |
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
@@ -115,6 +116,11 @@ nvcrectl certification report <name> [<name>...] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
+| `--junit-file` | — | Write the report as JUnit XML to this file path |
+
+`--results-file` and `--junit-file` must name different files. `run` rejects either flag without `--wait`, and on both `run --wait` and `report`, failing to write a requested file fails the command, so a zero exit means every requested file was written.
+
+The JUnit file has one suite per certification and one test case per category. A succeeded category passes and a failed one is a `<failure>` with its reason. An unfinished category is an `<error>` while the certification runs, and a `<failure>` carrying the certification's own failure reason once it has failed. A suite gets one extra `certification` case only when its categories do not show the result: a certification that failed before any category did, or one still finalizing after every category finished. An `INCOMPLETE` run, which exits 0, has no failures or errors; its suite lists `excludedNodes` and `exclusionReason` under `<properties>`. See [ADR-108](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/108-junit-certification-reports.md).
 
 Bandwidth from a measurement that is not final (its `Complete` condition reason is anything other than `JobSucceeded`, for example `LogsUnavailable` after its Job was deleted) is shown as `(provisional: <reason>)` with a `?` mark instead of `✓`, carries `provisional: true` and `provisionalReason` in the JSON, and is never shown as passing; clique and category bandwidth show the lowest value across their groups.
 

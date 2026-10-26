@@ -1,0 +1,21 @@
+{{- /*
+The CRDs are rendered from files/, which make manifests writes alongside the
+main chart's crds subchart. Rendering them as templates, not from crds/, is
+what lets helm upgrade update them (ADR-107). Each file is parsed and
+re-serialized, so CRD text never passes through the template engine.
+*/ -}}
+{{- $files := .Files.Glob "files/*.yaml" }}
+{{- if not $files }}
+{{- fail "files/ holds no CRDs; run make manifests" }}
+{{- end }}
+{{- $labels := include "nvcre-crds.labels" . | fromYaml }}
+{{- range $path, $_ := $files }}
+{{- $crd := $.Files.Get $path | fromYaml }}
+{{- $metadata := $crd.metadata }}
+{{- $_ := set $metadata "labels" (merge (deepCopy $labels) (default dict $metadata.labels)) }}
+{{- if $.Values.crds.keep }}
+{{- $_ := set $metadata "annotations" (merge (dict "helm.sh/resource-policy" "keep") (default dict $metadata.annotations)) }}
+{{- end }}
+---
+{{ toYaml $crd }}
+{{- end }}

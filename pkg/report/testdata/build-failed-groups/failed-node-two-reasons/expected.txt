@@ -66,5 +66,6 @@
       "message": "Workload default/nccl failed: exit code 1"
     }
   ],
-  "result": "FAILED"
+  "result": "FAILED",
+  "failureReason": "2 of 2 certification categories failed"
 }

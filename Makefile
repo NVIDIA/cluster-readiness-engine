@@ -16,6 +16,10 @@ IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
 # Helm chart directory (used by manifests and helm-* targets).
 HELM_CHART_DIR ?= helm/cluster-readiness-engine
+# The CRDs-only chart. make manifests writes the same CRDs to its files/ and to
+# the main chart's crds subchart, and both copies are committed (ADR-107).
+HELM_CRDS_CHART_DIR ?= helm/cluster-readiness-engine-crds
+HELM_SUBCHART_CRD_DIR = $(HELM_CHART_DIR)/charts/crds/crds
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -61,11 +65,13 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate CRDs directly into the Helm chart (RBAC is maintained manually in templates/manager-role.yaml).
-	mkdir -p "$(HELM_CHART_DIR)/crds" "$(HELM_CHART_DIR)/templates"
+manifests: controller-gen ## Generate CRDs into both Helm charts (RBAC is maintained manually in templates/manager-role.yaml).
+	mkdir -p "$(HELM_SUBCHART_CRD_DIR)" "$(HELM_CHART_DIR)/templates" "$(HELM_CRDS_CHART_DIR)/files"
 	"$(CONTROLLER_GEN)" rbac:roleName=nvcre-manager-role crd webhook paths="./..." \
-		output:crd:artifacts:config="$(HELM_CHART_DIR)/crds" \
+		output:crd:artifacts:config="$(HELM_SUBCHART_CRD_DIR)" \
 		output:rbac:none
+	rm -f "$(HELM_CRDS_CHART_DIR)"/files/*.yaml
+	cp "$(HELM_SUBCHART_CRD_DIR)"/*.yaml "$(HELM_CRDS_CHART_DIR)/files/"
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -333,41 +339,52 @@ HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 # When set, helm-push writes the pushed chart's digest here. CI reads it to hand
 # the digest to the signing workflow without scraping the log.
 CHART_DIGEST_FILE ?=
+# The same, for the CRDs chart.
+CRDS_CHART_DIGEST_FILE ?=
 
 .PHONY: helm-lint
-helm-lint: ## Lint the cluster-readiness-engine Helm chart.
+helm-lint: ## Lint the cluster-readiness-engine and cluster-readiness-engine-crds Helm charts.
 	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
 	"$(HELM)" lint $(HELM_CHART_DIR)
+	"$(HELM)" lint $(HELM_CRDS_CHART_DIR)
 
 .PHONY: helm-package
-helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
+helm-package: helm-lint ## Package both Helm charts at the same version.
 	"$(HELM)" package $(HELM_CHART_DIR) \
+		--version "$(HELM_PACKAGE_VERSION)" \
+		--app-version "$(VERSION)"
+	"$(HELM)" package $(HELM_CRDS_CHART_DIR) \
 		--version "$(HELM_PACKAGE_VERSION)" \
 		--app-version "$(VERSION)"
 
 .PHONY: helm-push
 # The digest is what gets signed, so print it rather than leaving the operator
 # to look it up. Both streams are captured because helm's output stream for the
-# digest line is not a documented contract, and CHART_DIGEST_FILE lets CI take
-# the value without re-parsing a log.
-helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry and print its digest.
+# digest line is not a documented contract, and CHART_DIGEST_FILE and
+# CRDS_CHART_DIGEST_FILE let CI take the values without re-parsing a log.
+helm-push: check-clean-version helm-package ## Push both Helm charts to the OCI registry and print their digests.
 	@set -eu; \
 	log="$$(mktemp)"; \
 	trap 'rm -f "$$log"' EXIT; \
-	if ! "$(HELM)" push \
-		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
-		$(HELM_OCI_REGISTRY) >"$$log" 2>&1; then \
-		cat "$$log" >&2; \
-		exit 1; \
-	fi; \
-	cat "$$log"; \
-	digest="$$(sed -n 's/.*[Dd]igest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' "$$log" | tail -1)"; \
-	if [ -z "$$digest" ]; then \
-		echo "ERROR: helm push reported no sha256 digest; refusing to continue because the digest is what gets signed" >&2; \
-		exit 1; \
-	fi; \
-	echo "chart digest: $$digest"; \
-	if [ -n "$(CHART_DIGEST_FILE)" ]; then printf '%s' "$$digest" > "$(CHART_DIGEST_FILE)"; fi
+	push() { \
+		chart="$$1"; digest_file="$$2"; \
+		if ! "$(HELM)" push \
+			"$$chart-$(HELM_PACKAGE_VERSION).tgz" \
+			$(HELM_OCI_REGISTRY) >"$$log" 2>&1; then \
+			cat "$$log" >&2; \
+			exit 1; \
+		fi; \
+		cat "$$log"; \
+		digest="$$(sed -n 's/.*[Dd]igest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' "$$log" | tail -1)"; \
+		if [ -z "$$digest" ]; then \
+			echo "ERROR: helm push of $$chart reported no sha256 digest; refusing to continue because the digest is what gets signed" >&2; \
+			exit 1; \
+		fi; \
+		echo "$$chart digest: $$digest"; \
+		if [ -n "$$digest_file" ]; then printf '%s' "$$digest" > "$$digest_file"; fi; \
+	}; \
+	push cluster-readiness-engine "$(CHART_DIGEST_FILE)"; \
+	push cluster-readiness-engine-crds "$(CRDS_CHART_DIGEST_FILE)"
 
 ##@ Dependencies
 

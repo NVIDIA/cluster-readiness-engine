@@ -1,0 +1,14 @@
+# A Helm 4 adoption conflict left six CRDs owned by a failed release and
+# one unowned. The failed owner stops init even though it owns only some
+# CRDs: applying them could downgrade the moved ones, and the controller
+# would run over a partly upgraded schema.
+crds:
+  - {name: bandwidthmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: certifications.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: goodputmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: jobs.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: logprofiles.nvcre.nvidia.com}
+  - {name: workflows.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workloadruns.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+releases:
+  nvcre/nvcre-crds: failed

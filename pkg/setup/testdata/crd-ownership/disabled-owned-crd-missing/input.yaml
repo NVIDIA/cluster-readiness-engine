@@ -1,0 +1,13 @@
+# crds.enabled=false and the deployed release does not own the chart's full
+# set: nvcrectl warns but still leaves the CRDs to the operator, without
+# --skip-crds.
+crdsDisabled: true
+crds:
+  - {name: bandwidthmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: certifications.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: goodputmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: jobs.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: logprofiles.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workflows.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+releases:
+  nvcre/nvcre-crds: deployed

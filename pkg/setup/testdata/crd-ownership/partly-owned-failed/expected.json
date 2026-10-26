@@ -1,0 +1,15 @@
+{
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "output": [
+    "[helm] Helm release nvcre/nvcre-crds owns NVCRE CRDs and is failed. setup init changed nothing.",
+    "[helm] Inspect it with: helm status nvcre-crds --namespace nvcre",
+    "[helm] When no other operation is running, rerun its upgrade (the cluster-readiness-engine-crds chart).",
+    "[helm] On Helm 4, a conflict on .spec.versions means another writer co-owns the CRDs. Check with",
+    "[helm]   kubectl get crd \u003cname\u003e --show-managed-fields",
+    "[helm] stop that writer, and rerun the upgrade with --force-conflicts. Then rerun setup init."
+  ],
+  "error": "helm release nvcre/nvcre-crds, which owns NVCRE CRDs, is failed; resolve it and rerun setup init"
+}

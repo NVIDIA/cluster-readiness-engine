@@ -23,8 +23,9 @@ import (
 const crdFieldManager = "nvcrectl-setup"
 
 // fetchChartCRDs runs `helm show crds` against the same chart source and
-// version installHelmRelease deploys, and returns the chart's crds/ directory
-// as one multi-document YAML stream. Only stdout is treated as manifest data;
+// version installHelmRelease deploys, and returns the CRDs in the chart's and
+// its subcharts' crds/ directories (the crds subchart, ADR-107) as one
+// multi-document YAML stream. Only stdout is treated as manifest data;
 // stderr (registry warnings and errors) is surfaced separately on failure so
 // it can never corrupt the YAML stream.
 func fetchChartCRDs(helmPath, chartRef, chartVersion string, out io.Writer) ([]byte, error) {
@@ -53,8 +54,8 @@ func chartCRDsArgs(chartRef, chartVersion string) []string {
 }
 
 // applyChartCRDs server-side-applies every CustomResourceDefinition document
-// in manifests with force ownership. Helm applies a chart's crds/ directory
-// only on the first install, so `helm upgrade --install` alone leaves the
+// in manifests with force ownership. Helm applies the crds subchart's crds/
+// directory only on the first install, so `helm upgrade --install` alone leaves the
 // CRDs at the schema of whichever version first installed them (issue #145).
 // Reconciling them from the chart before every upgrade closes that gap;
 // server-side apply is idempotent, so a fresh install and an unchanged
@@ -68,15 +69,33 @@ func chartCRDsArgs(chartRef, chartVersion string) []string {
 // pre-#145 behavior (no update at all), and new/changed fields — the actual
 // drift in issue #145 — are fully reconciled.
 func applyChartCRDs(ctx context.Context, c client.Client, manifests []byte, out io.Writer) error {
+	crds, err := chartCRDObjects(manifests)
+	if err != nil {
+		return err
+	}
+	for _, obj := range crds {
+		if err := c.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj),
+			client.FieldOwner(crdFieldManager), client.ForceOwnership); err != nil {
+			return fmt.Errorf("apply CRD %s: %w", obj.GetName(), err)
+		}
+		_, _ = fmt.Fprintf(out, "  CRD %s applied.\n", obj.GetName())
+	}
+	return nil
+}
+
+// chartCRDObjects parses every CustomResourceDefinition document in
+// manifests, the output of `helm show crds`. The whole stream is parsed
+// before anything is applied, so a malformed document applies nothing.
+func chartCRDObjects(manifests []byte) ([]*unstructured.Unstructured, error) {
 	reader := k8syaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(manifests)))
-	applied := 0
+	var crds []*unstructured.Unstructured
 	for {
 		doc, readErr := reader.Read()
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {
-			return fmt.Errorf("read chart CRD stream: %w", readErr)
+			return nil, fmt.Errorf("read chart CRD stream: %w", readErr)
 		}
 
 		// A document may be blank or comment-only (helm show crds emits a
@@ -85,7 +104,7 @@ func applyChartCRDs(ctx context.Context, c client.Client, manifests []byte, out 
 		// missing kind.
 		var probe map[string]any
 		if err := sigsyaml.Unmarshal(doc, &probe); err != nil {
-			return fmt.Errorf("parse chart CRD document: %w", err)
+			return nil, fmt.Errorf("parse chart CRD document: %w", err)
 		}
 		if len(probe) == 0 {
 			continue
@@ -95,15 +114,19 @@ func applyChartCRDs(ctx context.Context, c client.Client, manifests []byte, out 
 		if obj.GetKind() != kindCustomResourceDefinition {
 			continue
 		}
-		if err := c.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj),
-			client.FieldOwner(crdFieldManager), client.ForceOwnership); err != nil {
-			return fmt.Errorf("apply CRD %s: %w", obj.GetName(), err)
-		}
-		_, _ = fmt.Fprintf(out, "  CRD %s applied.\n", obj.GetName())
-		applied++
+		crds = append(crds, obj)
 	}
-	if applied == 0 {
-		return errors.New("chart contains no CustomResourceDefinition documents")
+	if len(crds) == 0 {
+		return nil, errors.New("chart contains no CustomResourceDefinition documents")
 	}
-	return nil
+	return crds, nil
+}
+
+// chartCRDNames returns the names of crds.
+func chartCRDNames(crds []*unstructured.Unstructured) []string {
+	names := make([]string, 0, len(crds))
+	for _, obj := range crds {
+		names = append(names, obj.GetName())
+	}
+	return names
 }
