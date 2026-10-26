@@ -383,6 +383,20 @@
                         }
                       },
                       "spec": {
+                        "backoffLimit": 1,
+                        "podFailurePolicy": {
+                          "rules": [
+                            {
+                              "action": "Ignore",
+                              "onPodConditions": [
+                                {
+                                  "status": "True",
+                                  "type": "DisruptionTarget"
+                                }
+                              ]
+                            }
+                          ]
+                        },
                         "template": {
                           "metadata": {
                             "labels": {
@@ -447,7 +461,7 @@
                                 ]
                               }
                             ],
-                            "restartPolicy": "OnFailure",
+                            "restartPolicy": "Never",
                             "schedulerName": "runai-scheduler",
                             "volumes": [
                               {

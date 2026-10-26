@@ -3,7 +3,7 @@
 
 waitFor:
   kind: Workflow
-  name: onprem-nc-g3-communicatio-95da9
+  name: onprem-nc-g3-communicatio-817f8
   namespace: default
   condition: InProgress
   reason: JobRunning
@@ -12,5 +12,5 @@ collect:
     name: onprem-nc-g3
     namespace: default
   - kind: Workflow
-    name: onprem-nc-g3-communicatio-95da9
+    name: onprem-nc-g3-communicatio-817f8
     namespace: default

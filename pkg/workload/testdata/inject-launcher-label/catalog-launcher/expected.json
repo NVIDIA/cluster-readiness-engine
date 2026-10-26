@@ -1,0 +1,18 @@
+[
+  {
+    "labels": {
+      "nvcre.nvidia.com/job": "my-job"
+    },
+    "targetJobs": [
+      "node"
+    ]
+  },
+  {
+    "labels": {
+      "nvcre.nvidia.com/launcher": "my-job"
+    },
+    "targetJobs": [
+      "launcher"
+    ]
+  }
+]

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The review case on #510: the list at the spec level, one category inheriting
+# it and one replacing it with nicResourceName. They attach to different
+# fabrics, so they must not share a Workflow name; before the nic token both
+# rendered as c3-communication-nccl-all-4092a. A third category naming a
+# different resource gets a third name.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: c3
+spec:
+  networkAttachments:
+  - {network: nvcre/r0, resourceName: nvidia.com/r0}
+  categories:
+  - {domain: communication, variant: nccl-all-reduce}
+  - domain: communication
+    variant: nccl-all-reduce
+    options: {nicResourceName: rdma/ib}
+  - domain: communication
+    variant: nccl-all-reduce
+    options: {nicResourceName: rdma/roce}

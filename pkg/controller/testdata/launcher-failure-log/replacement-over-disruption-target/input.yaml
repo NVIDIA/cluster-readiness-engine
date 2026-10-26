@@ -1,0 +1,17 @@
+# When the replacement of an evicted launcher fails too, the replacement is the
+# failure recorded, even though the evicted pod finished first.
+workloadRef: j-workload
+pods:
+  - name: j-workload-launcher-0-0-a
+    launcher: true
+    disruptionTarget: true
+    exitCode: 137
+    reason: Error
+    finishedAt: 10
+    log: "evicted\n"
+  - name: j-workload-launcher-0-0-b
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 30
+    log: "replacement failed\n"

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI catalog entry registers the launcher with a bare entry in its own
+# patch, and the controller has already labelled the workers. The launcher
+# label goes on the launcher's pod template in the controller-owned patch,
+# the entry SetNodeAffinity and SetTolerations patch, and not on the workers.
+labelKey: "nvcre.nvidia.com/launcher"
+labelValue: "my-job"
+spec:
+  trainJob:
+    runtimePatches:
+      - manager: nvcre.nvidia.com/catalog
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                - name: launcher
+      - manager: nvcre.nvidia.com/controller
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        metadata:
+                          labels:
+                            nvcre.nvidia.com/job: my-job

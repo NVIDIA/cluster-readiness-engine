@@ -6,8 +6,10 @@
 # resource nor the annotation is emitted and the call site's "dependencies:"
 # key resolves to an empty list. The annotation must not outlive the resource:
 # attaching sriov-net without requesting nvidia.com/mlnxnics is not a valid
-# configuration. See ADR-087.
-{{- if gt (int .MlnxPerNode) 0 }}
+# configuration. See ADR-087. An explicit networkAttachments list replaces this
+# default wiring entirely, resource and annotation together (issue #400), so the
+# document is also gated on its absence.
+{{- if and (gt (int .MlnxPerNode) 0) (not .HasNetworkAttachments) }}
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:

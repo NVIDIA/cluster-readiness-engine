@@ -520,6 +520,9 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// --- 2. Resolve options + nodesPerJob ---
 	opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)
+	if err := CheckResolvedNetworkAttachments(&opts); err != nil {
+		return "", fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
+	}
 
 	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
 	gpusPerNode := nd.GpusPerNode
@@ -547,12 +550,17 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
 	// candidates means nothing is injected and a Normal event says why;
 	// detection never guesses (ADR-075).
-	nicDetected := resolveNICResourceName(
-		opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
-	nicResourceName := nicDetected.Name
-	if nicDetected.Ran && nicResourceName == "" {
-		r.normalf(certification, ReasonNICResourceDetection,
-			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
+	// An explicit networkAttachments list owns the NIC wiring (issue #400),
+	// so detection is skipped rather than adding a second NIC request.
+	nicResourceName := ""
+	if len(opts.NetworkAttachments) == 0 {
+		nicDetected := resolveNICResourceName(
+			opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
+		nicResourceName = nicDetected.Name
+		if nicDetected.Ran && nicResourceName == "" {
+			r.normalf(certification, ReasonNICResourceDetection,
+				"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
+		}
 	}
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
@@ -596,6 +604,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		MlnxPerNode:                mlnxPerNode,
 		NicResourceName:            nicResourceName,
 		RDMADeviceAccess:           opts.RDMADeviceAccess,
+		NetworkAttachments:         opts.NetworkAttachments,
 		GKETCPXONetworks:           gkeNetworks.Names,
 		TCPXOPluginVersion:         tcpxoPlugin.Version,
 		Resources:                  opts.Resources,
@@ -647,10 +656,11 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// gang-scheduling intent on the Workflow and checks the effective
 	// manifests against it.
 	if err := platform.ApplyResolvedWorkflowTransforms(&workflowSpec, platform.ResolvedWorkflowTransforms{
-		GangScheduler:  certification.Spec.GangScheduler,
-		Image:          opts.Image,
-		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
-		Env:            opts.Env,
+		GangScheduler:      certification.Spec.GangScheduler,
+		Image:              opts.Image,
+		WorkloadLabels:     workload.LabelsOf(opts.WorkloadMetadata),
+		Env:                opts.Env,
+		NetworkAttachments: opts.NetworkAttachments,
 	}); err != nil {
 		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
@@ -797,6 +807,32 @@ type workflowCreateRejectedError struct {
 func (e *workflowCreateRejectedError) Error() string { return e.err.Error() }
 func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
 
+// CheckResolvedNetworkAttachments checks the networkAttachments exclusions on
+// one category's merged options. The CRD rules and readCertification each read
+// one options block, so a spec-level rdmaDeviceAccess: hostPath and a
+// per-category list (or the reverse) pass both and only meet here. Unlike
+// nicResourceName, which a category's list replaces in ResolveOptions,
+// hostPath is not cleared: it changes how every container reaches the RDMA
+// devices, and dropping it silently would run a configuration nobody asked
+// for. The Certification fails instead (WorkflowValidationFailed), with the
+// category and the fix in the message. The nicResourceName check is
+// defensive, since ResolveOptions never leaves both.
+func CheckResolvedNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
+	if len(opts.NetworkAttachments) == 0 {
+		return nil
+	}
+	if opts.NicResourceName != nil {
+		return errors.New("networkAttachments and nicResourceName are mutually exclusive")
+	}
+	if opts.RDMADeviceAccess == nvcrev1alpha1.RDMADeviceAccessHostPath {
+		return errors.New("networkAttachments cannot be combined with rdmaDeviceAccess: hostPath," +
+			" including when one is set at the spec level and the other in the category's options;" +
+			" set rdmaDeviceAccess: devicePlugin in a category that inherits hostPath with a list," +
+			" or nicResourceName in a category that inherits the list and needs hostPath")
+	}
+	return nil
+}
+
 // ResolveOptions merges per-category overrides with global defaults.
 // Returns a flat CategoryOptions with all values resolved.
 func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alpha1.CategoryOptions) nvcrev1alpha1.CategoryOptions {
@@ -835,8 +871,18 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.MlnxPerNode != nil {
 		resolved.MlnxPerNode = override.MlnxPerNode
 	}
+	// networkAttachments and nicResourceName are two ways to say how the
+	// workers reach the fabric, and the CRD keeps them exclusive within one
+	// options block. A category that sets either replaces whichever the spec
+	// level set, so a spec-level nicResourceName never leaks into a category
+	// that lists its attachments, or the reverse.
 	if override.NicResourceName != nil {
 		resolved.NicResourceName = override.NicResourceName
+		resolved.NetworkAttachments = nil
+	}
+	if override.NetworkAttachments != nil {
+		resolved.NetworkAttachments = override.NetworkAttachments
+		resolved.NicResourceName = nil
 	}
 	if override.RDMADeviceAccess != "" {
 		resolved.RDMADeviceAccess = override.RDMADeviceAccess
@@ -1276,6 +1322,23 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if token := envToken(opts.Env); token != "" {
 		parts = append(parts, token)
 	}
+	// Same reasoning for networkAttachments: two categories that differ only
+	// in the fabric they attach to run different pods. The token is a count
+	// plus a short hash, since the list itself can be 16 entries long. Issue
+	// #430 is reworking how option differences reach the name; this token
+	// follows whatever it settles on.
+	if len(opts.NetworkAttachments) > 0 {
+		parts = append(parts, networkAttachmentsToken(opts.NetworkAttachments))
+	}
+	// A category's nicResourceName replaces a spec-level networkAttachments
+	// list in ResolveOptions, so a category with no options (which inherits
+	// the list) and one that sets only nicResourceName attach to different
+	// fabrics. Without a token both would get the bare name, and the second
+	// would adopt the first's Workflow. Hashed like env, since a resource name
+	// carries a slash and can be long.
+	if opts.NicResourceName != nil {
+		parts = append(parts, nicResourceNameToken(*opts.NicResourceName))
+	}
 	if len(parts) == 0 {
 		return ""
 	}
@@ -1302,6 +1365,28 @@ func envToken(env []corev1.EnvVar) string {
 	sort.Strings(pairs)
 	sum := sha256.Sum256([]byte(strings.Join(pairs, "")))
 	return "env" + hex.EncodeToString(sum[:])[:8]
+}
+
+// networkAttachmentsToken renders "net<N>-<hash8>": N is the number of
+// attachments and hash8 the first eight hex digits of a SHA-256 over the
+// (network, resourceName) pairs in list order. Order is hashed, not sorted
+// away, because it is part of what the pods get: Multus attaches the networks
+// in annotation order, so the list order decides which network becomes
+// net1, net2 and so on, and two lists that differ only in order are different
+// configurations.
+func networkAttachmentsToken(atts []nvcrev1alpha1.NetworkAttachment) string {
+	h := sha256.New()
+	for _, a := range atts {
+		_, _ = fmt.Fprintf(h, "%s|%s\n", a.Network, a.ResourceName)
+	}
+	return fmt.Sprintf("net%d-%s", len(atts), hex.EncodeToString(h.Sum(nil))[:8])
+}
+
+// nicResourceNameToken renders "nic<hash8>", the first eight hex digits of a
+// SHA-256 over the resource name.
+func nicResourceNameToken(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return "nic" + hex.EncodeToString(sum[:])[:8]
 }
 
 // rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe

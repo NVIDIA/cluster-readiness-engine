@@ -28,6 +28,13 @@ const (
 	// names the Job. The manager's cache holds only Pods that carry it.
 	JobLabel = "nvcre.nvidia.com/job"
 
+	// LauncherLabel is injected into the pod template of an MPI workload's
+	// launcher and names the Job. The manager's Pod cache does not hold these
+	// pods; a second cache that holds only them backs the Job controller's
+	// launcher watch and answers no reads (ADR-102, amendment). The launcher
+	// is read here, live, through WorkloadPods.
+	LauncherLabel = "nvcre.nvidia.com/launcher"
+
 	// JobIndexField indexes cached Pods by JobLabel's value.
 	JobIndexField = "metadata.labels." + JobLabel
 

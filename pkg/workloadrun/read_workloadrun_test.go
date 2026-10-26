@@ -18,7 +18,11 @@ import (
 // entry point. The unknown-threshold-key case is issue #52: avgTFLOPSPerGPU
 // (capital S) is the GoodputMeasurement status field, one character away from
 // the threshold key avgTFLOPsPerGPU, and it used to slip through and surface
-// only after the run as a misleading MeasurementTimeout.
+// only after the run as a misleading MeasurementTimeout. The
+// network-attachments-* cases pin validateWRNetworkAttachments, the offline
+// mirror of the CRD rules on spec.networkAttachments (issue #400): the entry
+// patterns, the reserved domains, the 16-entry cap, an empty list, and the
+// exclusion with nicResourceName.
 func TestReadWorkloadRun(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "read-workloadrun",
