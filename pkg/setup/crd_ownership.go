@@ -179,7 +179,9 @@ func confirmReleaseOwned(plan crdPlan, chartCRDs []string, out io.Writer) crdPla
 // listGroupCRDs returns the metadata of the CRDs of one API group, sorted by
 // name. The decision needs only names, labels and annotations, so it lists
 // metadata alone rather than every CRD's full schema. The API server requires
-// a CRD's name to be <plural>.<group>, so the name suffix selects the group.
+// a CRD's name to be <plural>.<group>, and a plural has no dot, so the part
+// after the first dot is the group. Comparing it exactly keeps a sub-group
+// such as foo.nvcre.nvidia.com out.
 func listGroupCRDs(ctx context.Context, c client.Client, apiGroup string) ([]metav1.PartialObjectMetadata, error) {
 	list := &metav1.PartialObjectMetadataList{}
 	list.SetGroupVersionKind(schema.GroupVersionKind{
@@ -190,7 +192,7 @@ func listGroupCRDs(ctx context.Context, c client.Client, apiGroup string) ([]met
 	}
 	var crds []metav1.PartialObjectMetadata
 	for _, item := range list.Items {
-		if strings.HasSuffix(item.GetName(), "."+apiGroup) {
+		if _, group, ok := strings.Cut(item.GetName(), "."); ok && group == apiGroup {
 			crds = append(crds, item)
 		}
 	}
