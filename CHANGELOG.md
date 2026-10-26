@@ -13,7 +13,7 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
-## [Unreleased]
+## [0.9.0] - 2026-10-26
 
 ### Added
 
@@ -25,12 +25,43 @@ followed them.
   condition message, which also explains a certification that failed before any
   category did, and a per-category `runtimeSeconds`
   ([ADR-108](docs/designs/108-junit-certification-reports.md), #446).
+- The CRDs ship as their own chart, `cluster-readiness-engine-crds`, pushed, signed
+  and attested beside the controller chart at the same version. A plain `helm upgrade`
+  of the main chart never updated the CRDs, so a new controller could run against an
+  old schema while the API server silently pruned the fields it lacked. The new chart
+  renders the CRDs from `templates/` so upgrades keep them current, each carrying
+  `helm.sh/resource-policy: keep` (`crds.keep`), and the main chart keeps bundled
+  copies for first installs (`crds.enabled`). `nvcrectl setup init` passes
+  `--skip-crds` when a deployed release owns every CRD the chart carries, leaves them
+  alone when the release sets `crds.enabled=false`, and stops before touching
+  dependencies when a release that owns an NVCRE CRD is failed, pending or unreadable
+  ([ADR-107](docs/designs/107-crds-chart.md), #357).
+- Certification categories and WorkloadRuns take `networkAttachments`, a list of
+  `{network, resourceName}` entries that pairs a Multus
+  `NetworkAttachmentDefinition` with the extended resource backing it (for example
+  Spectrum-X RoCE rails). Each entry joins the worker pods'
+  `k8s.v1.cni.cncf.io/networks` annotation in list order and requests one unit of
+  its resource on the worker container, entries sharing a `resourceName` adding up;
+  the MPI launcher gets neither. The list owns the NIC wiring: it is mutually exclusive with `nicResourceName`, skips NIC
+  auto-detection, and on OCI replaces the default `sriov-net` attachments and their
+  `mlnxnics` request ([ADR-104](docs/designs/104-network-attachments.md), #400).
+- AWS RTX PRO 6000 (`g7e` instances) overlays for the NCCL communication and
+  nemotron5 training categories over EFA. EFA device requests scale with the node's
+  GPU count (one adapter per two GPUs, rounded up), and training image preparation
+  applies a digest-guarded Megatron patch that orders DDP initialization streams,
+  serialized against concurrent pods sharing a workspace and degrading safely where
+  the filesystem cannot take the lock. Offline render gains a matching mock node
+  ([ADR-109](docs/designs/109-aws-rtxpro6000-overlays.md), #552).
+- Akamai RTX PRO 6000 overlays for the NCCL communication categories. Akamai joins
+  platform detection, and the entries force TCP transport for NCCL on instances
+  without an RDMA interconnect
+  ([ADR-101](docs/designs/101-akamai-rtxpro6000-tcp.md), #537).
 - AWS B300 (`p6-b300.48xlarge`) NCCL catalog entries and WorkloadRun overrides request
   16 `vpc.amazonaws.com/efa` devices per worker, matching the instance's 16 EFA-capable
   secondary network cards. The NCCL entries previously fell into the AWS H100 block,
   which requests 32 and cannot schedule on these nodes; they now pin a CUDA 13
   nccl-tests image with native B300 code. `nvcrectl workflow render` gains an
-  `aws-b300` mock node.
+  `aws-b300` mock node (#557).
 
 ### Changed
 
@@ -56,11 +87,6 @@ followed them.
 
 ### Fixed
 
-- Certification `spec.imagePullSecrets` reached only the two training categories;
-  the five communication categories and `diagnostics/dcgm-level4` rendered no pull
-  secret on any pod, so against a private registry those categories failed at
-  image pull. Every catalog entry now renders them on its `node` pods and, for the
-  MPI entries, on the `launcher` pod too (#534)
 - `nvcrectl setup init` reported success for a controller that was crash-looping.
   Helm's `--wait` passes on a single Ready sample, so a controller OOMKilled a few
   seconds after turning Ready passed it. Init now reports success only once every
@@ -69,6 +95,62 @@ followed them.
   the cause. Both errors name the pod and its last exit, and an OOMKill names the
   memory limit and the `--set manager.resources.limits.memory` flag that raises it
   (#504).
+- An NCCL launcher that failed deterministically crash-looped through the default
+  backoff for about seven minutes before the Job reported `WorkloadFailed`, with
+  every target node holding its GPUs. The MPI launchers now run with
+  `restartPolicy: Never` and `backoffLimit: 1`, with a `podFailurePolicy` that
+  ignores `DisruptionTarget` so an evicted or preempted launcher is replaced rather
+  than counted, and the single-pod NCCL loopback entries fail on their first exit
+  with `backoffLimit: 0` (#498).
+- With `enableCheckpoint`, every pod of a multi-node nemotron5 Job prepared the same
+  ReadWriteMany workspace: pods deleted each other's Megatron clone until the Job hit
+  its backoff limit. Workspace preparation now serializes on a lock file in the
+  workspace, so the first pod does the work and the rest reuse it, with bounded
+  waits; where the filesystem cannot take the lock, pods stage per-pod copies and
+  rename atomically, so they never delete each other's work (#548).
+- Template whitespace trimming glued `TOTAL_GPUS=` onto the comment above it in the
+  rendered nemotron5 `train.sh`, so the assignment lived inside the comment and the
+  job logged an empty value. The newline before the assignment now survives rendering
+  (#530).
+- The chart accepted `manager.image.pullPolicy` but never rendered it. The controller
+  container now carries it when set, rendering rejects values other than `Always`,
+  `IfNotPresent` or `Never`, and an empty value keeps the API server's tag-based
+  default (#511).
+- Offline `nvcrectl certification render` resolved overrides against its synthetic
+  node but discarded the result, so rendered Workflows carried none of the
+  `nvcrectl.nvidia.com/` annotations (`detected-platform`, `detected-gpu-architecture`,
+  `applied-overrides`) that `--dry-run` and `workflow render` write. It writes them
+  now, recording what override matching actually saw (#532).
+- `nvcrectl certification render` and `workflow render` ship nscale mock nodes, and
+  the `--platform` flag's help text lists every registered platform instead of a
+  hand-maintained subset (#538).
+
+## [0.8.2] - 2026-10-21
+
+### Fixed
+
+- Certification `spec.imagePullSecrets` reached only the two training categories;
+  the five communication categories and `diagnostics/dcgm-level4` rendered no pull
+  secret on any pod, so against a private registry those categories failed at
+  image pull. Every catalog entry now renders them on its `node` pods and, for the
+  MPI entries, on the `launcher` pod too (#534)
+
+### Security
+
+- Built with Go 1.27.3, which fixes GO-2026-6809 (CVE-2026-111943) by adding a
+  denylist of compromised intermediate certificates to `crypto/x509` certificate
+  verification; the controller and CLI reach the affected code through pod log
+  fetching (#540).
+
+## [0.8.1] - 2026-10-20
+
+### Fixed
+
+- Multi-node MPI workers install `openssh-server` at start-up when the image lacks
+  `sshd`. The install had no bound, so one hung `apt-get update` left its worker not
+  Ready, the launcher gated on the workers was never created, and the group waited
+  out `timeoutPerJob` with healthy nodes. The install is now a single bounded command
+  with retries, shared by every MPI entry (#527).
 
 ## [0.8.0] - 2026-10-19
 
@@ -836,6 +918,9 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.9.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.9.0
+[0.8.2]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.2
+[0.8.1]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.1
 [0.8.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.0
 [0.7.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.7.0
 [0.6.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.6.0

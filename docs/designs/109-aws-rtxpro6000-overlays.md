@@ -1,8 +1,7 @@
 # ADR-109: AWS RTX PRO 6000 workload overlays
 
-> **Status:** Accepted design; communication and training smoke validation
-> completed on two g7e nodes. Merge and release remain pending.
-> Approved by the engineer on 2026-10-20.
+> **Status:** Accepted; communication and training smoke validation
+> completed on two g7e nodes. Approved by the engineer on 2026-10-20.
 
 Issue: https://nvidia.atlassian.net/browse/NKX-18019
 Inspected upstream commit: `765ff4a` (2026-10-20).

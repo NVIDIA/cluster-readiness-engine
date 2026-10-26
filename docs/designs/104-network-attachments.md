@@ -1,6 +1,6 @@
 # ADR-104: Multus Network Attachments Paired With Extended Resources
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
