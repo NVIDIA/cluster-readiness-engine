@@ -3,6 +3,7 @@
   "aws-gb200",
   "aws-gb300",
   "aws-h100",
+  "aws-rtxpro6000",
   "azure-gb200",
   "azure-gb300",
   "azure-h100",
