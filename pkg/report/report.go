@@ -39,6 +39,14 @@ const (
 	statusInProgress = "InProgress"
 )
 
+// CertReport.Result values.
+const (
+	resultPassed     = "PASSED"
+	resultIncomplete = "INCOMPLETE"
+	resultFailed     = "FAILED"
+	resultRunning    = "RUNNING"
+)
+
 // Diagnose stage names, as returned by inferDiagnoseStage.
 const (
 	diagnoseStageScreening      = "screening"
@@ -74,7 +82,12 @@ type CertReport struct {
 	// failed different ways across categories.
 	FailedNodeDetails []nvcrev1alpha1.FailedNode `json:"failedNodeDetails,omitempty"`
 	Result            string                     `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
-	NodeResults       []NodeResultReport         `json:"nodeResults,omitempty"`
+	// FailureReason is the message on the Certification's own Failed
+	// condition. It is the only record of why the controller failed the
+	// certification itself, for a Workflow it could not create or a category
+	// that found no matching nodes.
+	FailureReason string             `json:"failureReason,omitempty"`
+	NodeResults   []NodeResultReport `json:"nodeResults,omitempty"`
 }
 
 // NodeResultReport holds per-node pass/fail status for programmatic consumers.
@@ -93,9 +106,12 @@ type CategoryReport struct {
 	FailureReason string `json:"failureReason,omitempty"` // populated from Workflow Failed condition message
 	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing: scheduling blocked (ADR-083) or waiting for namespace access (ADR-092)
 	Runtime       string `json:"runtime,omitempty"`       // total runtime across all iterations
-	TestScale     string `json:"testScale,omitempty"`
-	NodesPerJob   int    `json:"nodesPerJob,omitempty"`
-	Jobs          int    `json:"jobs,omitempty"`
+	// RuntimeSeconds is Runtime as a number. Runtime drops the seconds past an
+	// hour, so anything that computes with the duration reads this instead.
+	RuntimeSeconds int64  `json:"runtimeSeconds,omitempty"`
+	TestScale      string `json:"testScale,omitempty"`
+	NodesPerJob    int    `json:"nodesPerJob,omitempty"`
+	Jobs           int    `json:"jobs,omitempty"`
 	// Placement is the resolved placement mode, recorded only when it is not the
 	// default. Under Pinned the reader can reconcile the other counts themselves,
 	// since Jobs times Nodes/Job equals the target node count. Unpinned breaks
@@ -421,11 +437,11 @@ func CategoryMNNVL(cert *nvcrev1alpha1.Certification, i int) string {
 
 // Build fetches Workflow and measurement data for a Certification (completed or running).
 func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) *CertReport {
-	result := "RUNNING"
+	result := resultRunning
 	if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed) {
-		result = "FAILED"
+		result = resultFailed
 	} else if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
-		result = "PASSED"
+		result = resultPassed
 	}
 	failedNodeDetails := CertFailedNodeDetails(ctx, c, cert)
 	report := &CertReport{
@@ -433,6 +449,11 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 		FailedNodes:       failedNodeNameUnion(failedNodeDetails),
 		FailedNodeDetails: failedNodeDetails,
 		Result:            result,
+	}
+	if result == resultFailed {
+		if cond := meta.FindStatusCondition(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed); cond != nil {
+			report.FailureReason = cond.Message
+		}
 	}
 
 	// Fetch metrics per category from Workflows.
@@ -503,8 +524,8 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 	// nobody observed. The usual causes are a mixed fleet or a leftover cordon,
 	// both configuration rather than hardware. So it warns — and keeps exit 0,
 	// because a warning that fails the build is not a warning.
-	if report.Result == "PASSED" && len(report.ExcludedNodes) > 0 {
-		report.Result = "INCOMPLETE"
+	if report.Result == resultPassed && len(report.ExcludedNodes) > 0 {
+		report.Result = resultIncomplete
 	}
 
 	return report
@@ -577,10 +598,11 @@ func runningStatusDetail(conditions []metav1.Condition) string {
 }
 
 // buildIterationReports creates per-iteration timing from iteration history
-// and the current iteration. Returns reports and total runtime string.
-func buildIterationReports(orch *nvcrev1alpha1.OrchestrationStatus) ([]IterationReport, string) {
+// and the current iteration. Returns reports, the total runtime string, and
+// the total runtime in seconds.
+func buildIterationReports(orch *nvcrev1alpha1.OrchestrationStatus) ([]IterationReport, string, int64) {
 	if orch == nil {
-		return nil, ""
+		return nil, "", 0
 	}
 
 	now := time.Now().Unix()
@@ -611,9 +633,9 @@ func buildIterationReports(orch *nvcrev1alpha1.OrchestrationStatus) ([]Iteration
 
 	runtime := fmtSecs(totalSecs)
 	if len(reports) <= 1 {
-		return nil, runtime // Single iteration: show runtime but not iteration list
+		return nil, runtime, totalSecs // Single iteration: show runtime but not iteration list
 	}
-	return reports, runtime
+	return reports, runtime, totalSecs
 }
 
 // iterGroupDuration computes duration and status from completed iteration groups.
@@ -832,7 +854,7 @@ func PopulateCategoryFromWorkflow(
 		cat.Cliques = buildCliqueReport(wf, failedNodes)
 	}
 	cat.FailedGroups = buildFailedGroups(ctx, c, wf, failedNodes)
-	cat.Iterations, cat.Runtime = buildIterationReports(orch)
+	cat.Iterations, cat.Runtime, cat.RuntimeSeconds = buildIterationReports(orch)
 	if orch != nil && orch.Diagnose != nil {
 		diag := orch.Diagnose
 		stage := diag.Stage
