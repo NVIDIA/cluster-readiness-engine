@@ -1,0 +1,100 @@
+[
+  {
+    "name": "bandwidthmeasurements.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "certifications.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "goodputmeasurements.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "jobs.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "logprofiles.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "workflows.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  },
+  {
+    "name": "workloadruns.nvcre.nvidia.com",
+    "labels": {
+      "app.kubernetes.io/instance": "render-test",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "cluster-readiness-engine-crds",
+      "app.kubernetes.io/version": "dev",
+      "helm.sh/chart": "cluster-readiness-engine-crds-0.0.0"
+    },
+    "annotations": {
+      "controller-gen.kubebuilder.io/version": "v0.20.0",
+      "helm.sh/resource-policy": "keep"
+    }
+  }
+]

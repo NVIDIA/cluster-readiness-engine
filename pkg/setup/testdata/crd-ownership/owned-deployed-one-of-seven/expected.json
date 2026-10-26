@@ -1,0 +1,11 @@
+{
+  "action": "apply",
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "output": [
+    "[helm] Warning: Helm release nvcre/nvcre-crds does not own every CRD the chart carries (bandwidthmeasurements.nvcre.nvidia.com: missing, certifications.nvcre.nvidia.com: missing, goodputmeasurements.nvcre.nvidia.com: missing, logprofiles.nvcre.nvidia.com: missing, workflows.nvcre.nvidia.com: missing, workloadruns.nvcre.nvidia.com: missing). Upgrade the cluster-readiness-engine-crds chart before the main chart.",
+    "[helm] nvcrectl will apply the chart's CRDs."
+  ]
+}

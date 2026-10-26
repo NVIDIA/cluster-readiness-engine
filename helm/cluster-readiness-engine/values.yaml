@@ -5,6 +5,13 @@
 
 nameOverride: nvcre
 
+crds:
+  # Install the NVCRE CRDs from this chart's crds subchart. Helm installs them
+  # only on the first install and never updates them on upgrade. Set to false
+  # when the cluster-readiness-engine-crds chart manages the CRDs, which keeps
+  # them current on helm upgrade (ADR-107).
+  enabled: true
+
 manager:
   replicas: 1
   # Maximum number of objects reconciled concurrently by each core controller

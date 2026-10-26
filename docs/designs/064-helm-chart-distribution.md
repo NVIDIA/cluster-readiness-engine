@@ -1,5 +1,7 @@
 # ADR-064: Helm Chart Distribution
 
+> **Amended by:** [ADR-107](107-crds-chart.md) (accepted) — decision 1's CRDs move from the chart's `crds/` into a conditional `crds` subchart, and the CRDs are also published as a separate `cluster-readiness-engine-crds` chart that keeps them current on `helm upgrade`.
+
 ## Context
 
 NVCRE is installed today via `nvcrectl setup init`, which applies four phases in order: Kubeflow Trainer v2.1.0, NVCRE CRDs, the controller stack (`config/default`), and LogProfiles (`config/logprofiles`). Platform and GitOps teams need a versioned Helm install path with the same components bundled in one release artifact, published alongside the controller image on NGC.

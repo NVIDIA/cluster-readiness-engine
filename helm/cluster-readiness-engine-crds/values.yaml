@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NVCRE CRDs chart values. Install it beside the cluster-readiness-engine chart
+# with crds.enabled=false there, and upgrade this chart first (ADR-107).
+
+crds:
+  # Annotate each CRD with helm.sh/resource-policy: keep, so helm uninstall
+  # leaves it in place. Deleting a CRD deletes every NVCRE object of its kind.
+  keep: true
