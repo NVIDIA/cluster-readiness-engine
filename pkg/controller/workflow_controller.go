@@ -3647,13 +3647,20 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		return
 	}
 
-	// The Job's workload pods. Launchers carry no job label, so the launcher
-	// branch below cannot match yet (ADR-102, Notes).
+	// The Job's workload pods. They carry the job label, which the MPI
+	// launcher does not, so the launchers are listed by their JobSet labels
+	// and put first (issue #546).
 	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
 	if err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
 	}
+	launchers, err := launcherPods(ctx, r.Client, r.APIReader, job)
+	if err != nil {
+		log.V(1).Info("Failed to list launcher pods for timeout log capture", "error", err)
+		launchers = nil
+	}
+	pods = append(launchers, pods...)
 
 	// Find the best pod to capture logs from:
 	// 1. Prefer the launcher pod (MPI tests — has the actual test output)
@@ -3664,7 +3671,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			continue
 		}
-		if pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer" {
+		if i < len(launchers) || pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer" {
 			targetPod = pod
 			break // launcher found, use it
 		}

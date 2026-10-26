@@ -1,0 +1,19 @@
+# A launcher left over from before a checkpoint restart replaced the workload
+# is not this run's, so the current launcher is named.
+workloadRef: j-workload
+workloadCreated: 100
+pods:
+  - name: j-workload-launcher-0-0-old
+    launcher: true
+    created: 10
+    running: true
+    log: "[stub] previous generation\n"
+  - name: j-workload-node-0-0
+    created: 110
+    running: true
+    log: "sshd: listening on port 2222\n"
+  - name: j-workload-launcher-0-0
+    launcher: true
+    created: 110
+    running: true
+    log: "[stub] current generation\n"

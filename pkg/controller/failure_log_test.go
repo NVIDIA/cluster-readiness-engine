@@ -142,6 +142,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		pod.Spec.NodeName = "node-" + sp.Name
 		switch {
 		case sp.Running:
+			pod.Status.Phase = corev1.PodRunning
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
 				Name:  stubContainer,
 				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
@@ -263,6 +264,34 @@ func TestLauncherFailureLog(t *testing.T) {
 		got := r.launcherFailureLog(context.Background(), job)
 
 		b, err := json.MarshalIndent(got, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+// captureTimeoutLog records the log of a Job that exceeded timeoutPerJob
+// before its workload is deleted. For an MPI run that is the launcher's, which
+// has the NCCL output, and the launcher carries no nvcre.nvidia.com/job label,
+// so it is found by its JobSet labels like a failed one (issue #546). Without a
+// launcher, the first running worker is recorded.
+func TestTimeoutLogCapture(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "timeout-log-capture",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		jr, job, err := newFailureLogReconciler(t, tc.Inputs["input.yaml"])
+		if err != nil {
+			return err
+		}
+		r := &WorkflowReconciler{Client: jr.Client, APIReader: jr.APIReader, Scheme: jr.Scheme, Clientset: jr.Clientset}
+
+		r.captureTimeoutLog(context.Background(), job)
+
+		b, err := json.MarshalIndent(job.Status.FailureLog, "", "  ")
 		if err != nil {
 			return err
 		}

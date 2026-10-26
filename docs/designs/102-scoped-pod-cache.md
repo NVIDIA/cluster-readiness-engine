@@ -159,6 +159,10 @@ PR #529 (issue #498) reads a failed MPI launcher's log while the workload still 
 
 Memory follows the launchers of runs in progress and of kept Certifications, at most one or two pods per MPI Job. Launchers of workloads created before this change carry no label and are not watched; their failures are still found live by `captureFailureLog` once the workload reports the failure, if the pod remains.
 
+## Amendment: the timeout log reads the launcher (#546)
+
+`captureTimeoutLog` now adds the workload's launchers from `launcherPods` to the job-labelled pods and prefers a running one, which settles the first paragraph of Notes. A timed-out MPI run records the launcher's log, with the NCCL output, instead of the first running worker's sshd output. The launchers are read live, as for `captureFailureLog`, so `test/readpolicy` still holds. A workload without a launcher still records its first running node pod, and a failed launcher lookup falls back to that too, since the capture is best-effort.
+
 ## References
 
 - Issue [#504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)
