@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
+                  initContainers:
+                  - name: megatron-clone
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                  # Megatron core_v0.15.2 copies model parameters on a side
+                  # stream without ordering it against initialization or the
+                  # optimizer. See NVIDIA/Megatron-LM#2044 and ADR-109.
+                  - name: megatron-ddp-stream-order
+                    image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+                    command: [timeout, "1200", python3, -c]
+                    args:
+                    - |
+                      import ast
+                      import fcntl
+                      import hashlib
+                      import json
+                      import os
+                      import stat
+                      import tempfile
+                      from pathlib import Path
+
+                      path = Path("/mnt/workspace/megatron-lm/megatron/training/training.py")
+                      with Path("/mnt/workspace/.megatron-lm.lock").open("a") as lock:
+                          try:
+                              fcntl.flock(lock, fcntl.LOCK_EX)
+                          except OSError as error:
+                              print(f"Locking {lock.name} failed ({error}); preparing without the lock")
+                          source = path.read_text()
+                          original = "a5cd6e9f0087ddc6d9cfa566fcda871a4b4ab8a3bb41f4923673a8bc76073ff6"
+                          patched = "3888d7ff3b58ecdc6ea67edce4c324ced46205f7340a149fbc18160f0da616a0"
+                          digest = hashlib.sha256(source.encode()).hexdigest()
+                          if digest == patched:
+                              print("Megatron DDP stream ordering already applied")
+                          elif digest != original:
+                              # Verify the inspected function, including wait placement
+                              # around DDP construction. Calls elsewhere cannot qualify.
+                              def shape(node):
+                                  if isinstance(node, ast.AST):
+                                      return [type(node).__name__, [
+                                          [name, shape(value)] for name, value in ast.iter_fields(node)
+                                          if value is not None and value != []
+                                      ]]
+                                  if isinstance(node, list):
+                                      return [shape(value) for value in node]
+                                  return node
+
+                              functions = [node for node in ast.parse(source).body
+                                           if isinstance(node, ast.FunctionDef) and node.name == "get_model"]
+                              verified = "3b0496099dadd5ae1505d4d2b724119d25ed213541e681521b4050b0cfb46970"
+                              fingerprint = hashlib.sha256(
+                                  json.dumps(shape(functions[0]), separators=(",", ":")).encode()
+                              ).hexdigest() if len(functions) == 1 else None
+                              if fingerprint == verified:
+                                  print("Verified synchronized Megatron get_model; leaving source unchanged")
+                              else:
+                                  raise RuntimeError(
+                                      "AWS RTX DDP stream patch requires the inspected core_v0.15.2 source "
+                                      "or the inspected synchronized get_model implementation"
+                                  )
+                          else:
+                              before = "        with torch.cuda.stream(torch.cuda.Stream()):\n            model = [\n"
+                              after = (
+                                  "        # Order parameter initialization, DDP copies, and optimizer setup.\n"
+                                  "        current_stream = torch.cuda.current_stream()\n"
+                                  "        ddp_stream = torch.cuda.Stream()\n"
+                                  "        ddp_stream.wait_stream(current_stream)\n"
+                                  "        with torch.cuda.stream(ddp_stream):\n"
+                                  "            model = [\n"
+                              )
+                              end = "        # Broadcast params from data parallel src rank to other data parallel ranks.\n"
+                              if source.count(before) != 1 or source.count(end) != 1:
+                                  raise RuntimeError("Unexpected Megatron DDP initialization structure")
+                              updated = source.replace(before, after).replace(
+                                  end, "        current_stream.wait_stream(ddp_stream)\n\n" + end
+                              )
+                              if hashlib.sha256(updated.encode()).hexdigest() != patched:
+                                  raise RuntimeError("Unexpected Megatron DDP patch result")
+                              temporary = None
+                              try:
+                                  with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=".training.py.", delete=False) as output:
+                                      temporary = Path(output.name)
+                                      output.write(updated)
+                                      output.flush()
+                                      os.fchmod(output.fileno(), stat.S_IMODE(path.stat().st_mode))
+                                      os.fsync(output.fileno())
+                                  os.replace(temporary, path)
+                              finally:
+                                  if temporary is not None:
+                                      temporary.unlink(missing_ok=True)
+                              print("Applied Megatron DDP stream ordering; integrity checks unchanged")
+                    volumeMounts:
+                    - name: workspace
+                      mountPath: /mnt/workspace

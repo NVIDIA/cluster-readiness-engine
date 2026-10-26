@@ -480,7 +480,7 @@ var jobGuards = []jobGuard{
 	{"image-attested", "Require every image attestation to have succeeded",
 		[]string{"BUILD", "INDEX", "AMD64", "ARM64"}},
 	{"chart-attested", "Require the chart attestation to have succeeded",
-		[]string{"PUBLISH", "ATTEST"}},
+		[]string{"PUBLISH", "ATTEST", "ATTEST_CRDS"}},
 	{"binaries-attested", "Require every binary attestation to have succeeded",
 		[]string{"BUILD", "ATTEST"}},
 }

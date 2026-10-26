@@ -1,0 +1,11 @@
+# crds.enabled=false and no release owns the CRDs: the operator manages them
+# outside nvcrectl, which neither fetches nor applies them.
+crdsDisabled: true
+crds:
+  - {name: bandwidthmeasurements.nvcre.nvidia.com}
+  - {name: certifications.nvcre.nvidia.com}
+  - {name: goodputmeasurements.nvcre.nvidia.com}
+  - {name: jobs.nvcre.nvidia.com}
+  - {name: logprofiles.nvcre.nvidia.com}
+  - {name: workflows.nvcre.nvidia.com}
+  - {name: workloadruns.nvcre.nvidia.com}

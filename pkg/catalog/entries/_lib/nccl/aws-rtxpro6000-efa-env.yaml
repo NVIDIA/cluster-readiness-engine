@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# g7e.48xlarge has four EFA interfaces and PCIe-connected GPUs, not NVLink.
+# Shared by MPI (-x) and torch (container env); keep PATH and library paths
+# with the workload image so container env never contains literal $PATH.
+- name: FI_PROVIDER
+  value: efa
+- name: FI_EFA_USE_DEVICE_RDMA
+  value: "1"
+- name: FI_EFA_FORK_SAFE
+  value: "1"
+- name: NCCL_NET_PLUGIN
+  value: ofi
+- name: NCCL_NVLS_ENABLE
+  value: "0"

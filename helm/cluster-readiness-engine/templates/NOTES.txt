@@ -2,8 +2,17 @@ Thank you for installing {{ .Chart.Name }}.
 
 Your release is named {{ .Release.Name }}.
 
-The controller and CRDs have been installed in namespace {{ .Release.Namespace }}.
-
+{{ if .Values.crds.enabled -}}
+The controller has been installed in namespace {{ .Release.Namespace }}, with
+the NVCRE CRDs from this chart's crds subchart. Helm installs those CRDs only
+on the first install and does not update them on helm upgrade. To keep them
+current, install the cluster-readiness-engine-crds chart and set
+crds.enabled=false on this release.
+{{ else -}}
+The controller has been installed in namespace {{ .Release.Namespace }}.
+crds.enabled is false: this release does not manage the NVCRE CRDs. Install or
+upgrade the cluster-readiness-engine-crds chart before this release.
+{{ end }}
 To verify the installation:
 
   kubectl get pods -n {{ .Release.Namespace }}

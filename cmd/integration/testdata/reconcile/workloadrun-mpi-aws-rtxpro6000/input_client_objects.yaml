@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-rtx-node-1
+  labels:
+    node.kubernetes.io/instance-type: g7e.48xlarge
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+    kubernetes.io/hostname: aws-rtx-node-1
+spec:
+  providerID: aws://us-west-2a/i-template-1
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+  allocatable:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-rtx-node-2
+  labels:
+    node.kubernetes.io/instance-type: g7e.48xlarge
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+    kubernetes.io/hostname: aws-rtx-node-2
+spec:
+  providerID: aws://us-west-2a/i-template-2
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+  allocatable:
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "4"
+
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: aws-rtx-mpi
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
+  image: nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      args: ["-b", "8", "-e", "1G", "-f", "2"]
+      mpiArgs: ["--tag-output"]
+  numNodes: 2
+  env:
+    - name: USER_SETTING
+      value: preserved

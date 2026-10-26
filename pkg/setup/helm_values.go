@@ -59,6 +59,7 @@ var (
 	pathImagePullSecrets = []string{valuesKeyManager, "imagePullSecrets"}
 	pathRBACScope        = []string{valuesKeyRBAC, "scope"}
 	pathRBACRunNS        = []string{valuesKeyRBAC, "runNamespaces"}
+	pathCRDsEnabled      = []string{"crds", "enabled"}
 )
 
 func (v ChartValues) hasFlags() bool {
@@ -562,21 +563,32 @@ type nvcreValuesInput struct {
 	in io.Reader
 }
 
+// preparedValues is what preflight hands the helm phase.
+type preparedValues struct {
+	// file holds every value the release is given.
+	file  string
+	image imageChoice
+	// crdsDisabled is true when the merged values set crds.enabled to false,
+	// from this run or kept from an earlier one: the operator manages the
+	// CRDs outside nvcrectl (ADR-107 decision 7).
+	crdsDisabled bool
+}
+
 // prepareNVCREValues reads the installed release's values, runs the probes,
 // resolves the values, prints the summary, and writes the values file the
 // upgrade is given. It runs in preflight, so a conflict stops setup init with
 // the cluster unchanged.
 func prepareNVCREValues(
 	helmPath, kubeconfig, kubeContext string, ws *valuesWorkspace, input nvcreValuesInput, out io.Writer,
-) (string, imageChoice, error) {
+) (preparedValues, error) {
 	// Copy the values sources before Helm runs at all.
 	files, err := ws.copyValuesFiles(input.values.Files, input.in)
 	if err != nil {
-		return "", imageChoice{}, err
+		return preparedValues{}, err
 	}
 	release, err := readReleaseValues(helmPath, kubeconfig, kubeContext)
 	if err != nil {
-		return "", imageChoice{}, err
+		return preparedValues{}, err
 	}
 	kept := keptValues(release, input.values.Reset)
 
@@ -585,36 +597,41 @@ func prepareNVCREValues(
 	if input.values.hasFlags() {
 		chart, err := ws.probeChart()
 		if err != nil {
-			return "", imageChoice{}, err
+			return preparedValues{}, err
 		}
 		operator, err = runProbe(helmPath, chart, files, input.values.SetJSON, input.values.Set)
 		if err != nil {
-			return "", imageChoice{}, err
+			return preparedValues{}, err
 		}
 		probed = operator
 		if len(kept) > 0 {
 			keptFile, err := writeValuesFile(ws, "kept.json", kept)
 			if err != nil {
-				return "", imageChoice{}, err
+				return preparedValues{}, err
 			}
 			probed, err = runProbe(helmPath, chart, append([]string{keptFile}, files...),
 				input.values.SetJSON, input.values.Set)
 			if err != nil {
-				return "", imageChoice{}, err
+				return preparedValues{}, err
 			}
 		}
 	}
 
 	resolved, err := resolveValues(kept, operator, probed, input.opts)
 	if err != nil {
-		return "", imageChoice{}, err
+		return preparedValues{}, err
 	}
 	printValuesSummary(out, resolved)
 	file, err := writeValuesFile(ws, "values.json", resolved.merged)
 	if err != nil {
-		return "", imageChoice{}, err
+		return preparedValues{}, err
 	}
-	return file, resolved.image, nil
+	enabled, set := valueAt(resolved.merged, pathCRDsEnabled...)
+	return preparedValues{
+		file:         file,
+		image:        resolved.image,
+		crdsDisabled: set && enabled == false,
+	}, nil
 }
 
 // writeValuesFile writes values as JSON, which Helm reads as YAML.

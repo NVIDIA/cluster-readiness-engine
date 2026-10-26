@@ -138,13 +138,13 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 
 ## Critical Pitfalls
 
-- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/`. It writes no RBAC: controller-gen runs with `output:rbac:none`, so the controller's two ClusterRoles are maintained by hand and the `+kubebuilder:rbac` markers only document them (ADR-092). `helm/cluster-readiness-engine/templates/manager-role.yaml` (`nvcre-manager-role`, bound cluster-wide) holds reads, cluster-scoped writes, NVCRE's own CRDs and events. `templates/run-role.yaml` (`nvcre-run-role`, bound per `rbac.scope`) holds every write to a namespaced resource outside NVCRE's API group, plus `pods/log`. A new or widened marker must be mirrored into the right file in the same change, or the grant never reaches a cluster; a new dependency kind goes in `run-role.yaml`, which `test/helm` checks against the catalog.
+- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs to the main chart's `crds` subchart, `helm/cluster-readiness-engine/charts/crds/crds/`, and copies them to the CRDs chart's `helm/cluster-readiness-engine-crds/files/`. Both copies are committed, and `make verify-codegen` fails when they drift (ADR-107). It writes no RBAC: controller-gen runs with `output:rbac:none`, so the controller's two ClusterRoles are maintained by hand and the `+kubebuilder:rbac` markers only document them (ADR-092). `helm/cluster-readiness-engine/templates/manager-role.yaml` (`nvcre-manager-role`, bound cluster-wide) holds reads, cluster-scoped writes, NVCRE's own CRDs and events. `templates/run-role.yaml` (`nvcre-run-role`, bound per `rbac.scope`) holds every write to a namespaced resource outside NVCRE's API group, plus `pods/log`. A new or widened marker must be mirrored into the right file in the same change, or the grant never reaches a cluster; a new dependency kind goes in `run-role.yaml`, which `test/helm` checks against the catalog.
 - **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
-- **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
+- **Never edit auto-generated files**: `helm/cluster-readiness-engine/charts/crds/crds/*.yaml`, `helm/cluster-readiness-engine-crds/files/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.
 - **Pods are read only through `pkg/podread` (ADR-102)**: The manager's cache holds only Pods with the `nvcre.nvidia.com/job` label. MPI launchers, `kube-system` pods and other components' pods are not in it. Never list or get Pods through `r.Client`, `mgr.GetCache()` or a `Watches`/`Owns` on Pods. The cache guard refuses those, and `test/readpolicy` fails on a `corev1.PodList` outside `pkg/podread`. The one Pod watch, on failed MPI launchers, runs on the launcher pod cache (`NewLauncherPodCache`, ADR-102 amendment), which holds only pods labelled `nvcre.nvidia.com/launcher` and is never read. A new kind of Pod read is a new `podread` method, and that method decides cache or live: cache only when every pod it needs carries the job label (selected by the label or `JobIndexField`); otherwise live (`WorkloadPods`, `NamespacePods`). A cached read that expects launchers returns empty without an error.
 
@@ -259,7 +259,7 @@ spec:
 
 1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
 
-2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
+2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should appear for GB200, H100 and RTX PRO 6000 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 
    `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
@@ -267,6 +267,7 @@ spec:
    - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`
    - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
+   - RTX PRO 6000: eight GPUs per worker, `vpc.amazonaws.com/efa: 4`, NO hugepages, NO ComputeDomain
 
 4. **Spot-check with grep**. Use only markers that really are EFA specific:
 
@@ -285,12 +286,12 @@ spec:
 
    Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:
 
-   | Pattern | gb200 | gb300 |
-   |---|---|---|
-   | `FI_EFA` | 2 | 0 |
-   | `hugepages` | 2 | 0 |
-   | `vpc.amazonaws.com/efa` | 2 | 0 |
-   | `roce` | 0 | 6 |
+   | Pattern | gb200 | gb300 | rtxpro6000 |
+   |---|---|---|---|
+   | `FI_EFA` | 2 | 0 | 2 |
+   | `hugepages` | 2 | 0 | 0 |
+   | `vpc.amazonaws.com/efa` | 2 | 0 | 2 |
+   | `roce` | 0 | 6 | 0 |
 
 ### Override Semantics (Critical)
 
@@ -327,7 +328,7 @@ Nothing in CI inspects commit authorship, so these rules hold by convention. The
 
 **Never do**:
 - Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.
-- Never edit auto-generated files: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, and `PROJECT`. The chart's RBAC templates are maintained by hand.
+- Never edit auto-generated files: `helm/cluster-readiness-engine/charts/crds/crds/*.yaml`, `helm/cluster-readiness-engine-crds/files/*.yaml`, `**/zz_generated.*.go`, and `PROJECT`. The chart's RBAC templates are maintained by hand.
 - Never remove `// +kubebuilder:scaffold:*` markers.
 - Never create git tags. The user creates tags.
 - Never push to `main`.
