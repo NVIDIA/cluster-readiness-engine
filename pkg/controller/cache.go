@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
@@ -308,6 +309,56 @@ var unscopedCacheReads atomic.Int64
 // process started. The integration harness asserts it stays zero.
 func UnscopedCacheReads() int64 {
 	return unscopedCacheReads.Load()
+}
+
+// NewLauncherPodCache builds the launcher pod cache and adds it to mgr
+// (ADR-102, amendment). It holds only Pods labelled podread.LauncherLabel,
+// the MPI launchers NVCRE creates, and backs the Job controller's launcher
+// watch. The manager's cache refuses every Pod informer, since a watch on its
+// job-scoped Pods would miss the launchers without any error; this cache's
+// scope is the launchers, which is what the watch wants.
+//
+// Nothing reads Pods through it: launcherPods reads live through
+// podread.WorkloadPods, and test/readpolicy keeps Pod lists in pkg/podread.
+// It is not wrapped by NewCache, so its informer is not refused. It strips
+// managedFields like the manager's cache, and runs on every replica, as the
+// manager's cache does, so a new leader starts with it synced.
+func NewLauncherPodCache(mgr manager.Manager) (cache.Cache, error) {
+	c, err := cache.New(mgr.GetConfig(), launcherPodCacheOptions(mgr))
+	if err != nil {
+		return nil, fmt.Errorf("building the launcher pod cache: %w", err)
+	}
+	if err := mgr.Add(launcherPodCache{c}); err != nil {
+		return nil, fmt.Errorf("adding the launcher pod cache to the manager: %w", err)
+	}
+	return c, nil
+}
+
+// launcherPodCacheOptions scopes the launcher pod cache to Pods labelled
+// podread.LauncherLabel, on mgr's client settings.
+func launcherPodCacheOptions(mgr manager.Manager) cache.Options {
+	return cache.Options{
+		HTTPClient:       mgr.GetHTTPClient(),
+		Scheme:           mgr.GetScheme(),
+		Mapper:           mgr.GetRESTMapper(),
+		DefaultTransform: cache.TransformStripManagedFields(),
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Pod{}: {Label: labelExists(podread.LauncherLabel)},
+		},
+	}
+}
+
+// launcherPodCache is the launcher pod cache as the manager runs it: in the
+// manager's cache group, started and synced before any controller, on every
+// replica. A bare cache.Cache would be started with the leader-elected
+// controllers instead.
+type launcherPodCache struct {
+	cache.Cache
+}
+
+// GetCache returns the cache, which puts it in the manager's cache group.
+func (c launcherPodCache) GetCache() cache.Cache {
+	return c.Cache
 }
 
 // ClientOptions returns the manager client configuration.
