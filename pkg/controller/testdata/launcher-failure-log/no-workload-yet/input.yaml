@@ -1,0 +1,4 @@
+# Before the workload is recorded there are no launcher pods to look for.
+pods:
+  - name: j-workload-node-0-0
+    running: true

@@ -362,6 +362,20 @@
                         }
                       },
                       "spec": {
+                        "backoffLimit": 0,
+                        "podFailurePolicy": {
+                          "rules": [
+                            {
+                              "action": "Ignore",
+                              "onPodConditions": [
+                                {
+                                  "status": "True",
+                                  "type": "DisruptionTarget"
+                                }
+                              ]
+                            }
+                          ]
+                        },
                         "template": {
                           "metadata": {
                             "labels": {
@@ -453,7 +467,7 @@
                                 ]
                               }
                             ],
-                            "restartPolicy": "OnFailure",
+                            "restartPolicy": "Never",
                             "schedulerName": "kai-scheduler",
                             "volumes": [
                               {

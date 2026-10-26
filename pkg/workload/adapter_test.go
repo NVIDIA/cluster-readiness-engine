@@ -112,6 +112,40 @@ func TestTrainJobInjectPodLabel(t *testing.T) {
 	})
 }
 
+// TestInjectLauncherPodLabel pins that the launcher label lands on the
+// launcher's pod template only when the spec registers a launcher. Trainer's
+// webhook rejects a patch for a replicated job the runtime lacks, so a spec
+// without one must come out unchanged, and the worker entry must not gain the
+// launcher label.
+func TestInjectLauncherPodLabel(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "inject-launcher-label",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			LabelKey   string                     `yaml:"labelKey"`
+			LabelValue string                     `yaml:"labelValue"`
+			Spec       nvcrev1alpha1.WorkloadSpec `yaml:"spec"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		InjectLauncherPodLabel(&input.Spec, input.LabelKey, input.LabelValue)
+		if input.Spec.TrainJob == nil {
+			tc.Actual = "null"
+			return nil
+		}
+
+		b, err := trainJobRuntimePatchesToJSON(input.Spec.TrainJob.RuntimePatches)
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b)
+		return nil
+	})
+}
+
 func TestTrainJobSetNodeSelector(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-set-node-selector",

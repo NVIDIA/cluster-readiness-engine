@@ -257,6 +257,9 @@ func TestJobVerdictEventsNilRecorder(t *testing.T) {
 // This complements the running-manager recorder assertion in integration.
 // Neither test relies on a complete Event golden: checkpoint restart can also
 // emit timing-dependent WorkloadCreationError diagnostics during cache catch-up.
+//
+// The restart also drops a status.failureLog recorded from the workload it
+// replaces (clearFailureLog), which is asserted on the persisted Job.
 func TestJobRestartDoesNotReAnnounceInProgress(t *testing.T) {
 	ctx := context.Background()
 	r, job, recorder := newJobVerdictFixture(t)
@@ -267,6 +270,13 @@ func TestJobRestartDoesNotReAnnounceInProgress(t *testing.T) {
 	require.Equal(t,
 		"Normal WorkloadCreated Workload TrainJob/job-workload created",
 		<-recorder.Events)
+
+	// A launcher failure recorded before the restart describes the workload
+	// being replaced, so restartFromCheckpoint must drop it. It is
+	// persisted, since the status write refetches the Job on conflict, and set
+	// before the in-memory spec changes below, which the update would reset.
+	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{PodName: "restart-workload-launcher-0-0-a", ExitCode: 1}
+	require.NoError(t, r.Status().Update(ctx, job))
 
 	// Drive the actual restart method, including workload deletion and the
 	// persisted restart count, rather than synthesizing its condition write.
@@ -283,6 +293,10 @@ func TestJobRestartDoesNotReAnnounceInProgress(t *testing.T) {
 	_, err = r.restartFromCheckpoint(ctx, job, ref, adapter)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, job.Status.RestartCount)
+	require.Nil(t, job.Status.FailureLog, "restartFromCheckpoint clears the launcher failure log")
+	persisted := &nvcrev1alpha1.Job{}
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(job), persisted))
+	require.Nil(t, persisted.Status.FailureLog, "the cleared failure log is persisted")
 	require.True(t, apierrors.IsNotFound(r.Get(ctx, client.ObjectKeyFromObject(trainJob), &trainerv1alpha1.TrainJob{})))
 	require.NoError(t, r.setExclusiveCondition(ctx, job,
 		nvcrev1alpha1.JobInProgress, "WorkloadRunning", "Workload is running"))

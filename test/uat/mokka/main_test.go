@@ -52,13 +52,12 @@ const (
 	// MPI bootstrap on a loaded CI runner.
 	certTimeout    = 5 * time.Minute
 	cleanupTimeout = 3 * time.Minute
-	// A launcher that exits non-zero is restarted in place: the
-	// nccl-all-reduce catalog entry sets restartPolicy OnFailure and leaves
-	// backoffLimit at the Kubernetes default of 6, so the kubelet's
-	// crash-loop backoff runs before the Job fails and NVCRE sees it. That
-	// measured about seven minutes locally; the budget leaves room for a
-	// loaded CI runner. Bring this down with the fix for #498.
-	workloadFailureTimeout = 15 * time.Minute
+	// A launcher that exits non-zero fails fast (issue #498): restartPolicy
+	// Never with one replacement pod, so the Job fails after two short
+	// attempts instead of the kubelet's crash-loop backoff, which measured
+	// about seven minutes under OnFailure. The run is then no slower than a
+	// passing one, so it shares that budget.
+	workloadFailureTimeout = certTimeout
 	// A namespace goes only after NVCRE has cleaned up, and a test that
 	// failed mid-run can leave workers behind the controller's 5-minute
 	// pod-drain grace period (podDrainGracePeriod in pkg/controller).

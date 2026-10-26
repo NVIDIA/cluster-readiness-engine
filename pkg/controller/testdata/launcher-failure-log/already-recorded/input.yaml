@@ -1,0 +1,11 @@
+# A record already on the Job is kept: the first launcher failure observed is
+# the one reported, and its log is not read again on every reconcile.
+workloadRef: j-workload
+recorded: true
+pods:
+  - name: j-workload-launcher-0-0
+    launcher: true
+    exitCode: 1
+    reason: Error
+    finishedAt: 10
+    log: "[stub] simulated failure\n"
