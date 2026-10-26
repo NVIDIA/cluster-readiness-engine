@@ -65,7 +65,7 @@ A [custom catalog entry](../how-to-guides/custom-catalog-entries.md) remains an 
 
 ### Why do I need to run `make manifests generate` after editing types?
 
-NVCRE uses kubebuilder markers in `*_types.go` files to auto-generate CRD manifests (`helm/cluster-readiness-engine/crds/`) and DeepCopy methods (`zz_generated.deepcopy.go`). If you modify a types file and skip this step, the generated files become stale — the controller binary won't compile because the DeepCopy methods reference the old struct shape, and the CRD YAML won't match the new fields.
+NVCRE uses kubebuilder markers in `*_types.go` files to auto-generate CRD manifests (`helm/cluster-readiness-engine/charts/crds/crds/`, copied to `helm/cluster-readiness-engine-crds/files/`) and DeepCopy methods (`zz_generated.deepcopy.go`). If you modify a types file and skip this step, the generated files become stale — the controller binary won't compile because the DeepCopy methods reference the old struct shape, and the CRD YAML won't match the new fields.
 
 Always run `make manifests generate` immediately after any change to `api/v1alpha1/*_types.go`.
 

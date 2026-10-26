@@ -1,0 +1,11 @@
+{
+  "action": "release-owned",
+  "owner": "nvcre/nvcre-crds",
+  "skipCRDs": true,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "output": [
+    "[helm] The NVCRE CRDs are managed by Helm release nvcre/nvcre-crds; not applying them."
+  ]
+}

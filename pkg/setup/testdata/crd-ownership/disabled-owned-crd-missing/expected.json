@@ -1,0 +1,11 @@
+{
+  "action": "leave",
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "output": [
+    "[helm] Warning: Helm release nvcre/nvcre-crds does not own every CRD the chart carries (workloadruns.nvcre.nvidia.com: missing). Upgrade the cluster-readiness-engine-crds chart before the main chart.",
+    "[helm] The release's values turn the chart's CRDs off (crds.enabled); leaving the NVCRE CRDs to whatever manages them."
+  ]
+}

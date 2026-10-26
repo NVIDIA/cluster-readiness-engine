@@ -188,6 +188,10 @@ jobs:
       # lands the chart at <registry>/<chart-name>.
       chart_name: ghcr.io/nvidia/cluster-readiness-engine
       chart_digest: ${{ steps.push.outputs.digest }}
+      # The CRDs-only chart, published beside the main chart at the same
+      # version (ADR-107).
+      crds_chart_name: ghcr.io/nvidia/cluster-readiness-engine-crds
+      crds_chart_digest: ${{ steps.push.outputs.crds_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -214,21 +218,28 @@ jobs:
       # `-N-gSHA` suffix, which would become the chart version (issue #195).
       # helm-push depends on check-clean-version, which rejects anything
       # that is not a clean vX.Y.Z[-prerelease] tag.
-      - name: Package and push Helm chart
+      - name: Package and push Helm charts
         id: push
         run: |
           set -euo pipefail
-          make helm-push VERSION="${CHART_TAG}" CHART_DIGEST_FILE=chart-digest.txt
+          make helm-push VERSION="${CHART_TAG}" CHART_DIGEST_FILE=chart-digest.txt \
+            CRDS_CHART_DIGEST_FILE=crds-chart-digest.txt
           digest="$(cat chart-digest.txt)"
           [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
             echo "::error::chart digest is malformed: ${digest}"; exit 1; }
+          crds_digest="$(cat crds-chart-digest.txt)"
+          [[ "${crds_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::CRDs chart digest is malformed: ${crds_digest}"; exit 1; }
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "crds_digest=${crds_digest}" >> "$GITHUB_OUTPUT"
           {
-            echo "### Helm chart published"
+            echo "### Helm charts published"
             echo
             echo '```'
             echo "oci://${CHART_NAME}:${CHART_TAG}"
             echo "${digest}"
+            echo "oci://${CRDS_CHART_NAME}:${CHART_TAG}"
+            echo "${crds_digest}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
         env:
@@ -240,6 +251,7 @@ jobs:
           # value is data and not code -- the rule attest.yml states and the tag
           # step above already follows.
           CHART_NAME: ghcr.io/nvidia/cluster-readiness-engine
+          CRDS_CHART_NAME: ghcr.io/nvidia/cluster-readiness-engine-crds
           CHART_TAG: ${{ needs.release-tag.outputs.value }}
 
   # The chart is the highest-leverage artifact in the release: it carries the
@@ -266,11 +278,27 @@ jobs:
       subject_tag: ${{ needs.release-tag.outputs.value }}
       expected_digest: ${{ needs.helm-publish.outputs.chart_digest }}
 
+  # The CRDs chart carries the same seven CRDs, so it joins the main chart's
+  # signing contract (ADR-107 decision 8).
+  attest-crds-chart:
+    name: Attest CRDs Helm chart
+    needs: [release-tag, helm-publish]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: oci-artifact
+      subject_name: ${{ needs.helm-publish.outputs.crds_chart_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      expected_digest: ${{ needs.helm-publish.outputs.crds_chart_digest }}
+
   # A skipped job does not fail its caller, so without this a broken gate inside
   # attest.yml would publish an unsigned chart under a green release.
   chart-attested:
-    name: Confirm the chart was signed
-    needs: [helm-publish, attest-chart]
+    name: Confirm the charts were signed
+    needs: [helm-publish, attest-chart, attest-crds-chart]
     if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -280,24 +308,30 @@ jobs:
         env:
           PUBLISH: ${{ needs.helm-publish.result }}
           ATTEST: ${{ needs.attest-chart.result }}
+          ATTEST_CRDS: ${{ needs.attest-crds-chart.result }}
         run: |
           set -euo pipefail
-          echo "helm-publish=${PUBLISH} attest-chart=${ATTEST}"
+          echo "helm-publish=${PUBLISH} attest-chart=${ATTEST} attest-crds-chart=${ATTEST_CRDS}"
           if [[ "${PUBLISH}" != "success" ]]; then
             echo "::error::the chart publish job did not succeed (${PUBLISH}); no chart was published."
             exit 1
           fi
-          case "${ATTEST}" in
-            success) echo "chart signed and attested" ;;
-            skipped)
-              echo "::error::the chart attestation was SKIPPED. The chart is published and unsigned; a skipped job does not fail its caller, so this would otherwise have passed silently."
-              exit 1
-              ;;
-            *)
-              echo "::error::the chart attestation did not succeed (${ATTEST}). The chart is published; treat it as unsigned until this is resolved."
-              exit 1
-              ;;
-          esac
+          failed=0
+          for pair in "chart:${ATTEST}" "CRDs chart:${ATTEST_CRDS}"; do
+            name="${pair%%:*}"; result="${pair#*:}"
+            case "${result}" in
+              success) echo "${name} signed and attested" ;;
+              skipped)
+                echo "::error::the ${name} attestation was SKIPPED. The ${name} is published and unsigned; a skipped job does not fail its caller, so this would otherwise have passed silently."
+                failed=1
+                ;;
+              *)
+                echo "::error::the ${name} attestation did not succeed (${result}). The ${name} is published; treat it as unsigned until this is resolved."
+                failed=1
+                ;;
+            esac
+          done
+          [[ "${failed}" -eq 0 ]] || exit 1
 
   build-cli:
     name: Build CLI Binaries
@@ -607,10 +641,12 @@ jobs:
           AMD64: ${{ needs.build-image.outputs.amd64_digest }}
           ARM64: ${{ needs.build-image.outputs.arm64_digest }}
           CHART: ${{ needs.helm-publish.outputs.chart_digest }}
+          CRDS_CHART: ${{ needs.helm-publish.outputs.crds_chart_digest }}
         run: |
           set -euo pipefail
           for pair in "image index:${INDEX}" "image amd64:${AMD64}" \
-                      "image arm64:${ARM64}" "helm chart:${CHART}"; do
+                      "image arm64:${ARM64}" "helm chart:${CHART}" \
+                      "CRDs helm chart:${CRDS_CHART}"; do
             name="${pair%%:*}"; value="${pair#*:}"
             if [[ ! "${value}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "::error::the ${name} digest is missing or malformed: '${value}'"
@@ -768,6 +804,22 @@ jobs:
             Installing with `--version ${{ needs.release-tag.outputs.value }}` instead resolves the tag at install time, which is not provably the digest you verified.
 
             `helm install --verify` does **not** check this signature. That flag looks for a PGP `.prov` file, a mechanism unrelated to Sigstore, and we publish no `.prov` files.
+
+            ### CRDs chart
+
+            The seven NVCRE CRDs are also published as their own chart, `cluster-readiness-engine-crds`, at digest `${{ needs.helm-publish.outputs.crds_chart_digest }}`. Its CRDs are rendered from `templates/`, so `helm upgrade` keeps them current. Install it beside the main chart with `crds.enabled=false` there, and upgrade it first. Verify it the same way:
+
+            ```bash
+            CRDS_CHART=ghcr.io/nvidia/cluster-readiness-engine-crds
+            CRDS_DIGEST=${{ needs.helm-publish.outputs.crds_chart_digest }}
+
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${CRDS_CHART}@${CRDS_DIGEST}"
+            ```
+
+            In the main chart the CRDs moved from `crds/` to the `crds` subchart, `charts/crds/crds/`. `helm show crds` returns them as before; tooling that reads `crds/` from the unpacked chart must switch to it.
 
             ## Controller image
 
@@ -935,6 +987,8 @@ jobs:
       ARM64: ${{ needs.build-image.outputs.arm64_digest }}
       CHART_NAME: ${{ needs.helm-publish.outputs.chart_name }}
       CHART_DIGEST: ${{ needs.helm-publish.outputs.chart_digest }}
+      CRDS_CHART_NAME: ${{ needs.helm-publish.outputs.crds_chart_name }}
+      CRDS_CHART_DIGEST: ${{ needs.helm-publish.outputs.crds_chart_digest }}
       OIDC_ISSUER: https://token.actions.githubusercontent.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1382,23 +1436,31 @@ jobs:
             return 0
           }
 
-          reject_legacy_registry "Helm chart" "${CHART_NAME}@${CHART_DIGEST}"
+          # Both charts carry the CRDs, so both are held to the same checks
+          # (ADR-107 decision 8). label prefixes the ok/error lines.
+          verify_chart() {
+            local what="$1" label="$2" ref="$3"
+            reject_legacy_registry "${what}" "${ref}"
 
-          if retry cosign verify --certificate-identity "${IDENTITY}" \
-               --certificate-oidc-issuer "${OIDC_ISSUER}" \
-               "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
-            echo "ok   chart signature"
-          else
-            echo "::error::chart signature does not verify after 3 attempts"; failed=1
-          fi
-          if retry cosign verify-attestation --type slsaprovenance1 \
-               --certificate-identity "${IDENTITY}" \
-               --certificate-oidc-issuer "${OIDC_ISSUER}" \
-               "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
-            echo "ok   chart provenance"
-          else
-            echo "::error::chart provenance does not verify after 3 attempts"; failed=1
-          fi
+            if retry cosign verify --certificate-identity "${IDENTITY}" \
+                 --certificate-oidc-issuer "${OIDC_ISSUER}" \
+                 "${ref}" >>verify.log 2>&1; then
+              echo "ok   ${label} signature"
+            else
+              echo "::error::${label} signature does not verify after 3 attempts"; failed=1
+            fi
+            if retry cosign verify-attestation --type slsaprovenance1 \
+                 --certificate-identity "${IDENTITY}" \
+                 --certificate-oidc-issuer "${OIDC_ISSUER}" \
+                 "${ref}" >>verify.log 2>&1; then
+              echo "ok   ${label} provenance"
+            else
+              echo "::error::${label} provenance does not verify after 3 attempts"; failed=1
+            fi
+          }
+
+          verify_chart "Helm chart" "chart" "${CHART_NAME}@${CHART_DIGEST}"
+          verify_chart "CRDs Helm chart" "CRDs chart" "${CRDS_CHART_NAME}@${CRDS_CHART_DIGEST}"
           [[ "${failed}" -eq 0 ]] || exit 1
 
       - name: Upload verification log

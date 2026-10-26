@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Carries the NVCRE CRDs inside the main chart. The parent enables it with
+# crds.enabled; set that to false when the cluster-readiness-engine-crds chart
+# owns the CRDs (ADR-107). make manifests writes crds/.
+apiVersion: v2
+name: crds
+description: NVCRE CustomResourceDefinitions, installed by Helm's crds/ mechanism
+type: application
+version: 0.0.0
