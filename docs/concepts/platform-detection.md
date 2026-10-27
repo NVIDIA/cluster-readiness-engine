@@ -299,9 +299,11 @@ list NetworkAttachmentDefinitions. The manager role grants `get` and `list` on
 `network-attachment-definitions.k8s.cni.cncf.io` for it, and nothing more.
 
 `nvcrectl certification render` without `--dry-run` has no cluster to look at.
-It attaches `network-operator/sriov-net`, the name NVCRE used before detection,
-and says so on stderr. With `--dry-run` it detects the network as the
-controller does, using your kubeconfig, and prefers NetworkAttachmentDefinitions
+For a Workflow that attaches the network, it renders
+`network-operator/sriov-net`, the name NVCRE used before detection, and says so
+on stderr; an explicit `networkAttachments` list is rendered as given. With
+`--dry-run` it detects the network as the controller does, using your
+kubeconfig, and prefers NetworkAttachmentDefinitions
 in the Certification's namespace or, for a manifest that sets none, in
 `--namespace` (`default` unless given). If you may not list
 NetworkAttachmentDefinitions, it prints a warning and renders the default
