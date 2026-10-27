@@ -8,7 +8,7 @@ description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness En
 
 ## Prerequisites
 
-- Kubernetes 1.29+ cluster with GPU nodes. CI installs every NVCRE CRD on each Kubernetes minor from 1.29 up. Releases before the one that added this check need 1.34 or later: on 1.29 through 1.33 the API server refuses their Certification CRD (`estimated rule cost exceeds budget`), and `nvcrectl setup init` stops at `[helm] apply CRD certifications.nvcre.nvidia.com`.
+- Kubernetes 1.29+ cluster with GPU nodes. CI installs every NVCRE CRD on each Kubernetes minor from 1.29 up. Releases before the one that added this check need 1.34 or later: on 1.29 through 1.33 the API server refuses their Certification CRD (`estimated rule cost exceeds budget`), and `nvcrectl setup init` stops at `[helm] apply CRD certifications.nvcre.nvidia.com`. A `helm install` of the main chart or of the `cluster-readiness-engine-crds` chart fails with the same error.
 - `kubectl` configured and pointing at the target cluster
 - NVIDIA GPU Operator installed
 - Helm 3.8 or later (3.10 or later to pass your own `--set-json` to `setup init`)

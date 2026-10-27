@@ -50,7 +50,7 @@ CI never caught any of this. envtest runs one version, derived from `k8s.io/api`
 
 ## Decision
 
-1. **The minimum supported Kubernetes version stays 1.29, and it becomes a tested claim.** Every CRD in `helm/cluster-readiness-engine/crds/` must install on every minor from `MIN_K8S_VERSION` (1.29) up to `ENVTEST_K8S_VERSION`. `make test-crd-compat` checks this, and CI runs it. The minimum in `docs/getting-started/install.md` must equal `MIN_K8S_VERSION`, and a test fails if the two drift apart.
+1. **The minimum supported Kubernetes version stays 1.29, and it becomes a tested claim.** Every NVCRE CRD must install on every minor from `MIN_K8S_VERSION` (1.29) up to `ENVTEST_K8S_VERSION`. `make test-crd-compat` checks this, and CI runs it. The CRDs are generated into the main chart's `crds` subchart (`helm/cluster-readiness-engine/charts/crds/crds/`), and the `cluster-readiness-engine-crds` chart ships byte-identical copies ([ADR-107](107-crds-chart.md)), so one check covers both charts. The minimum in `docs/getting-started/install.md` must equal `MIN_K8S_VERSION`, and a test fails if the two drift apart.
 
 2. **No CEL rule may read an int-or-string value while any supported minor is 1.33 or older.** On those versions such a rule costs about 315k per evaluation even when it does nothing useful. That allows about 31 evaluations per rule, far below the 64 categories one Certification may hold. Validation for these fields uses OpenAPI keywords, which have no CEL cost, or moves to the controller.
 
@@ -76,12 +76,12 @@ CI never caught any of this. envtest runs one version, derived from `k8s.io/api`
   - drop the four CEL rules on `CategoryResourceList` and `CategoryResources`;
   - give `cpu` and `memory` `Schemaless`, `XIntOrString`, `MaxLength` and the non-negative `Pattern`;
   - rewrite the comments that claimed `MaxLength` and `MaxItems` kept the rules within budget;
-  - regenerate with `make manifests generate`. Only the Certification CRD changes.
+  - regenerate with `make manifests generate`. Only the Certification CRD changes, in both the `crds` subchart and the CRDs chart's `files/` (ADR-107).
 - `pkg/controller/resources_validation.go`: `ValidateCertificationResources`. Errors name the field path and both quantities, for example `spec.categories[1].options.resources: requests.cpu (256) must not exceed limits.cpu (128)`. It reports at most ten violations and counts the rest. The message becomes the Failed condition's message, which is capped at 32768 bytes, and 64 categories with six violations each would overrun that cap and leave the status unwritable.
 - `pkg/controller/certification_controller.go`: call it in `initializeCategoryStatuses`. Add `ReasonInvalidResources` to `helpers.go`.
 - `pkg/certification/certification.go`: call it from `readCertification`.
 - `test/crdcompat/`:
-  - `TestCRDsInstall` creates every chart CRD in envtest. When `NVCRE_CRD_COMPAT_K8S_VERSION` is set, it also asserts that the server really is that minor, so a misconfigured asset path cannot quietly test the default version eight times.
+  - `TestCRDsInstall` creates every CRD in the `crds` subchart in envtest. test/helm's `TestCRDsChartMatchesSubchart` keeps the CRDs chart's `files/` identical to it, so the check also covers the CRDs chart. When `NVCRE_CRD_COMPAT_K8S_VERSION` is set, it also asserts that the server really is that minor, so a misconfigured asset path cannot quietly test the default version eight times.
   - `TestDocumentedFloorIsTested` ties the install guide to `MIN_K8S_VERSION`.
 - `Makefile`: `MIN_K8S_VERSION` and `test-crd-compat`, which loops over every minor with `setup-envtest use 1.N`. It fails if either bound is unreadable or the range is empty, so a misconfigured bound cannot pass by testing nothing.
 - `.github/workflows/ci.yml`: a `crd-compat` job that runs `make test-crd-compat`.
@@ -102,7 +102,8 @@ Testing every minor, not only the minimum, follows from the measurements. The co
 
 ## Consequences
 
-- The Certification CRD installs on Kubernetes 1.29 through 1.36. Releases before the one containing this fix still need 1.34+, and the install guide says so.
+- The Certification CRD installs on Kubernetes 1.29 through 1.36. Releases before the one containing this fix still need 1.34+, and the install guide says so. That covers the `cluster-readiness-engine-crds` chart, which those releases also publish.
+- This is the first change to the Certification CRD's schema since the `cluster-readiness-engine-crds` chart was published. On Helm 4, a user of that chart whose CRDs `nvcrectl setup init` or a `kubectl apply --server-side` also applied needs `--force-conflicts` on the upgrade that brings it ([ADR-107](107-crds-chart.md), decision 5).
 - `kubectl apply` of a Certification whose request exceeds its limit now succeeds. The Certification then goes to `Failed` with reason `InvalidResources` and a Warning event of the same reason, before any Workflow is created. Since the spec is immutable, the fix is to delete and recreate it, as for an unknown category. nvcrectl users still get the error before anything is submitted.
 - An unquoted negative integer such as `cpu: -1` passes admission and fails in the controller the same way. A negative quoted string such as `"-1"` is still refused at admission. Only raw YAML applied with kubectl or Helm can send the integer form: a Go client, nvcrectl included, serializes every `resource.Quantity` as a string.
 - The admission message for a negative string is now the API server's pattern message, which shows the regular expression, instead of "cpu must be a non-negative quantity". The field description states the rule in words.
@@ -143,3 +144,4 @@ The estimator charges about 315k per evaluation on 1.29 and about 630k on 1.30â€
 - `k8s.io/apiserver` `pkg/cel/common/schemas.go`, `SchemaDeclType` and `estimateMaxStringLengthPerRequest`, before and after 1.34
 - [Kubernetes: CRD validation rules, resource-use estimation](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#resource-use-by-validation-functions)
 - [ADR-097](097-certification-category-env.md), the nvcrectl mirror of a server-side rule
+- [ADR-107](107-crds-chart.md), the two charts that ship the CRDs this decision covers
