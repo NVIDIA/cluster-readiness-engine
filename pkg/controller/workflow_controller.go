@@ -3663,19 +3663,21 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	pods = append(launchers, pods...)
 
 	// Find the best pod to capture logs from:
-	// 1. Prefer the launcher pod (MPI tests — has the actual test output)
-	// 2. Fall back to the first running node pod
+	// 1. Prefer a running launcher pod (MPI tests — has the actual test output)
+	// 2. Fall back to the first pod that ran; a finished launcher is only a
+	//    fallback, so it neither stops the search nor beats a running pod
 	var targetPod *corev1.Pod
 	for i := range pods {
 		pod := &pods[i]
 		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			continue
 		}
-		if i < len(launchers) || pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer" {
+		isLauncher := i < len(launchers) || pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer"
+		if isLauncher && pod.Status.Phase == corev1.PodRunning {
 			targetPod = pod
-			break // launcher found, use it
+			break // running launcher found, use it
 		}
-		if targetPod == nil {
+		if targetPod == nil || (targetPod.Status.Phase != corev1.PodRunning && pod.Status.Phase == corev1.PodRunning) {
 			targetPod = pod
 		}
 	}

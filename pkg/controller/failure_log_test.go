@@ -96,6 +96,7 @@ type failureLogInput struct {
 		Created    int64  `yaml:"created"`
 		Launcher   bool   `yaml:"launcher"`
 		Running    bool   `yaml:"running"`
+		Failed     bool   `yaml:"failed"`
 		ExitCode   int32  `yaml:"exitCode"`
 		Reason     string `yaml:"reason"`
 		FinishedAt int64  `yaml:"finishedAt"`
@@ -156,6 +157,9 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 					FinishedAt: at(sp.FinishedAt),
 				}},
 			}}
+		}
+		if sp.Failed {
+			pod.Status.Phase = corev1.PodFailed
 		}
 		if sp.DisruptionTarget {
 			pod.Status.Conditions = []corev1.PodCondition{{
