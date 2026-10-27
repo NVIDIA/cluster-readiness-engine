@@ -68,7 +68,7 @@ CI never caught any of this. envtest runs one version, derived from `k8s.io/api`
 
 4. **The request ≤ limit comparison moves to the Certification controller, which also catches negative integers.** `ValidateCertificationResources` checks the spec-level `resources` and each category's own `resources`. It rejects a negative quantity and a request above its matching limit. The controller runs it next to the existing unknown-category check, before it creates any Workflow, and marks the Certification `Failed` with reason `InvalidResources`. `nvcrectl` runs the same function when it reads a certification file, so `certification render` and `run --cert-file` refuse the file before it reaches a cluster. This is the same pattern as `validateCategoryEnv` (ADR-097).
 
-5. **`categories.maxItems` stays at 64.** With no CEL on the quantity fields, the remaining per-category rules (env names and workload labels) still fit at `maxItems: 1024` on 1.29 and on 1.33.
+5. **`categories.maxItems` stays at 64.** With no CEL on the quantity fields, the remaining per-category rules still fit at `maxItems: 1024` on 1.29 and on 1.33. Those are the env, `nicResourceName`, `networkAttachments` and workload label rules. The `networkAttachments` rules are the first to exceed the budget, at 2048, because they sit under a second list.
 
 ## Implementation
 
@@ -102,8 +102,8 @@ Testing every minor, not only the minimum, follows from the measurements. The co
 
 ## Consequences
 
-- The Certification CRD installs on Kubernetes 1.29 through 1.36. Releases before the one containing this fix still need 1.34+, and the install guide says so. That covers the `cluster-readiness-engine-crds` chart, which those releases also publish.
-- This is the first change to the Certification CRD's schema since the `cluster-readiness-engine-crds` chart was published. On Helm 4, a user of that chart whose CRDs `nvcrectl setup init` or a `kubectl apply --server-side` also applied needs `--force-conflicts` on the upgrade that brings it ([ADR-107](107-crds-chart.md), decision 5).
+- The Certification CRD installs on Kubernetes 1.29 through 1.36. Releases before the one containing this fix still need 1.34+, and the install guide says so. That includes the `cluster-readiness-engine-crds` chart, which v0.9.0 first published.
+- This is the first change to the Certification CRD's schema since the `cluster-readiness-engine-crds` chart was published. On Helm 4, a user of that chart whose CRDs `nvcrectl setup init` or a `kubectl apply --server-side` also applied needs `--force-conflicts` on the upgrade that brings it ([ADR-107](107-crds-chart.md), decision 6).
 - `kubectl apply` of a Certification whose request exceeds its limit now succeeds. The Certification then goes to `Failed` with reason `InvalidResources` and a Warning event of the same reason, before any Workflow is created. Since the spec is immutable, the fix is to delete and recreate it, as for an unknown category. nvcrectl users still get the error before anything is submitted.
 - An unquoted negative integer such as `cpu: -1` passes admission and fails in the controller the same way. A negative quoted string such as `"-1"` is still refused at admission. Only raw YAML applied with kubectl or Helm can send the integer form: a Go client, nvcrectl included, serializes every `resource.Quantity` as a string.
 - The admission message for a negative string is now the API server's pattern message, which shows the regular expression, instead of "cpu must be a non-negative quantity". The field description states the rule in words.

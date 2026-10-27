@@ -618,10 +618,11 @@ type CertificationSpec struct {
 	Target TargetSpec `json:"target"`
 
 	// Categories are the list of certificate categories required for the Target.
-	// The MaxItems bound keeps the CEL rules nested under each category (the
-	// env and workload label rules) within the API server's validation cost
-	// budget, which charges each such rule once per possible item. Every chart
-	// CRD must install on every supported Kubernetes minor (ADR-105).
+	// The MaxItems bound keeps the CEL rules nested under each category within
+	// the API server's validation cost budget, which charges each such rule
+	// once per possible item. The networkAttachments rules bind first, because
+	// they sit under a second list. Every chart CRD must install on every
+	// supported Kubernetes minor (ADR-105).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
