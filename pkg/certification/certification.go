@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -869,6 +870,7 @@ type certRunConfig struct {
 	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
 	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	resultsFile              string // --results-file: path to write JSON report
+	junitFile                string // --junit-file: path to write JUnit XML report
 	timeout                  time.Duration
 	timeoutDerived           bool // timeout was derived from category timeouts, not passed via --timeout
 	configFlags              *kubeconfig.ConfigFlags
@@ -891,6 +893,7 @@ type categoryRunOpts struct {
 	maxRestarts                int32
 }
 
+// newRunCommand builds the certification runner and validates report flags before cluster access.
 func newRunCommand(version string) *cobra.Command {
 	var categories []string
 	var name string
@@ -902,7 +905,7 @@ func newRunCommand(version string) *cobra.Command {
 	var controllerImage string
 	var controllerPullSecret string
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
-	var resultsFile string
+	var resultsFile, junitFile string
 	var timeout time.Duration
 	var networkAttachments, multusNetworks, extendedResources []string
 
@@ -923,6 +926,19 @@ Use --wait to watch for completion and print a report.
 Use --cleanup to teardown installed components after completion.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Without --wait the command returns before any report exists, so
+			// either file flag would exit 0 having written nothing.
+			if !doWait {
+				if junitFile != "" {
+					return fmt.Errorf("--junit-file requires --wait")
+				}
+				if resultsFile != "" {
+					return fmt.Errorf("--results-file requires --wait")
+				}
+			}
+			if err := validateReportPaths(resultsFile, junitFile); err != nil {
+				return err
+			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
@@ -993,6 +1009,7 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			cfg.version = version
 			cfg.resultsFile = resultsFile
+			cfg.junitFile = junitFile
 			cfg.grantRunAccess = grantRunAccess
 			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
 				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
@@ -1057,6 +1074,8 @@ Use --cleanup to teardown installed components after completion.`,
 		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m; on timeout, print a partial report and leave the certification running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
+	cmd.Flags().StringVar(&junitFile, "junit-file", "",
+		"Write certification report as JUnit XML to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -1478,8 +1497,12 @@ func finishCertificationWait(
 		}
 	}
 
+	var reportErr error
 	if finalCert != nil {
-		handleReport(reportCtx, wc, finalCert, cfg.resultsFile, waitErr, cfg.out)
+		reportErr = handleReport(reportCtx, wc, finalCert, cfg.resultsFile, cfg.junitFile, waitErr, cfg.out)
+		if reportErr != nil && !timedOut {
+			return errors.Join(waitErr, reportErr)
+		}
 		if timedOut && errors.Is(reportCtx.Err(), context.DeadlineExceeded) {
 			_, _ = fmt.Fprintln(cfg.out,
 				"Warning: timed out fetching all data for the partial report; some details may be missing.")
@@ -1518,6 +1541,9 @@ Check its status:
 	// Preserve the timeout as the command result even if the post-timeout Get
 	// observes a terminal Certification. The report shows the freshest state,
 	// while the nonzero exit consistently indicates that the wait deadline elapsed.
+	if reportErr != nil {
+		return errors.Join(waitErr, reportErr)
+	}
 	return waitErr
 }
 
@@ -1530,12 +1556,18 @@ func certificationIsTerminal(cert *nvcrev1alpha1.Certification) bool {
 }
 
 // handleReport builds and prints the certification report, optionally writing
-// it to a JSON file. Caller must pass a non-nil cert.
+// JSON and JUnit files. Failing to write either file fails the command, as it
+// does for certification report, so a zero exit means every requested file is
+// there. A failed JSON write does not stop the JUnit write. Caller must pass a
+// non-nil cert.
 func handleReport(
 	ctx context.Context, wc client.WithWatch,
-	cert *nvcrev1alpha1.Certification, resultsFile string,
+	cert *nvcrev1alpha1.Certification, resultsFile, junitFile string,
 	waitErr error, out io.Writer,
-) {
+) error {
+	if err := validateReportPaths(resultsFile, junitFile); err != nil {
+		return err
+	}
 	r := report.Build(ctx, wc, cert)
 	var dest io.Writer = os.Stdout
 	if waitErr != nil {
@@ -1543,14 +1575,54 @@ func handleReport(
 	}
 	report.Print(dest, r)
 
+	var jsonErr error
 	if resultsFile != "" {
-		if err := report.WriteJSON(resultsFile, []*report.CertReport{r}); err != nil {
-			_, _ = fmt.Fprintf(out, "Warning: failed to write results file %s: %v\n", resultsFile, err)
+		if jsonErr = report.WriteJSON(resultsFile, []*report.CertReport{r}); jsonErr != nil {
+			jsonErr = fmt.Errorf("write results file: %w", jsonErr)
 		} else {
 			_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
 		}
 	}
+	if junitFile != "" {
+		if err := validateReportPaths(resultsFile, junitFile); err != nil {
+			return errors.Join(jsonErr, err)
+		}
+		if err := report.WriteJUnit(junitFile, []*report.CertReport{r}); err != nil {
+			return errors.Join(jsonErr, fmt.Errorf("write JUnit file: %w", err))
+		}
+		_, _ = fmt.Fprintf(out, "JUnit results written to %s\n", junitFile)
+	}
+	return jsonErr
 }
+
+// validateReportPaths prevents JSON and JUnit output from overwriting the same path.
+func validateReportPaths(resultsFile, junitFile string) error {
+	if resultsFile == "" || junitFile == "" {
+		return nil
+	}
+	resultsPath, err := filepath.Abs(resultsFile)
+	if err != nil {
+		return fmt.Errorf("resolve results file path: %w", err)
+	}
+	junitPath, err := filepath.Abs(junitFile)
+	if err != nil {
+		return fmt.Errorf("resolve JUnit file path: %w", err)
+	}
+	if resultsPath == junitPath {
+		return errSameReportPaths
+	}
+	// Two spellings can still name one file, on a case-insensitive filesystem
+	// or through a symlinked directory. That shows only once a file exists, so
+	// callers check again after writing the JSON and before writing the XML.
+	resultsInfo, resultsErr := os.Stat(resultsPath)
+	junitInfo, junitErr := os.Stat(junitPath)
+	if resultsErr == nil && junitErr == nil && os.SameFile(resultsInfo, junitInfo) {
+		return errSameReportPaths
+	}
+	return nil
+}
+
+var errSameReportPaths = errors.New("--results-file and --junit-file must use different paths")
 
 // discoverGPUProduct is replaced by discoverGPUNodes in run_common.go.
 
@@ -1884,8 +1956,9 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 // certification report — regenerate report from a completed certification
 // ---------------------------------------------------------------------------
 
+// newReportCommand builds the command for printing and saving certification reports.
 func newReportCommand() *cobra.Command {
-	var resultsFile string
+	var resultsFile, junitFile string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
@@ -1900,18 +1973,24 @@ Multiple certification names can be provided to combine them into a single repor
 Each certification is shown in its own section with categories and summary.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReport(args, configFlags, resultsFile)
+			return runReport(args, configFlags, resultsFile, junitFile)
 		},
 	}
 
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path")
+	cmd.Flags().StringVar(&junitFile, "junit-file", "",
+		"Write certification report as JUnit XML to this file path")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
-func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile string) error {
+// runReport fetches certifications and writes their requested report artifacts.
+func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile, junitFile string) error {
+	if err := validateReportPaths(resultsFile, junitFile); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	namespace := *configFlags.Namespace
 
@@ -1948,6 +2027,15 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile 
 			return fmt.Errorf("write results file: %w", err)
 		}
 		_, _ = fmt.Fprintf(os.Stderr, "Results written to %s\n", resultsFile)
+	}
+	if junitFile != "" {
+		if err := validateReportPaths(resultsFile, junitFile); err != nil {
+			return err
+		}
+		if err := report.WriteJUnit(junitFile, reports); err != nil {
+			return fmt.Errorf("write JUnit file: %w", err)
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "JUnit results written to %s\n", junitFile)
 	}
 
 	if len(errs) > 0 {

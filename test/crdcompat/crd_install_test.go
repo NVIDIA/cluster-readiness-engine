@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package crdcompat checks that every CRD the chart ships installs on every
-// Kubernetes minor NVCRE supports (ADR-105).
+// Package crdcompat checks that every NVCRE CRD installs on every Kubernetes
+// minor NVCRE supports (ADR-105).
 //
 // The API server estimates the cost of each CEL validation rule when a CRD is
 // created and refuses the whole CRD when a rule is over budget, and the
@@ -34,7 +34,13 @@ import (
 )
 
 const (
-	crdDir       = "../../helm/cluster-readiness-engine/crds"
+	// crdDir is where make manifests generates the CRDs: the main chart's crds
+	// subchart, which both the main chart and nvcrectl setup init install. The
+	// cluster-readiness-engine-crds chart ships byte-identical copies in its
+	// files/ directory, which test/helm's TestCRDsChartMatchesSubchart enforces,
+	// so installing these covers both charts (ADR-107). Reading files/ as well
+	// would create each CRD twice.
+	crdDir       = "../../helm/cluster-readiness-engine/charts/crds/crds"
 	makefile     = "../../Makefile"
 	installGuide = "../../docs/getting-started/install.md"
 
@@ -89,8 +95,8 @@ func TestDocumentedFloorIsTested(t *testing.T) {
 	}
 }
 
-// readChartCRDs decodes every CustomResourceDefinition document in the chart's
-// crds directory, failing if it finds none.
+// readChartCRDs decodes every CustomResourceDefinition document in crdDir,
+// failing if it finds none.
 func readChartCRDs(t *testing.T) []*unstructured.Unstructured {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(crdDir, "*.yaml"))

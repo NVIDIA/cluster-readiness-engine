@@ -1,0 +1,4 @@
+# crds.enabled=false on this run: the operator manages the CRDs outside
+# nvcrectl, so setup init neither fetches nor applies them (ADR-107 decision 7).
+set:
+  - crds.enabled=false

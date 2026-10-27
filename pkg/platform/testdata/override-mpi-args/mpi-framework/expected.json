@@ -100,6 +100,24 @@
   {
     "when": {
       "gpuArchitecture": {
+        "equals": "b300"
+      },
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "FI_PROVIDER=efa",
+      "-x",
+      "FI_EFA_USE_DEVICE_RDMA=1",
+      "-x",
+      "FI_EFA_FORK_SAFE=1"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
         "equals": "rtxpro6000"
       },
       "platform": {
@@ -174,6 +192,49 @@
       "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
       "-x",
       "PMIX_MCA_gds=^ds12"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
+        "equals": "rtxpro6000"
+      },
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "tcp,self",
+      "--mca",
+      "btl_tcp_if_include",
+      "eth0",
+      "--mca",
+      "oob",
+      "tcp",
+      "--mca",
+      "oob_tcp_if_include",
+      "eth0",
+      "--mca",
+      "coll_ucc_enable",
+      "0",
+      "--mca",
+      "coll_hcoll_enable",
+      "0",
+      "-x",
+      "FI_PROVIDER=efa",
+      "-x",
+      "FI_EFA_USE_DEVICE_RDMA=1",
+      "-x",
+      "FI_EFA_FORK_SAFE=1",
+      "-x",
+      "NCCL_NET_PLUGIN=ofi",
+      "-x",
+      "NCCL_NVLS_ENABLE=0"
     ]
   }
 ]

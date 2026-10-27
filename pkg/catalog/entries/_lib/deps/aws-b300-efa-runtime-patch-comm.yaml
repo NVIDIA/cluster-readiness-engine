@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS B300 (p6-b300.48xlarge) EFA resources for the MPI comm runtimes.
+# The instance has 17 network cards; card 0 is a plain ENA and is not
+# EFA-capable. With EFA configured on all 16 secondary cards, request 16
+# devices rather than the 32 used by p5 H100. The pinned CUDA 13 image includes
+# native sm_103 code and a newer EFA/OFI stack for B300.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3
+                    resources:
+                      limits:
+                        vpc.amazonaws.com/efa: "16"
+                      requests:
+                        vpc.amazonaws.com/efa: "16"

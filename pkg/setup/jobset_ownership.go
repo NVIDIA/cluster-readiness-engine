@@ -33,6 +33,9 @@ const (
 // adopt an existing resource, alongside the two release annotations.
 const helmManagedByLabel = "app.kubernetes.io/managed-by"
 
+// helmManagedByValue is the managed-by label value Helm writes.
+const helmManagedByValue = "Helm"
+
 type jobSetMode string
 
 const (
@@ -70,7 +73,7 @@ type jobSetFingerprint struct {
 func jobSetCRDExists(ctx context.Context, c client.Client) (bool, error) {
 	crd := &unstructured.Unstructured{}
 	crd.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: "apiextensions.k8s.io", Version: "v1", Kind: kindCustomResourceDefinition,
+		Group: apiextensionsGroup, Version: "v1", Kind: kindCustomResourceDefinition,
 	})
 	if err := c.Get(ctx, client.ObjectKey{Name: jobSetCRDName}, crd); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -365,7 +368,7 @@ func objectKeyNames(refs []client.ObjectKey) string {
 
 func hasAnyHelmOwnershipMetadata(object client.Object) bool {
 	annotations := object.GetAnnotations()
-	return object.GetLabels()[helmManagedByLabel] == "Helm" ||
+	return object.GetLabels()[helmManagedByLabel] == helmManagedByValue ||
 		annotations["meta.helm.sh/release-name"] != "" || annotations["meta.helm.sh/release-namespace"] != ""
 }
 
@@ -432,7 +435,7 @@ func unknownJobSet(reason string) jobSetObservation {
 }
 
 func completeHelmOwner(obj client.Object) helmOwner {
-	if obj.GetLabels()[helmManagedByLabel] != "Helm" {
+	if obj.GetLabels()[helmManagedByLabel] != helmManagedByValue {
 		return helmOwner{}
 	}
 	annotations := obj.GetAnnotations()

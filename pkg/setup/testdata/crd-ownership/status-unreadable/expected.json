@@ -1,0 +1,7 @@
+{
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "error": "read the state of Helm release nvcre/nvcre-crds, which owns NVCRE CRDs: helm status nvcre-crds: exit status 1: Kubernetes cluster unreachable"
+}

@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated AWS B300 GPU nodes.
+#
+# Key labels for NVCRE detection:
+#   nvidia.com/gpu.product: NVIDIA-B300  -> GPU arch "b300" (workflow_detect.go)
+#   nvidia.com/gpu.present: "true"                  -> nvcrectl GPU discovery
+#   spec.providerID: "aws:///..."                   -> platform "aws" (workflow_detect.go)
+#
+# Synthetic shape based on AWS specifications: 8 GPUs and 16 EFA-capable cards.
+# KWOK annotation kwok.x-k8s.io/node: fake marks these as KWOK-managed.
+# No taint so the scheduler places pods freely on these nodes.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-b300-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: aws-b300-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-B300
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: blackwell
+    node.kubernetes.io/instance-type: p6-b300.48xlarge
+spec:
+  providerID: "aws:///us-west-2a/i-0000000000000001"
+status:
+  capacity:
+    cpu: "192"
+    memory: 4Ti
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "16"
+    pods: "100"
+  allocatable:
+    cpu: "192"
+    memory: 4Ti
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "16"
+    pods: "100"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-b300-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: aws-b300-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-B300
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: blackwell
+    node.kubernetes.io/instance-type: p6-b300.48xlarge
+spec:
+  providerID: "aws:///us-west-2a/i-0000000000000002"
+status:
+  capacity:
+    cpu: "192"
+    memory: 4Ti
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "16"
+    pods: "100"
+  allocatable:
+    cpu: "192"
+    memory: 4Ti
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "16"
+    pods: "100"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

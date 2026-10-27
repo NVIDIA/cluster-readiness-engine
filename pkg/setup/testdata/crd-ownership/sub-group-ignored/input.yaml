@@ -1,0 +1,15 @@
+# A CRD in a sub-group of nvcre.nvidia.com is not an NVCRE CRD, even though
+# its name ends in .nvcre.nvidia.com: its failed owner is never read, and the
+# NVCRE CRDs, owned by a deployed release, are left to it.
+crds:
+  - {name: widgets.extra.nvcre.nvidia.com, group: extra.nvcre.nvidia.com, owner: other/widgets}
+  - {name: bandwidthmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: certifications.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: goodputmeasurements.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: jobs.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: logprofiles.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workflows.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+  - {name: workloadruns.nvcre.nvidia.com, owner: nvcre/nvcre-crds}
+releases:
+  nvcre/nvcre-crds: deployed
+  other/widgets: failed

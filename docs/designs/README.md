@@ -119,3 +119,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 104 | [Multus Network Attachments Paired With Extended Resources](104-network-attachments.md) |
 | 105 | [Every CRD Installs on Every Supported Kubernetes Minor, and No CEL Reads a Quantity](105-kubernetes-floor-and-crd-cel-cost-budget.md) |
 | 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
+| 108 | [JUnit Certification Reports](108-junit-certification-reports.md) |
+| 109 | [AWS RTX PRO 6000 Workload Overlays](109-aws-rtxpro6000-overlays.md) |

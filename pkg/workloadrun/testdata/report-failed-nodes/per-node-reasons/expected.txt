@@ -41,6 +41,7 @@
       "variant": "run-failed",
       "status": "Failed",
       "runtime": "10m 0s",
+      "runtimeSeconds": 600,
       "testScale": "full-scale",
       "nodesPerJob": 2,
       "jobs": 1

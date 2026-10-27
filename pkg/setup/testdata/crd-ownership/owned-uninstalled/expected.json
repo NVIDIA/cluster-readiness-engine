@@ -1,0 +1,10 @@
+{
+  "action": "apply",
+  "skipCRDs": false,
+  "statusCalls": [
+    "nvcre/nvcre-crds"
+  ],
+  "output": [
+    "[helm] The NVCRE CRDs name Helm release nvcre/nvcre-crds, which is uninstalled; treating them as unmanaged."
+  ]
+}

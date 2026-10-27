@@ -103,8 +103,8 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which owns every releas
 |---|---|
 | Build release image | `ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`, multi-platform |
 | Attest image (index, amd64 SBOM, arm64 SBOM) | signature, SLSA provenance, per-platform CycloneDX SBOMs |
-| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
-| Attest Helm chart | signature and provenance on the chart digest |
+| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` and the CRDs-only `oci://ghcr.io/nvidia/cluster-readiness-engine-crds` (ADR-107), at the same version |
+| Attest Helm chart, Attest CRDs Helm chart | signature and provenance on each chart's digest |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Attest binaries | a Sigstore bundle per binary, per SBOM, for the installer and for `THIRD_PARTY_NOTICES.md`, plus one binding each SBOM to its binary |
 | Create GitHub Release | the GitHub Release as a **draft**, its notes, and the assets below |
@@ -116,8 +116,8 @@ runs on tags — it now builds only `main-<sha>` development images, and is pinn
 workflows fired on a tag push and raced, and the release notes named an image the release
 had never resolved.
 
-Each artifact is published only after the one it depends on is signed: the chart is not
-pushed until the image it references exists and is attested, and the GitHub Release is not
+Each artifact is published only after the one it depends on is signed: the charts are not
+pushed until the image the main chart references exists and is attested, and the GitHub Release is not
 created until all three families are attested.
 
 **Re-running part of a release.** There is no longer a workflow that rebuilds only the
@@ -152,7 +152,7 @@ release` job holds it there until it has checked, against the exact signing iden
 - the image index signature and provenance, and both per-platform SBOMs
 - that `manager:<tag>` still resolves to the index digest that was verified
 - the provenance predicate itself — repository, ref and commit — not just the signature
-- the chart's signature and provenance
+- both charts' signatures and provenance
 
 Only then is the release published, after which the assets are re-fetched anonymously
 and re-verified over the channel a user actually takes. If anything fails after
@@ -161,7 +161,7 @@ publication, the release is returned to draft.
 To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.8.0
+VERSION=v0.9.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
