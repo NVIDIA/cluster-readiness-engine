@@ -1,5 +1,6 @@
-# The only launcher already failed and a worker is still running. A finished
-# launcher is a fallback, not a priority, so the running worker is named.
+# The only launcher already failed and a worker is still running. The
+# launcher's log has the diagnosis and the worker's has only sshd output, so the
+# finished launcher is named.
 workloadRef: j-workload
 pods:
   - name: j-workload-launcher-0-0

@@ -279,8 +279,9 @@ func TestLauncherFailureLog(t *testing.T) {
 // captureTimeoutLog records the log of a Job that exceeded timeoutPerJob
 // before its workload is deleted. For an MPI run that is the launcher's, which
 // has the NCCL output, and the launcher carries no nvcre.nvidia.com/job label,
-// so it is found by its JobSet labels like a failed one (issue #546). Without a
-// launcher, the first running worker is recorded.
+// so it is found by its JobSet labels like a failed one (issue #546). A running
+// launcher comes first, then one that already finished. Without a launcher that
+// ran, the first running worker is recorded.
 func TestTimeoutLogCapture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "timeout-log-capture",

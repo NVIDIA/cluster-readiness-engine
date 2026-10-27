@@ -3639,7 +3639,8 @@ func (r *WorkflowReconciler) getJobRequeueInterval() time.Duration {
 
 // captureTimeoutLog captures tail logs from running pods before a timed-out workload
 // is deleted. For MPI tests, targets the launcher pod (which has the actual NCCL
-// output). Falls back to the first running node pod for non-MPI workloads.
+// output), preferring a running one to one that already finished. Falls back to
+// a node pod, a running one first, when no launcher ran.
 // Best-effort: errors are logged, not returned.
 func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1alpha1.Job) {
 	log := logf.FromContext(ctx)
@@ -3662,23 +3663,34 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	}
 	pods = append(launchers, pods...)
 
-	// Find the best pod to capture logs from:
-	// 1. Prefer a running launcher pod (MPI tests — has the actual test output)
-	// 2. Fall back to the first pod that ran; a finished launcher is only a
-	//    fallback, so it neither stops the search nor beats a running pod
+	// Find the best pod to capture logs from, the first one in this order:
+	// 1. a running launcher (MPI tests, it has the actual test output)
+	// 2. a launcher that ran: one that failed or succeeded just before the
+	//    timeout still holds the diagnosis, which a worker's sshd output does
+	//    not (issue #546)
+	// 3. a running node pod
+	// 4. a node pod that ran
 	var targetPod *corev1.Pod
+	targetRank := 0
 	for i := range pods {
 		pod := &pods[i]
-		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
+		running := pod.Status.Phase == corev1.PodRunning
+		if !running && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			continue
 		}
 		isLauncher := i < len(launchers) || pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer"
-		if isLauncher && pod.Status.Phase == corev1.PodRunning {
-			targetPod = pod
-			break // running launcher found, use it
+		rank := 1
+		if !isLauncher {
+			rank += 2
 		}
-		if targetPod == nil || (targetPod.Status.Phase != corev1.PodRunning && pod.Status.Phase == corev1.PodRunning) {
-			targetPod = pod
+		if !running {
+			rank++
+		}
+		if targetPod == nil || rank < targetRank {
+			targetPod, targetRank = pod, rank
+		}
+		if targetRank == 1 {
+			break // running launcher found, use it
 		}
 	}
 	if targetPod == nil {

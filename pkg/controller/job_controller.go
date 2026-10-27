@@ -1649,10 +1649,9 @@ const (
 // lookup of their own: the nvcre.nvidia.com/job label is injected only into
 // the worker replicatedJob (see workerTargetJob in pkg/workload), so the
 // launcher, whose log is the diagnosis when an MPI run fails or times out, is
-// not among the
-// pods that label selects, and the manager's cache does not hold it. They are
-// read live through podread.WorkloadPods (ADR-102). The launcher pod cache
-// backs only the watch.
+// not among the pods that label selects, and the manager's cache does not hold
+// it. They are read live through podread.WorkloadPods (ADR-102). The launcher
+// pod cache backs only the watch.
 //
 // Only pods of the current workload are returned. restartFromCheckpoint
 // deletes the workload and creates its replacement under the same name, and

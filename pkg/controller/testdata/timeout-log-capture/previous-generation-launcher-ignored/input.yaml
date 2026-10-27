@@ -1,9 +1,10 @@
 # A launcher left over from before a checkpoint restart replaced the workload
-# is not this run's, so the current launcher is named.
+# is not this run's, so the current launcher is named. The old one sorts first,
+# so the case depends on the generation filter.
 workloadRef: j-workload
 workloadCreated: 100
 pods:
-  - name: j-workload-launcher-0-0-old
+  - name: j-workload-launcher-0-0-a
     launcher: true
     created: 10
     running: true
@@ -12,7 +13,7 @@ pods:
     created: 110
     running: true
     log: "sshd: listening on port 2222\n"
-  - name: j-workload-launcher-0-0
+  - name: j-workload-launcher-0-0-b
     launcher: true
     created: 110
     running: true
