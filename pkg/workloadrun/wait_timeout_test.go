@@ -300,3 +300,45 @@ func TestFinishWorkloadRunWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 	_, err := os.Stat(resultsFile)
 	assert.True(t, os.IsNotExist(err))
 }
+
+
+func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
+	run := &nvcrev1alpha1.WorkloadRun{
+		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
+		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
+			Type: nvcrev1alpha1.WorkloadRunSucceeded,
+			Status: metav1.ConditionTrue,
+			}},
+												WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
+												},
+		}
+	wf := &nvcrev1alpha1.Workflow{
+		Name: testWorkloadRunTimeoutRun + "-wf", Namespace: testWorkloadRunNamespace,
+		Status: nvcrev1alpha1.WorkflowStatus{Conditions: []metav1.Condition{{
+			Type: nvcrev1alpha1.WorkflowInProgress,
+			Status: metav1.ConditionTrue,
+			Reason: "Running",
+			}}},
+		}
+	wc := newWorkloadRunFakeClient(t, run, wf)
+	var out bytes.Buffer
+	resultsFile := filepath.Join(t.TempDir(), "missing-dir", "results.json")
+	gotErr := finishWorkloadRunWait(
+		context.Background(), wc,
+		&wrRunConfig{run: run, resultsFile: resultsFile, out: &out},
+		run, nil,
+		)
+	require.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "write results file")
+	assert.NotContains(t, out.String(), "Warning: failed to write results")
+}
+
+func TestWorkloadRunRunRejectsResultsFileWithoutWait(t *testing.T) {
+	cmd := newWorkloadRunRunCommand()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--results-file", "results.json", "workloadrun.yaml"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--results-file requires --wait")
+}
