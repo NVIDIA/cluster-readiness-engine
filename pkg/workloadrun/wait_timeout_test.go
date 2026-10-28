@@ -26,9 +26,9 @@ import (
 
 // Name/namespace literals reused across this file's fixtures.
 const (
-	testWorkloadRunTimeoutRun = "timeout-run"
-	testWorkloadRunNamespace  =    "test-ns"
- testWorkloadRunRunningReason = "Running"
+	testWorkloadRunTimeoutRun    = "timeout-run"
+	testWorkloadRunNamespace     = "test-ns"
+	testWorkloadRunRunningReason = "Running"
 )
 
 // newWorkloadRunFakeClient is defined in run_cleanup_test.go and shared by
@@ -305,21 +305,21 @@ func TestFinishWorkloadRunWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
 		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
-		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
+		Status: nvcrev1alpha1.WorkloadRunStat  us{Conditions: []metav1.Condition{{
 			Type: nvcrev1alpha1.WorkloadRunSucceeded,
 			Status: metav1.ConditionTrue,
-			}},
-		WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
+		}},
+			WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
 		},
-		}
+	}
 	wf := &nvcrev1alpha1.Workflow{
 		Name: testWorkloadRunTimeoutRun + "-wf", Namespace: testWorkloadRunNamespace,
 		Status: nvcrev1alpha1.WorkflowStatus{Conditions: []metav1.Condition{{
-			Type: nvcrev1alpha1.WorkflowInProgress,
+			Type:   nvcrev1alpha1.WorkflowInProgress,
 			Status: metav1.ConditionTrue,
 			Reason: testWorkloadRunRunningReason,
-			}}},
-		}
+		}}},
+	}
 	wc := newWorkloadRunFakeClient(t, run, wf)
 	var out bytes.Buffer
 	resultsFile := filepath.Join(t.TempDir(), "missing-dir", "results.json")
@@ -327,7 +327,7 @@ func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 		context.Background(), wc,
 		&wrRunConfig{run: run, resultsFile: resultsFile, out: &out},
 		run, nil,
-		)
+	)
 	require.Error(t, gotErr)
 	assert.Contains(t, gotErr.Error(), "write results file")
 	assert.NotContains(t, out.String(), "Warning: failed to write results")
