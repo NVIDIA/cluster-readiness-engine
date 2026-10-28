@@ -27,7 +27,8 @@ import (
 // Name/namespace literals reused across this file's fixtures.
 const (
 	testWorkloadRunTimeoutRun = "timeout-run"
-	testWorkloadRunNamespace  = "test-ns"
+	testWorkloadRunNamespace  =    "test-ns"
+ testWorkloadRunRunningReason = "Running"
 )
 
 // newWorkloadRunFakeClient is defined in run_cleanup_test.go and shared by
@@ -88,7 +89,7 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 	assert.Nil(t, run)
 	require.Error(t, err)
 	assert.True(t, isWorkloadRunWaitTimeout(err))
-	assert.Equal(t, "WorkloadRun timeout-run did not complete within 0s (ran for 0s)", err.Error())
+	assert.Equal(t, "WorkloadRu   n timeout-run did not complete within 0s (ran for 0s)", err.Error())
 }
 
 // A timeout shorter than the 5s ticker must still observe a WorkloadRun that
@@ -301,7 +302,6 @@ func TestFinishWorkloadRunWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-
 func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
 		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
@@ -309,15 +309,15 @@ func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 			Type: nvcrev1alpha1.WorkloadRunSucceeded,
 			Status: metav1.ConditionTrue,
 			}},
-												WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
-												},
+		WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
+		},
 		}
 	wf := &nvcrev1alpha1.Workflow{
 		Name: testWorkloadRunTimeoutRun + "-wf", Namespace: testWorkloadRunNamespace,
 		Status: nvcrev1alpha1.WorkflowStatus{Conditions: []metav1.Condition{{
 			Type: nvcrev1alpha1.WorkflowInProgress,
 			Status: metav1.ConditionTrue,
-			Reason: "Running",
+			Reason: testWorkloadRunRunningReason,
 			}}},
 		}
 	wc := newWorkloadRunFakeClient(t, run, wf)
