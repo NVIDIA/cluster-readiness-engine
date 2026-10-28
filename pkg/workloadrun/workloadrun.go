@@ -775,8 +775,8 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Without --wait the command returns before any report exists, so
 			// --results-file would exit 0 having written nothing.
-				if !doWait && resultsFile != "" {
-			return fmt.Errorf("--results-file requires --wait")
+			if !doWait && resultsFile != "" {
+				return fmt.Errorf("--results-file requires --wait")
 			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
