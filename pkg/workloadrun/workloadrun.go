@@ -773,6 +773,11 @@ the WorkloadRun spec before submission. When --node-list is used and the
 number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Without --wait the command returns before any report exists, so
+			// --results-file would exit 0 having written nothing.
+			if !doWait && resultsFile != "" {
+				return fmt.Errorf("--results-file requires --wait")
+				}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
@@ -1127,12 +1132,13 @@ func finishWorkloadRunWait(
 		}
 	}
 
+	var writeErr error
 	if finalRun != nil {
 		r := buildWorkloadRunReport(reportCtx, wc, finalRun)
 		report.Print(out, r)
 		if cfg.resultsFile != "" {
 			if err := report.WriteJSON(cfg.resultsFile, []*report.CertReport{r}); err != nil {
-				_, _ = fmt.Fprintf(out, "Warning: failed to write results: %v\n", err)
+				writeErr = fmt.Errorf("write results file: %w", err)
 			} else {
 				_, _ = fmt.Fprintf(out, "Results written to %s\n", cfg.resultsFile)
 			}
@@ -1175,6 +1181,9 @@ Check its status:
 	// Preserve the timeout as the command result even if the post-timeout Get
 	// observes a terminal WorkloadRun. The report shows the freshest state,
 	// while the nonzero exit consistently indicates that the wait deadline elapsed.
+	if writeErr != nil {
+		return errors.Join(waitErr, writeErr)
+		}
 	return waitErr
 }
 
