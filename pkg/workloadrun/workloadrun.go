@@ -776,7 +776,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			// Without --wait the command returns before any report exists, so
 			// --results-file would exit 0 having written nothing.
 			if !doWait && resultsFile != "" {
-				return fmt.Errorf("--results-file requires --wait")
+			return fmt.Errorf("--results-file requires --wait")
 				}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
@@ -1182,7 +1182,7 @@ Check its status:
 	// observes a terminal WorkloadRun. The report shows the freshest state,
 	// while the nonzero exit consistently indicates that the wait deadline elapsed.
 	if writeErr != nil {
-		return errors.Join(waitErr, writeErr)
+	return errors.Join(waitErr, writeErr)
 		}
 	return waitErr
 }
