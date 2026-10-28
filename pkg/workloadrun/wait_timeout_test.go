@@ -89,7 +89,7 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 	assert.Nil(t, run)
 	require.Error(t, err)
 	assert.True(t, isWorkloadRunWaitTimeout(err))
-	assert.Equal(t, "WorkloadRu   n timeout-run did not complete within 0s (ran for 0s)", err.Error())
+	assert.Equal(t, "WorkloadRun timeout-run did not complete within 0s (ran for 0s)", err.Error())
 }
 
 // A timeout shorter than the 5s ticker must still observe a WorkloadRun that
