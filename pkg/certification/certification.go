@@ -299,12 +299,15 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // network the controller never needs (ADR-103). Detection lists through
 // reader and, like the controller, prefers NADs in the Certification's
 // namespace; a manifest that sets none is dry-run in namespace (--namespace,
-// "default" unless given).
+// "default" unless given). When --platform names another platform than the
+// nodes', the controller would attach no OCI network there, so detection is
+// skipped with a warning and the default rendered.
 func renderDryRun(
 	ctx context.Context, cert *nvcrev1alpha1.Certification, nodes []corev1.Node, platformFlag, gpuArchOverride string,
 	gkeTCPXONetworks []string, tcpxoPluginVersion string, reader client.Reader, namespace string, stderr io.Writer,
 ) ([]nvcrev1alpha1.Workflow, error) {
-	renderPlatform := controller.DetectPlatform(nodes)
+	detectedPlatform := controller.DetectPlatform(nodes)
+	renderPlatform := detectedPlatform
 	if platformFlag != "" {
 		renderPlatform = platformFlag
 	}
@@ -326,6 +329,14 @@ func renderDryRun(
 			return nil
 		},
 		func() (string, error) {
+			// On nodes of another platform the controller never attaches the
+			// OCI RDMA network, so there is nothing to detect for it.
+			if renderPlatform != detectedPlatform {
+				_, _ = fmt.Fprintf(stderr, "Warning: --platform %s does not match %s, the platform detected on the"+
+					" target nodes, where the controller attaches no OCI RDMA network. Rendering the default %s.\n",
+					renderPlatform, detectedPlatform, catalog.DefaultOCISecondaryNetwork)
+				return catalog.DefaultOCISecondaryNetwork, nil
+			}
 			return detectOCISecondaryNetwork(ctx, reader, cmp.Or(cert.Namespace, namespace), stderr)
 		})
 }

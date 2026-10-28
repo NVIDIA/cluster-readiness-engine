@@ -1,6 +1,6 @@
 {
   "requeue": true,
-  "nadLists": 1,
+  "nadLists": 2,
   "conditions": [
     {
       "message": "Created Workflow for category communication/nccl-all-reduce (1 of 1)",

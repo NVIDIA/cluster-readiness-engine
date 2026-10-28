@@ -192,6 +192,23 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	if len(certification.Spec.Categories) == 0 {
 		return ctrl.Result{}, fmt.Errorf("certification has no categories")
 	}
+	// Detect the OCI RDMA network for every category before the first Workflow
+	// exists (ADR-103). Each category's creation detects again, to catch a NAD
+	// that changes during the run. Other errors are left to that creation.
+	if err := r.preflightOCISecondaryNetwork(ctx, certification); err != nil {
+		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+			if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+		if _, ok := errors.AsType[*retryableCreateError](err); ok {
+			log.Info("OCI RDMA network detection failed for a retryable reason, will retry", "cause", err.Error())
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		}
+		log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
+	}
 	firstCategory := certification.Spec.Categories[0]
 	workflowName, err := r.createWorkflowForCategory(ctx, certification, firstCategory)
 	if err != nil {
@@ -493,119 +510,11 @@ func (r *CertificationReconciler) finalizeCertification(ctx context.Context, cer
 func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) (string, error) {
 	log := logf.FromContext(ctx)
 
-	entry := catalog.Lookup(category.Domain, category.Variant)
-	if entry == nil {
-		return "", fmt.Errorf("unknown certification category: %s/%s", category.Domain, category.Variant)
-	}
-
-	// --- 1. Discover nodes (shared context for nodesPerJob + overlays) ---
-	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
-	// records them on its own status, which is where the report reads coverage
-	// from, so recording them twice would only risk the two disagreeing.
-	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
-	if err != nil {
-		return "", fmt.Errorf("discovering target nodes: %w", err)
-	}
-	if len(nodes) == 0 {
-		return "", fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, errNoNodesMatch)
-	}
-
-	// Best-effort platform + GPU detection for overlay context.
-	detectedPlatform := DetectPlatform(nodes)
-	// Size the job against the nodes that will actually run it. The Workflow
-	// filters a heterogeneous target down to one GPU architecture before it
-	// partitions, so a nodesPerJob derived from the whole target can ask for more
-	// nodes than survive that filter, and partitioning then fails with a shortfall
-	// the operator did not cause. Apply the same filter here so the two agree.
-	gpuArch, archNodes := detectGPUArchConsistent(nodes)
-	if gpuArch == "" || gpuArch == gpuArchUnknown {
-		// Fall back to nodeSelector-based detection
-		gpuArch = catalog.GPUArchFromNodeSelector(certification.Spec.Target.NodeSelector)
-		archNodes = nodes
-	}
-	if gpuArch == "" {
-		return "", fmt.Errorf(
-			"cannot determine GPU architecture from target nodeSelector" +
-				" (nvidia.com/gpu.product label is required)",
-		)
-	}
-
-	// --- 2. Resolve options + nodesPerJob ---
-	opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)
-	if err := CheckResolvedNetworkAttachments(&opts); err != nil {
-		return "", fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
-	}
-
-	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
-	gpusPerNode := nd.GpusPerNode
-	mlnxPerNode := nd.MlnxPerNode
-	if opts.GpusPerNode != nil {
-		gpusPerNode = *opts.GpusPerNode
-	}
-	if opts.MlnxPerNode != nil {
-		mlnxPerNode = *opts.MlnxPerNode
-	}
-	// An architecture missing from gpu-defaults.yaml had no node shape and
-	// fell back to the Go-side default unless the options set the counts; say
-	// so on the Certification, with the resolved counts, instead of running
-	// silently at the wrong rank count (ADR-094). Emitted below, only by the
-	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
-	archFallbackMessage := gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintCertification)
-	// The NIC resource name has no architecture default: it depends on the
-	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
-	// overrides match, detection
-	// fills the gap from node allocatable, but only when exactly one
-	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
-	// resolved mlnxPerNode count — the amount the templates will request per
-	// container — on every node the job is sized against (the same
-	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
-	// candidates means nothing is injected and a Normal event says why;
-	// detection never guesses (ADR-075).
-	// An explicit networkAttachments list owns the NIC wiring (issue #400),
-	// so detection is skipped rather than adding a second NIC request.
-	nicResourceName := ""
-	if len(opts.NetworkAttachments) == 0 {
-		nicDetected := resolveNICResourceName(
-			opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
-		nicResourceName = nicDetected.Name
-		if nicDetected.Ran && nicResourceName == "" {
-			r.normalf(certification, ReasonNICResourceDetection,
-				"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
-		}
-	}
-	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
+	b, err := r.prepareCategoryBuild(ctx, certification, category, true)
 	if err != nil {
 		return "", err
 	}
-
-	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
-	// by name, and the provisioner chose those names, so they are detected from
-	// the nodes the job can run on: the capable set nodesPerJob is sized from,
-	// which the Workflow filters to again. An under-capacity node never runs
-	// the job, so its networks must not force the fallback. When detection
-	// refuses, the catalog default is rendered, and a Warning says why once
-	// the Workflow is created.
-	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
-
-	// The GCP H100 workload images and the tcpxo-daemon image follow the
-	// TCPXO plugin release GKE installed, read from the installer pods on the
-	// same capable nodes, since node pools can run different releases. The
-	// installer pods live in kube-system and carry no NVCRE job label, so the
-	// cache never holds them (ADR-102) and podread reads them from the API server.
-	// When no mapped release results, the nearest safe profile is rendered,
-	// and a Warning says why once the Workflow is created.
-	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, newPodReader(r.Client, r.APIReader), detectedPlatform, gpuArch, capableNodes)
-
-	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
-	if err != nil {
-		return "", err
-	}
-
-	enableMNNVL := derefBool(opts.EnableMNNVL)
-	if opts.EnableMNNVL == nil {
-		enableMNNVL = DefaultEnableMNNVL(gpuArch)
-	}
+	opts, gkeNetworks, tcpxoPlugin, archFallbackMessage := b.opts, b.gkeNetworks, b.tcpxoPlugin, b.archFallbackMessage
 
 	// --- 3. Render templates (entry.Build) and apply overlays ---
 	// The first pass names the OCI RDMA network with a sentinel. Only a
@@ -613,44 +522,8 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// network, so only then are NetworkAttachmentDefinitions listed and the
 	// spec built again with the detected name (ADR-103). Every other
 	// category, and every other platform, keeps the first pass.
-	buildConfig := catalog.BuildConfig{
-		ImagePullSecrets:           opts.ImagePullSecrets,
-		StorageClassName:           opts.StorageClassName,
-		NodesPerJob:                nodesPerJob,
-		GpusPerNode:                gpusPerNode,
-		MlnxPerNode:                mlnxPerNode,
-		NicResourceName:            nicResourceName,
-		RDMADeviceAccess:           opts.RDMADeviceAccess,
-		NetworkAttachments:         opts.NetworkAttachments,
-		GKETCPXONetworks:           gkeNetworks.Names,
-		TCPXOPluginVersion:         tcpxoPlugin.Version,
-		Resources:                  opts.Resources,
-		EnableMNNVL:                enableMNNVL,
-		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
-		MaxSteps:                   derefInt32(opts.MaxSteps),
-		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
-		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
-		GPUArchitecture:            gpuArch,
-		SaveInterval:               derefInt32(opts.SaveInterval),
-		SaveRetainInterval:         derefInt32(opts.SaveRetainInterval),
-		SaveTopK:                   derefInt32(opts.SaveTopK),
-		StorageSize:                opts.StorageSize,
-		TestScale:                  opts.TestScale,
-		MaxBytes:                   opts.MaxBytes,
-		NumIterations:              derefInt32(opts.NumIterations),
-		NumCycles:                  derefInt32(opts.NumCycles),
-		Thresholds:                 opts.Thresholds,
-		MaxConcurrent:              derefInt32(opts.MaxConcurrent),
-		MinGroupSize:               derefInt32(opts.MinGroupSize),
-		RepeatCount:                derefInt32(opts.RepeatCount),
-		MaxRestarts:                derefInt32(opts.MaxRestarts),
-		TimeoutPerJob:              opts.TimeoutPerJob,
-		MeasurementTimeout:         opts.MeasurementTimeout,
-		SourceRepo:                 opts.SourceRepo,
-		DCGMHost:                   opts.DCGMHost,
-	}
 	workflowSpec, applied, ociNetwork, err := r.buildWorkflowSpecDetectingOCINetwork(
-		ctx, certification, category, entry, buildConfig, detectedPlatform, gpuArch, nodes)
+		ctx, certification, category, b.entry, b.config, b.detectedPlatform, b.gpuArch, b.nodes)
 	if err != nil {
 		return "", err
 	}
@@ -775,6 +648,186 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	return workflowName, nil
 }
 
+// categoryBuild is what createWorkflowForCategory resolves for a category
+// before its templates render: the catalog entry, the BuildConfig, and what
+// overlay matching and the post-resolve stage need.
+type categoryBuild struct {
+	entry               *catalog.Entry
+	config              catalog.BuildConfig
+	opts                nvcrev1alpha1.CategoryOptions
+	detectedPlatform    string
+	gpuArch             string
+	nodes               []corev1.Node
+	archFallbackMessage string
+	gkeNetworks         gkeNetworkDetection
+	tcpxoPlugin         tcpxoPluginDetection
+}
+
+// prepareCategoryBuild is steps 1 and 2 of createWorkflowForCategory: it
+// discovers the target nodes, detects the platform and GPU architecture,
+// resolves the options and nodesPerJob, and assembles the BuildConfig. The
+// up-front OCI RDMA network check calls it with emitEvents false, so the NIC
+// detection event comes only from the category's own Workflow creation.
+func (r *CertificationReconciler) prepareCategoryBuild(
+	ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory,
+	emitEvents bool,
+) (categoryBuild, error) {
+	entry := catalog.Lookup(category.Domain, category.Variant)
+	if entry == nil {
+		return categoryBuild{}, fmt.Errorf("unknown certification category: %s/%s", category.Domain, category.Variant)
+	}
+
+	// --- 1. Discover nodes (shared context for nodesPerJob + overlays) ---
+	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
+	// records them on its own status, which is where the report reads coverage
+	// from, so recording them twice would only risk the two disagreeing.
+	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
+	if err != nil {
+		return categoryBuild{}, fmt.Errorf("discovering target nodes: %w", err)
+	}
+	if len(nodes) == 0 {
+		return categoryBuild{}, fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, errNoNodesMatch)
+	}
+
+	// Best-effort platform + GPU detection for overlay context.
+	detectedPlatform := DetectPlatform(nodes)
+	// Size the job against the nodes that will actually run it. The Workflow
+	// filters a heterogeneous target down to one GPU architecture before it
+	// partitions, so a nodesPerJob derived from the whole target can ask for more
+	// nodes than survive that filter, and partitioning then fails with a shortfall
+	// the operator did not cause. Apply the same filter here so the two agree.
+	gpuArch, archNodes := detectGPUArchConsistent(nodes)
+	if gpuArch == "" || gpuArch == gpuArchUnknown {
+		// Fall back to nodeSelector-based detection
+		gpuArch = catalog.GPUArchFromNodeSelector(certification.Spec.Target.NodeSelector)
+		archNodes = nodes
+	}
+	if gpuArch == "" {
+		return categoryBuild{}, fmt.Errorf(
+			"cannot determine GPU architecture from target nodeSelector" +
+				" (nvidia.com/gpu.product label is required)",
+		)
+	}
+
+	// --- 2. Resolve options + nodesPerJob ---
+	opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)
+	if err := CheckResolvedNetworkAttachments(&opts); err != nil {
+		return categoryBuild{}, fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
+	}
+
+	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
+	gpusPerNode := nd.GpusPerNode
+	mlnxPerNode := nd.MlnxPerNode
+	if opts.GpusPerNode != nil {
+		gpusPerNode = *opts.GpusPerNode
+	}
+	if opts.MlnxPerNode != nil {
+		mlnxPerNode = *opts.MlnxPerNode
+	}
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the options set the counts; say
+	// so on the Certification, with the resolved counts, instead of running
+	// silently at the wrong rank count (ADR-094). Emitted below, only by the
+	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
+	archFallbackMessage := gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintCertification)
+	// The NIC resource name has no architecture default: it depends on the
+	// RDMA device plugin the site runs. The field always wins; when it is
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
+	// fills the gap from node allocatable, but only when exactly one
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
+	// resolved mlnxPerNode count — the amount the templates will request per
+	// container — on every node the job is sized against (the same
+	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
+	// candidates means nothing is injected and a Normal event says why;
+	// detection never guesses (ADR-075).
+	// An explicit networkAttachments list owns the NIC wiring (issue #400),
+	// so detection is skipped rather than adding a second NIC request.
+	nicResourceName := ""
+	if len(opts.NetworkAttachments) == 0 {
+		nicDetected := resolveNICResourceName(
+			opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
+		nicResourceName = nicDetected.Name
+		if emitEvents && nicDetected.Ran && nicResourceName == "" {
+			r.normalf(certification, ReasonNICResourceDetection,
+				"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
+		}
+	}
+	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
+	if err != nil {
+		return categoryBuild{}, err
+	}
+
+	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
+	// by name, and the provisioner chose those names, so they are detected from
+	// the nodes the job can run on: the capable set nodesPerJob is sized from,
+	// which the Workflow filters to again. An under-capacity node never runs
+	// the job, so its networks must not force the fallback. When detection
+	// refuses, the catalog default is rendered, and a Warning says why once
+	// the Workflow is created.
+	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
+
+	// The GCP H100 workload images and the tcpxo-daemon image follow the
+	// TCPXO plugin release GKE installed, read from the installer pods on the
+	// same capable nodes, since node pools can run different releases. The
+	// installer pods live in kube-system and carry no NVCRE job label, so the
+	// cache never holds them (ADR-102) and podread reads them from the API server.
+	// When no mapped release results, the nearest safe profile is rendered,
+	// and a Warning says why once the Workflow is created.
+	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, newPodReader(r.Client, r.APIReader), detectedPlatform, gpuArch, capableNodes)
+
+	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
+	if err != nil {
+		return categoryBuild{}, err
+	}
+
+	enableMNNVL := derefBool(opts.EnableMNNVL)
+	if opts.EnableMNNVL == nil {
+		enableMNNVL = DefaultEnableMNNVL(gpuArch)
+	}
+
+	buildConfig := catalog.BuildConfig{
+		ImagePullSecrets:           opts.ImagePullSecrets,
+		StorageClassName:           opts.StorageClassName,
+		NodesPerJob:                nodesPerJob,
+		GpusPerNode:                gpusPerNode,
+		MlnxPerNode:                mlnxPerNode,
+		NicResourceName:            nicResourceName,
+		RDMADeviceAccess:           opts.RDMADeviceAccess,
+		NetworkAttachments:         opts.NetworkAttachments,
+		GKETCPXONetworks:           gkeNetworks.Names,
+		TCPXOPluginVersion:         tcpxoPlugin.Version,
+		Resources:                  opts.Resources,
+		EnableMNNVL:                enableMNNVL,
+		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
+		MaxSteps:                   derefInt32(opts.MaxSteps),
+		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
+		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
+		GPUArchitecture:            gpuArch,
+		SaveInterval:               derefInt32(opts.SaveInterval),
+		SaveRetainInterval:         derefInt32(opts.SaveRetainInterval),
+		SaveTopK:                   derefInt32(opts.SaveTopK),
+		StorageSize:                opts.StorageSize,
+		TestScale:                  opts.TestScale,
+		MaxBytes:                   opts.MaxBytes,
+		NumIterations:              derefInt32(opts.NumIterations),
+		NumCycles:                  derefInt32(opts.NumCycles),
+		Thresholds:                 opts.Thresholds,
+		MaxConcurrent:              derefInt32(opts.MaxConcurrent),
+		MinGroupSize:               derefInt32(opts.MinGroupSize),
+		RepeatCount:                derefInt32(opts.RepeatCount),
+		MaxRestarts:                derefInt32(opts.MaxRestarts),
+		TimeoutPerJob:              opts.TimeoutPerJob,
+		MeasurementTimeout:         opts.MeasurementTimeout,
+		SourceRepo:                 opts.SourceRepo,
+		DCGMHost:                   opts.DCGMHost,
+	}
+	return categoryBuild{
+		entry: entry, config: buildConfig, opts: opts, detectedPlatform: detectedPlatform, gpuArch: gpuArch,
+		nodes: nodes, archFallbackMessage: archFallbackMessage, gkeNetworks: gkeNetworks, tcpxoPlugin: tcpxoPlugin,
+	}, nil
+}
+
 // buildResolvedWorkflowSpec renders the catalog entry and applies and prunes
 // the overlays that match the detected platform and GPU architecture. It is
 // the whole of steps 3 and 4 of createWorkflowForCategory, so the second
@@ -845,6 +898,11 @@ func (r *CertificationReconciler) buildWorkflowSpecDetectingOCINetwork(
 // and returns an empty selection when it does not. A terminal detection
 // failure comes back as a *secondaryNetworkError, a transient list error as a
 // *retryableCreateError.
+//
+// It lists NADs for each category's Workflow, where the CLI lists once for
+// all of them. The categories run one after another, possibly hours apart,
+// so a NAD can change before a later category starts; the one check that
+// runs before any Workflow is preflightOCISecondaryNetwork.
 func (r *CertificationReconciler) resolveOCINetworkIfAttached(
 	ctx context.Context, certification *nvcrev1alpha1.Certification,
 	category nvcrev1alpha1.CertificateCategory, spec *nvcrev1alpha1.WorkflowSpec,
@@ -869,6 +927,42 @@ func (r *CertificationReconciler) resolveOCINetworkIfAttached(
 	return ociNetworkSelection{}, &retryableCreateError{
 		err: fmt.Errorf("%s/%s: OCI RDMA network detection: %w", category.Domain, category.Variant, err),
 	}
+}
+
+// preflightOCISecondaryNetwork detects the OCI RDMA network once, before the
+// first category's Workflow exists, so a missing or ambiguous
+// NetworkAttachmentDefinition fails the Certification before any workload
+// runs rather than after the categories ahead of the one that attaches it
+// (ADR-103). It renders each category's first pass as createWorkflowForCategory
+// does and detects at the first one that attaches the network, since
+// detection does not depend on the category. A category it cannot prepare is
+// skipped: createWorkflowForCategory reports that error when the category's
+// turn comes.
+func (r *CertificationReconciler) preflightOCISecondaryNetwork(
+	ctx context.Context, certification *nvcrev1alpha1.Certification,
+) error {
+	for _, category := range certification.Spec.Categories {
+		b, err := r.prepareCategoryBuild(ctx, certification, category, false)
+		if err != nil {
+			continue
+		}
+		if b.detectedPlatform != platform.OCI {
+			// Only the OCI fragment names the network, and every category
+			// targets the same nodes.
+			return nil
+		}
+		b.config.OCISecondaryNetwork = catalog.OCISecondaryNetworkUnresolved
+		spec, _, err := buildResolvedWorkflowSpec(
+			b.entry, category, certification.Spec.Target, b.config, b.detectedPlatform, b.gpuArch, b.nodes)
+		if err != nil {
+			continue
+		}
+		sel, err := r.resolveOCINetworkIfAttached(ctx, certification, category, &spec)
+		if err != nil || sel.Name != "" {
+			return err
+		}
+	}
+	return nil
 }
 
 // warnGCPH100DetectionFallbacks emits one Warning per GCP H100 detection that

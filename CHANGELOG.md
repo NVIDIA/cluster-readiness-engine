@@ -26,7 +26,7 @@ followed them.
   namespace are preferred; several equivalent candidates resolve to the first in sorted
   order with a `SecondaryNetworkDetection` event; none, several that differ, a refused
   list or no NetworkAttachmentDefinition API fail the Certification with
-  `SecondaryNetworkDetectionFailed` before that category's Workflow is created. The
+  `SecondaryNetworkDetectionFailed` before any of its Workflows is created. The
   manager role gains `get` and `list` on
   `network-attachment-definitions.k8s.cni.cncf.io`.
   `nvcrectl certification render --dry-run` detects the same way; offline render keeps

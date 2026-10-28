@@ -276,7 +276,10 @@ every namespace.
 | Several that differ | The Certification fails with `SecondaryNetworkDetectionFailed`, naming the candidates and the `spec.config` keys that differ. |
 | None | The Certification fails with `SecondaryNetworkDetectionFailed`, saying what it found. |
 
-Both failures happen before that category's Workflow is created. The no-match
+Detection runs once for every category before the Certification's first
+Workflow is created, so either failure stops it before any category runs, and
+again as each category's Workflow is created, in case a NetworkAttachmentDefinition
+changed in the meantime. The no-match
 message lists the ways forward: create a NetworkAttachmentDefinition for
 `nvidia.com/mlnxnics`, name the networks explicitly with
 [`networkAttachments`](../api-reference/certification.md), or set
@@ -308,6 +311,18 @@ in the Certification's namespace or, for a manifest that sets none, in
 `--namespace` (`default` unless given). If you may not list
 NetworkAttachmentDefinitions, it prints a warning and renders the default
 instead of failing, since the controller lists with its own service account.
+It also warns and renders the default when `--platform oci` is given for nodes
+that are not on OCI, where the controller attaches no OCI network.
+
+Detection trusts every namespace in which someone can create a
+NetworkAttachmentDefinition: when the Certification's namespace has none, a
+matching one in any namespace is a candidate, so a tenant's copy can fail
+detection or, if equivalent and sorted first, be the one attached. NVCRE does
+not narrow the search to a list of platform namespaces, since those names
+belong to the platform and change with it. On a cluster shared with tenants who
+can create NetworkAttachmentDefinitions, pin the network: put a matching
+NetworkAttachmentDefinition in the Certification's namespace, which always
+wins, or list the networks with `networkAttachments`.
 
 If Multus runs with `namespaceIsolation: true`, a pod may only reference a
 NetworkAttachmentDefinition in its own namespace, or in a namespace listed in
