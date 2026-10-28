@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.categories[0].options.resources.limits.cpu",
+      "message": "Invalid value: \"1e9999999999999999999\": spec.categories[0].options.resources.limits.cpu in body should match '^\\+?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?[0-9]{1,2}))?$'"
+    }
+  ]
+}

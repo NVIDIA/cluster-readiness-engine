@@ -115,6 +115,26 @@ jobs:
             cover-integration.out
           if-no-files-found: ignore
 
+  # Installs every chart CRD on each Kubernetes minor from MIN_K8S_VERSION to
+  # the version the test job uses (ADR-105). The test job runs only that one
+  # version, which is how every release before this job existed shipped a
+  # Certification CRD that 1.29 through 1.33 refuse.
+  crd-compat:
+    name: CRD Compatibility
+    runs-on: linux-amd64-cpu16
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install CRDs on every supported Kubernetes minor
+        run: make test-crd-compat
+
   # Report-only performance tracking. Runs the Go benchmarks on every push and,
   # on pull-request branches, compares HEAD against the merge-base with
   # benchstat in the job summary. It never fails the build for a performance

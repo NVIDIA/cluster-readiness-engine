@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The largest exponents the Pattern allows, two digits either way, are
+# accepted: ParseQuantity decodes both at once (ADR-105), though "1e-99",
+# like any value below 1n, rounds up to 1n. Submitted raw, like the rejected
+# boundary cases.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-exponent-two-digits
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: "1e99"
+            memory: "1e-99"
