@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# EFA-capable G7e sizes expose one EFA interface per GPU pair, rounded up.
+# Eight requested GPUs use four interfaces; smaller GPU allocations scale down.
+# This patch also serves caller-supplied WorkloadRun images.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: "{{ div (add (int .GpusPerNode) 1) 2 }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: "{{ div (add (int .GpusPerNode) 1) 2 }}"

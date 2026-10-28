@@ -1,6 +1,6 @@
 # ADR-108: JUnit certification reports
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

@@ -501,7 +501,12 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
    RUN git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /opt/megatron-lm
    ```
 
-   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. Then either point the categories at the extended image with `categories[].options.image`, which also replaces the `megatron-clone` init container's image, or serve it under the reference the entries render on your platform: pre-load it on the nodes or publish it through your registry mirror under that name. That reference is `nvcr.io/nvidia/pytorch:25.08-py3` everywhere except GCP H100, where the training image follows the TCPXO plugin version detected on the nodes (`pytorch:25.06-py3` for plugin v1.0.15 and v1.0.16, and when detection finds no release); see [GCP H100 clusters](../concepts/platform-detection.md#gcp-h100-clusters). `nvcrectl certification render --dry-run` prints the reference it picked.
+   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. Then either point the categories at the extended image with `categories[].options.image`, which also replaces the `megatron-clone` init container's image, or serve it under the reference the entries render on your platform: pre-load it on the nodes or publish it through your registry mirror under that name. The default reference is `nvcr.io/nvidia/pytorch:25.08-py3`, with two exceptions:
+
+   - **AWS RTX PRO 6000, Nemotron 5 8B:** The unmodified PyTorch image uses `nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112`. A Megatron-LM-extended image has a different digest: set `categories[].options.image` to its own reference and pre-load or mirror that reference. The override also updates `megatron-clone` and `megatron-ddp-stream-order`, so neither init container needs a separate image. See [AWS RTX PRO 6000](../concepts/platform-detection.md#aws-rtx-pro-6000).
+   - **GCP H100:** the training image follows the TCPXO plugin version detected on the nodes (`pytorch:25.06-py3` for plugin v1.0.15 and v1.0.16, and when detection finds no release); see [GCP H100 clusters](../concepts/platform-detection.md#gcp-h100-clusters).
+
+   `nvcrectl certification render --dry-run` prints the reference it picked.
 
 2. **Pre-seed the workspace PVC.** Set `enableCheckpoint: true` (plus `storageClassName` if the cluster has no default StorageClass). The category then mounts a PersistentVolumeClaim named `<variant>-pvc` (for example `nemotron5-8b-pvc`) at `/mnt/workspace` instead of a memory-backed `emptyDir`. Pre-populate that volume with the Megatron-LM source at `megatron-lm/` before creating the Certification: the init container uses the workspace unchanged whenever `/mnt/workspace/megatron-lm` exists (a plain source export works; `.git` is not required). Without `enableCheckpoint` the workspace is an `emptyDir`, so this option does not apply and the source is resolved from the image or the network on every pod start.
 
@@ -511,6 +516,21 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
    spec:
      sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
    ```
+
+For AWS RTX PRO 6000, the 8B category runs `megatron-ddp-stream-order` after
+source resolution, including for `sourceRepo`, in-image and pre-seeded sources.
+It applies the DDP stream-ordering backport only to the inspected
+`core_v0.15.2` training.py hash. An already-patched source is left unchanged;
+another revision is left unchanged only if the AST of its entire `get_model`
+function matches the inspected synchronized implementation. This verifies both
+stream waits in their original positions around DDP construction. Comments and
+formatting may differ; unrelated, conditional or misplaced wait calls do not
+satisfy the check. Sources without the inspected hash or function AST fail
+initialization.
+A different upstream fix may use another structure and is not automatically
+recognized. Inspect the `megatron-ddp-stream-order` init container's logs for
+the explanation if the training pod stalls at startup. Mirroring the pinned
+source does not require a different hash or bypass this check.
 
 The rest of the training path makes no other network calls: the training script builds the local checkout with `pip install -e . --no-deps --no-build-isolation` rather than installing from PyPI, and trains on mock data with a null tokenizer, so no dataset or tokenizer downloads occur.
 

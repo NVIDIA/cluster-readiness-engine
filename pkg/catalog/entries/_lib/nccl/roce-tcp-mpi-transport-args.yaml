@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Pins OpenMPI's own point-to-point and out-of-band traffic to TCP on eth0.
-# On RoCE clusters NCCL drives RDMA directly; MPI only needs TCP for
+# On RoCE and AWS RTX EFA clusters NCCL drives RDMA directly; MPI only needs TCP for
 # coordination, and letting OpenMPI select UCX/verbs over the mlx5 devices
 # breaks GID handling (see mpi-disable-ucc-hcoll-args.yaml).
-# Shared by aws-gb300-roce-mpirun-args.yaml, oci-roce-mpirun-args.yaml, and
-# the WorkloadRun platform overrides (pkg/platform/overrides/workloadrun.yaml).
+# Shared by aws-gb300-roce-mpirun-args.yaml, oci-roce-mpirun-args.yaml,
+# AWS RTX EFA catalog entries, and the WorkloadRun platform overrides
+# (pkg/platform/overrides/workloadrun.yaml).
 - --mca
 - pml
 - ob1

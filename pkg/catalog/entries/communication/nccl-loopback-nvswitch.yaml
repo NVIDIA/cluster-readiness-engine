@@ -151,7 +151,7 @@ overrides:
     platform:
       equals: aws
     gpuArchitecture:
-      notIn: [gb200, gb300]
+      notIn: [gb200, gb300, b300, rtxpro6000]
   dependencies:
 {{ lib "deps/aws-efa-runtime-patch-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -160,6 +160,28 @@ overrides:
         trainJob:
           trainer:
             image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+            command:
+            - /opt/nccl-tests/build/all_reduce_perf
+            env:
+            - name: NCCL_DEBUG
+              value: INFO
+{{ lib "nccl/aws-h100-efa-comm-env.yaml" . | indent 12 }}
+            - name: NCCL_MNNVL_ENABLE
+              value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+# --- AWS + B300 (EFA, 16 devices; see deps/aws-b300-efa-runtime-patch-comm.yaml) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  dependencies:
+{{ lib "deps/aws-b300-efa-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3
             command:
             - /opt/nccl-tests/build/all_reduce_perf
             env:

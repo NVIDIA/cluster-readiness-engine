@@ -1,6 +1,6 @@
 # ADR-102: Cache Only NVCRE's Own Pods
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
