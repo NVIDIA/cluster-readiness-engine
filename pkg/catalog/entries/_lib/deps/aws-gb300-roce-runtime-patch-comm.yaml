@@ -19,7 +19,7 @@
                 spec:
                   containers:
                   - name: node
-                    image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
                     resources:
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
@@ -46,7 +46,7 @@
                 spec:
                   containers:
                   - name: node
-                    image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
             metadata:
               labels:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
