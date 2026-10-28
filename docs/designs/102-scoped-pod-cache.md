@@ -163,6 +163,8 @@ Memory follows the launchers of runs in progress and of kept Certifications, at 
 
 `captureTimeoutLog` now adds the workload's launchers from `launcherPods` to the job-labelled pods and prefers a running one, then one that already finished, to any node pod, which settles the first paragraph of Notes. A timed-out MPI run records the launcher's log, with the NCCL output, instead of the first running worker's sshd output. The launchers are read live, as for `captureFailureLog`, so `test/readpolicy` still holds. A workload without a launcher that ran still records its first running node pod, and a failed launcher lookup falls back to that too, since the capture is best-effort.
 
+The record's reason, `Timeout`, describes the Job. Its exit code is the selected pod's: a pod that already finished is read as `failedContainerOf` reads a failure, so a launcher that exited 1 is recorded with exit code 1, and one that failed in an init container is read from that container. A running pod has no exit code yet, so its record keeps exit code 0.
+
 ## References
 
 - Issue [#504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)

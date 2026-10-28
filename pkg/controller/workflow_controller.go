@@ -3640,7 +3640,9 @@ func (r *WorkflowReconciler) getJobRequeueInterval() time.Duration {
 // captureTimeoutLog captures tail logs from running pods before a timed-out workload
 // is deleted. For MPI tests, targets the launcher pod (which has the actual NCCL
 // output), preferring a running one to one that already finished. Falls back to
-// a node pod, a running one first, when no launcher ran.
+// a node pod, a running one first, when no launcher ran. The record's reason is
+// Timeout, which describes the Job; its exit code is the selected container's
+// (see timeoutContainer).
 // Best-effort: errors are logged, not returned.
 func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1alpha1.Job) {
 	log := logf.FromContext(ctx)
@@ -3698,12 +3700,12 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		return
 	}
 
-	// Find the main container name (prefer "node", fall back to first)
-	containerName := ""
-	for _, c := range targetPod.Spec.Containers {
-		if containerName == "" || c.Name == labelNode {
-			containerName = c.Name
-		}
+	containerName, exitCode := timeoutContainer(targetPod)
+	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
+		PodName:  targetPod.Name,
+		NodeName: targetPod.Spec.NodeName,
+		ExitCode: exitCode,
+		Reason:   "Timeout",
 	}
 
 	tailLines := int64(failureLogTailLines)
@@ -3715,11 +3717,6 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
-		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
-			PodName:  targetPod.Name,
-			NodeName: targetPod.Spec.NodeName,
-			Reason:   "Timeout",
-		}
 		return
 	}
 	defer stream.Close() //nolint:errcheck
@@ -3728,14 +3725,39 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	if err != nil {
 		log.V(1).Info("Failed to read pod logs", "pod", targetPod.Name, "error", err)
 	}
+	job.Status.FailureLog.Tail = tail
+	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName,
+		"exitCode", exitCode, "bytes", len(tail))
+}
 
-	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
-		PodName:  targetPod.Name,
-		NodeName: targetPod.Spec.NodeName,
-		Reason:   "Timeout",
-		Tail:     tail,
+// timeoutContainer returns the container of the pod captureTimeoutLog selected
+// whose log the timeout record carries, and that container's exit code.
+//
+// A pod that already finished is read as a failure record is: the container
+// failedContainerOf picks, so a launcher that exited 1 is recorded with exit
+// code 1 rather than 0, and one that failed in an init container (the KAI
+// launcher wait) is read there. Otherwise it is the main container, the one
+// named "node" or else the first, with its exit code if it has terminated. A
+// running pod's main container has not, so its record keeps exit code 0, as
+// before.
+func timeoutContainer(pod *corev1.Pod) (string, int32) {
+	if pod.Status.Phase != corev1.PodRunning {
+		if _, cs := failedContainerOf([]corev1.Pod{*pod}); cs != nil {
+			return cs.Name, cs.State.Terminated.ExitCode
+		}
 	}
-	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName, "bytes", len(tail))
+	name := ""
+	for _, c := range pod.Spec.Containers {
+		if name == "" || c.Name == labelNode {
+			name = c.Name
+		}
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name == name && cs.State.Terminated != nil {
+			return name, cs.State.Terminated.ExitCode
+		}
+	}
+	return name, 0
 }
 
 // handleDeletion handles the cleanup when a Workflow is being deleted.

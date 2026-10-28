@@ -71,8 +71,12 @@ func TestFailureLogTail(t *testing.T) {
 }
 
 // stubContainer is the main container's name in the catalog's pod templates,
-// and the worker replicatedJob's name.
-const stubContainer = "node"
+// and the worker replicatedJob's name. launcherInitContainer is the KAI
+// launcher's wait for the workers, which runs in an init container.
+const (
+	stubContainer         = "node"
+	launcherInitContainer = "wait-for-workers"
+)
 
 // failureLogInput is a Job's pods as captureFailureLog and launcherFailureLog
 // see them. A launcher pod carries the JobSet labels of the MPI launcher and
@@ -101,6 +105,11 @@ type failureLogInput struct {
 		Reason     string `yaml:"reason"`
 		FinishedAt int64  `yaml:"finishedAt"`
 		Log        string `yaml:"log"`
+		// InitExitCode, when non-zero, fails the pod in its launcherInitContainer
+		// init container, as the KAI launcher wait does, with InitLog as that
+		// container's log. The main container is left waiting.
+		InitExitCode int32  `yaml:"initExitCode"`
+		InitLog      string `yaml:"initLog"`
 		// DisruptionTarget marks the pod evicted or preempted.
 		DisruptionTarget bool `yaml:"disruptionTarget"`
 	} `yaml:"pods"`
@@ -158,6 +167,21 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 				}},
 			}}
 		}
+		if sp.InitExitCode != 0 {
+			pod.Status.InitContainerStatuses = []corev1.ContainerStatus{{
+				Name: launcherInitContainer,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					ExitCode:   sp.InitExitCode,
+					Reason:     "Error",
+					FinishedAt: at(sp.FinishedAt),
+				}},
+			}}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name:  stubContainer,
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "PodInitializing"}},
+			}}
+			logs[sp.Name+"/"+launcherInitContainer] = sp.InitLog
+		}
 		if sp.Failed {
 			pod.Status.Phase = corev1.PodFailed
 		}
@@ -208,7 +232,8 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 }
 
 // newPodLogClientset returns a Clientset backed by an httptest server whose
-// pod log endpoint serves logs[pod name], in any namespace.
+// pod log endpoint serves logs[pod name], in any namespace, or
+// logs[pod name/container] when a container is asked for and has an entry.
 func newPodLogClientset(t *testing.T, logs map[string]string) (*kubernetes.Clientset, error) {
 	t.Helper()
 	// GET /api/v1/namespaces/<ns>/pods/<name>/log
@@ -216,6 +241,10 @@ func newPodLogClientset(t *testing.T, logs map[string]string) (*kubernetes.Clien
 		parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
 		if len(parts) != 7 || parts[6] != "log" {
 			http.NotFound(w, req)
+			return
+		}
+		if l, ok := logs[parts[5]+"/"+req.URL.Query().Get("container")]; ok {
+			_, _ = io.WriteString(w, l)
 			return
 		}
 		_, _ = io.WriteString(w, logs[parts[5]])
