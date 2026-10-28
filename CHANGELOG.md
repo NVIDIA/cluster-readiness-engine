@@ -13,6 +13,12 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [Unreleased]
+
+### Changed
+
+- `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file` it was asked for, as `workloadrun report` already did. It used to print a warning and exit 0 with no file. `workloadrun run` also rejects `--results-file` without `--wait`, which used to exit 0 having written nothing (#564).
+
 ## [0.9.0] - 2026-10-26
 
 ### Added
