@@ -1,0 +1,13 @@
+# The Job already carries a record, as one launcherFailureLog made before the
+# timeout, and the launcher's log cannot be opened. The earlier record is kept
+# rather than replaced by a timeout record with no tail.
+workloadRef: j-workload
+recorded: true
+pods:
+  - name: j-workload-launcher-0-0
+    launcher: true
+    running: true
+    logUnavailable: true
+  - name: j-workload-node-0-0
+    running: true
+    log: "sshd: listening on port 2222\n"

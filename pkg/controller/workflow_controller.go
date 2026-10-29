@@ -3701,6 +3701,10 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	}
 
 	containerName, exitCode := timeoutContainer(targetPod)
+	// A record already made, such as a launcher failure launcherFailureLog
+	// read before the timeout, is kept if this pod's log cannot be opened,
+	// rather than replaced by a record with no tail.
+	prior := job.Status.FailureLog
 	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
 		PodName:  targetPod.Name,
 		NodeName: targetPod.Spec.NodeName,
@@ -3717,6 +3721,9 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
+		if prior != nil {
+			job.Status.FailureLog = prior
+		}
 		return
 	}
 	defer stream.Close() //nolint:errcheck

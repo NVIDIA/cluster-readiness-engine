@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +113,9 @@ type failureLogInput struct {
 		InitLog      string `yaml:"initLog"`
 		// DisruptionTarget marks the pod evicted or preempted.
 		DisruptionTarget bool `yaml:"disruptionTarget"`
+		// LogUnavailable makes the pod's log endpoint answer 500, so its
+		// log stream cannot be opened.
+		LogUnavailable bool `yaml:"logUnavailable"`
 	} `yaml:"pods"`
 }
 
@@ -137,6 +141,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 	at := func(sec int64) metav1.Time { return metav1.NewTime(time.Unix(1_700_000_000+sec, 0)) }
 
 	logs := map[string]string{}
+	var unavailable []string
 	objs := make([]client.Object, 0, len(in.Pods))
 	liveObjs := make([]client.Object, 0, len(in.Pods))
 	for _, sp := range in.Pods {
@@ -191,6 +196,9 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 			}}
 		}
 		logs[sp.Name] = sp.Log
+		if sp.LogUnavailable {
+			unavailable = append(unavailable, sp.Name)
+		}
 		liveObjs = append(liveObjs, pod)
 		if !sp.Launcher {
 			objs = append(objs, pod.DeepCopy())
@@ -224,7 +232,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		Build()
 	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(liveObjs...).Build()
 
-	cs, err := newPodLogClientset(t, logs)
+	cs, err := newPodLogClientset(t, logs, unavailable...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,13 +242,18 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 // newPodLogClientset returns a Clientset backed by an httptest server whose
 // pod log endpoint serves logs[pod name], in any namespace, or
 // logs[pod name/container] when a container is asked for and has an entry.
-func newPodLogClientset(t *testing.T, logs map[string]string) (*kubernetes.Clientset, error) {
+// The log endpoint of a pod named in unavailable answers 500.
+func newPodLogClientset(t *testing.T, logs map[string]string, unavailable ...string) (*kubernetes.Clientset, error) {
 	t.Helper()
 	// GET /api/v1/namespaces/<ns>/pods/<name>/log
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
 		if len(parts) != 7 || parts[6] != "log" {
 			http.NotFound(w, req)
+			return
+		}
+		if slices.Contains(unavailable, parts[5]) {
+			http.Error(w, "log unavailable", http.StatusInternalServerError)
 			return
 		}
 		if l, ok := logs[parts[5]+"/"+req.URL.Query().Get("container")]; ok {
@@ -310,7 +323,9 @@ func TestLauncherFailureLog(t *testing.T) {
 // has the NCCL output, and the launcher carries no nvcre.nvidia.com/job label,
 // so it is found by its JobSet labels like a failed one (issue #546). A running
 // launcher comes first, then one that already finished. Without a launcher that
-// ran, the first running worker is recorded.
+// ran, the first running worker is recorded. When the selected pod's log cannot
+// be opened, a record the Job already carries is kept; without one, the
+// timeout record still names the pod, node and exit code.
 func TestTimeoutLogCapture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "timeout-log-capture",
