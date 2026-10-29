@@ -47,9 +47,11 @@ spec:
               categories:
                 description: |-
                   Categories are the list of certificate categories required for the Target.
-                  The MaxItems bound keeps the CEL rules nested under each category (the
-                  resources request/limit comparison) within the API server's validation
-                  cost budget; the catalog defines far fewer entries than 64.
+                  The MaxItems bound keeps the CEL rules nested under each category within
+                  the API server's validation cost budget, which charges each such rule
+                  once per possible item. The networkAttachments rules bind first, because
+                  they sit under a second list. Every chart CRD must install on every
+                  supported Kubernetes minor (ADR-105).
                 items:
                   properties:
                     domain:
@@ -609,73 +611,36 @@ spec:
                                 limits.
                               properties:
                                 cpu:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
                                   description: cpu is the CPU quantity (e.g., "6",
-                                    "1500m").
+                                    "1500m"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
-                                  x-kubernetes-validations:
-                                  - message: cpu must be a non-negative quantity
-                                    rule: quantity(string(self)).compareTo(quantity("0"))
-                                      >= 0
                                 memory:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
                                   description: memory is the memory quantity (e.g.,
-                                    "48Gi").
+                                    "48Gi"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
-                                  x-kubernetes-validations:
-                                  - message: memory must be a non-negative quantity
-                                    rule: quantity(string(self)).compareTo(quantity("0"))
-                                      >= 0
                               type: object
                             requests:
                               description: requests overrides the container resource
                                 requests.
                               properties:
                                 cpu:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
                                   description: cpu is the CPU quantity (e.g., "6",
-                                    "1500m").
+                                    "1500m"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
-                                  x-kubernetes-validations:
-                                  - message: cpu must be a non-negative quantity
-                                    rule: quantity(string(self)).compareTo(quantity("0"))
-                                      >= 0
                                 memory:
-                                  anyOf:
-                                  - type: integer
-                                  - type: string
                                   description: memory is the memory quantity (e.g.,
-                                    "48Gi").
+                                    "48Gi"). Must not be negative.
                                   maxLength: 32
-                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                                   x-kubernetes-int-or-string: true
-                                  x-kubernetes-validations:
-                                  - message: memory must be a non-negative quantity
-                                    rule: quantity(string(self)).compareTo(quantity("0"))
-                                      >= 0
                               type: object
                           type: object
-                          x-kubernetes-validations:
-                          - message: requests.cpu must not exceed limits.cpu
-                            rule: '!has(self.requests) || !has(self.limits) || !has(self.requests.cpu)
-                              || !has(self.limits.cpu) || quantity(string(self.requests.cpu)).compareTo(quantity(string(self.limits.cpu)))
-                              <= 0'
-                          - message: requests.memory must not exceed limits.memory
-                            rule: '!has(self.requests) || !has(self.limits) || !has(self.requests.memory)
-                              || !has(self.limits.memory) || quantity(string(self.requests.memory)).compareTo(quantity(string(self.limits.memory)))
-                              <= 0'
                         saveInterval:
                           description: |-
                             saveInterval sets the checkpoint save frequency in training steps.
@@ -1458,68 +1423,35 @@ spec:
                     description: limits overrides the container resource limits.
                     properties:
                       cpu:
-                        anyOf:
-                        - type: integer
-                        - type: string
                         description: cpu is the CPU quantity (e.g., "6", "1500m").
+                          Must not be negative.
                         maxLength: 32
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
-                        x-kubernetes-validations:
-                        - message: cpu must be a non-negative quantity
-                          rule: quantity(string(self)).compareTo(quantity("0")) >=
-                            0
                       memory:
-                        anyOf:
-                        - type: integer
-                        - type: string
                         description: memory is the memory quantity (e.g., "48Gi").
+                          Must not be negative.
                         maxLength: 32
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
-                        x-kubernetes-validations:
-                        - message: memory must be a non-negative quantity
-                          rule: quantity(string(self)).compareTo(quantity("0")) >=
-                            0
                     type: object
                   requests:
                     description: requests overrides the container resource requests.
                     properties:
                       cpu:
-                        anyOf:
-                        - type: integer
-                        - type: string
                         description: cpu is the CPU quantity (e.g., "6", "1500m").
+                          Must not be negative.
                         maxLength: 32
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
-                        x-kubernetes-validations:
-                        - message: cpu must be a non-negative quantity
-                          rule: quantity(string(self)).compareTo(quantity("0")) >=
-                            0
                       memory:
-                        anyOf:
-                        - type: integer
-                        - type: string
                         description: memory is the memory quantity (e.g., "48Gi").
+                          Must not be negative.
                         maxLength: 32
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        pattern: ^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]{1,2}))?$
                         x-kubernetes-int-or-string: true
-                        x-kubernetes-validations:
-                        - message: memory must be a non-negative quantity
-                          rule: quantity(string(self)).compareTo(quantity("0")) >=
-                            0
                     type: object
                 type: object
-                x-kubernetes-validations:
-                - message: requests.cpu must not exceed limits.cpu
-                  rule: '!has(self.requests) || !has(self.limits) || !has(self.requests.cpu)
-                    || !has(self.limits.cpu) || quantity(string(self.requests.cpu)).compareTo(quantity(string(self.limits.cpu)))
-                    <= 0'
-                - message: requests.memory must not exceed limits.memory
-                  rule: '!has(self.requests) || !has(self.limits) || !has(self.requests.memory)
-                    || !has(self.limits.memory) || quantity(string(self.requests.memory)).compareTo(quantity(string(self.limits.memory)))
-                    <= 0'
               saveInterval:
                 description: |-
                   saveInterval sets the checkpoint save frequency in training steps.

@@ -674,10 +674,13 @@ func defaultIterations(emptyRender []byte) int {
 // entries template into their container resources. Each value falls back to
 // its DGX-class default independently, so a user who overrides only the
 // memory keeps the default CPU sizing (and vice versa). When a request and
-// its matching limit are both set, the Certification CRD's CEL rules reject
-// an inverted pair at admission (see CategoryResources). A partial override
-// that inverts against a default (e.g. a request raised above the default
-// limit) still fails loudly at pod admission rather than silently here.
+// its matching limit are both set, an inverted pair never reaches here: the
+// controller fails the Certification with InvalidResources before it creates
+// any Workflow, and nvcrectl refuses the file (ValidateCertificationResources
+// in pkg/controller/resources_validation.go; the CRD cannot check it, see
+// ADR-105). A partial override that inverts against a default (e.g. a
+// request raised above the default limit) still fails loudly at pod
+// admission rather than silently here.
 func resolveTrainingResources(res *nvcrev1alpha1.CategoryResources) (cpuLimit, memLimit, cpuRequest, memRequest string) {
 	cpuLimit = DefaultTrainingCPULimit
 	memLimit = DefaultTrainingMemoryLimit

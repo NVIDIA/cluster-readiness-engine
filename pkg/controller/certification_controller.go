@@ -188,6 +188,15 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 		}
 	}
 
+	// Fail fast on resources the CRD schema cannot reject (ADR-105), before any
+	// category runs. Terminal like an unknown category, since the spec is
+	// immutable, so return only a failed status write: that is retried, and a
+	// recorded Failed needs no requeue.
+	if err := ValidateCertificationResources(&certification.Spec); err != nil {
+		log.Error(err, "Invalid certification resources")
+		return ctrl.Result{}, r.setCertificationFailed(ctx, certification, ReasonInvalidResources, err.Error())
+	}
+
 	// Create Workflow for the first category
 	if len(certification.Spec.Categories) == 0 {
 		return ctrl.Result{}, fmt.Errorf("certification has no categories")

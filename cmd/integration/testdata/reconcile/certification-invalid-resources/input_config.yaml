@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nodes that match, so that without the check the first category's Workflow
+# would be created; expectAbsent below then proves the check ran first.
+generateNodes:
+  count: 2
+  providerID: "aws://us-east-1a/i-0000000000000001"
+  labels:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+waitFor:
+  kind: Certification
+  name: test-cert-invalid-resources
+  namespace: default
+  condition: Failed
+collect:
+  - kind: Certification
+    name: test-cert-invalid-resources
+    namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: test-cert-invalid-resources
+    namespace: default
+    expect:
+      - {type: Warning, reason: InvalidResources}
+# The name the first category's Workflow gets (WorkflowName with the
+# options suffix): the check must run before any Workflow is created.
+expectAbsent:
+  - kind: Workflow
+    name: test-cert-invalid-resourc-fcaa0
+    namespace: default

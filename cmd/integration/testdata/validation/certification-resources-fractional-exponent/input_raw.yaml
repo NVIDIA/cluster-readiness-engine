@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Quantities are int-or-string; bare integers must go through the same
-# comparison (string() conversion inside the CEL rule) and be rejected.
+# A fractional exponent matches the controller-gen Quantity pattern but
+# resource.ParseQuantity refuses it, so a Certification holding it would
+# break every typed List in its namespace, the controller informer included.
+# The Pattern must reject it at admission (ADR-105). Submitted raw: the typed
+# decode would refuse it before it reached the API server.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
-  name: val-int-invalid
+  name: val-fractional-exponent
   namespace: default
 spec:
   target:
@@ -18,6 +21,4 @@ spec:
       options:
         resources:
           limits:
-            cpu: 128
-          requests:
-            cpu: 256
+            cpu: "1e1.5"
