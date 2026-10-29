@@ -117,6 +117,7 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 102 | [Cache Only NVCRE's Own Pods](102-scoped-pod-cache.md) |
 | 103 | [Detect the OCI RDMA NetworkAttachmentDefinition Instead of Assuming `network-operator/sriov-net`](103-oci-rdma-network-detection.md) |
 | 104 | [Multus Network Attachments Paired With Extended Resources](104-network-attachments.md) |
+| 105 | [Every CRD Installs on Every Supported Kubernetes Minor, and No CEL Reads a Quantity](105-kubernetes-floor-and-crd-cel-cost-budget.md) |
 | 106 | [Surface Workload Pods That Are Placed but Never Become Ready](106-workload-pods-not-ready.md) |
 | 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
 | 108 | [JUnit Certification Reports](108-junit-certification-reports.md) |

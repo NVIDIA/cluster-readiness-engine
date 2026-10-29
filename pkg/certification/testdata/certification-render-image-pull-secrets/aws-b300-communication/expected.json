@@ -1,0 +1,83 @@
+{
+  "workflows": [
+    {
+      "workflow": "aws-b300-pull-secrets-cer-13e91",
+      "category": "communication/nccl-all-gather",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-b300-pull-secrets-cer-3a8cf",
+      "category": "communication/nccl-loopback-nvswitch",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-b300-pull-secrets-cer-6c8ab",
+      "category": "communication/nccl-all-reduce",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-b300-pull-secrets-cer-71e01",
+      "category": "communication/nccl-loopback",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
+      "workflow": "aws-b300-pull-secrets-cer-9f1e6",
+      "category": "communication/nccl-alltoall",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}

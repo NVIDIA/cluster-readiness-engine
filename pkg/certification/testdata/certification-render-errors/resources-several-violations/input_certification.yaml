@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every violation is reported in one message, not only the first: the spec
+# is immutable on the cluster, so each round trip costs a delete and re-create.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  resources:
+    requests:
+      memory: "-1Gi"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: 64
+            memory: 100Gi
+          requests:
+            cpu: 128
+            memory: 200Gi

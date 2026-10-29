@@ -1,0 +1,473 @@
+{
+  "Certification/aws-nc-b3": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-nc-b3",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-B300"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "workflowRef": {
+            "name": "aws-nc-b3-communication-n-c65ff",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/aws-nc-b3-communication-n-c65ff": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-nc-b3-communication-n-c65ff",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-all-reduce",
+        "nvcre.nvidia.com/certification": "aws-nc-b3"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "aws-nc-b3",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nccl-all-reduce-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3",
+                "command": [
+                  "timeout",
+                  "3600",
+                  "/opt/amazon/openmpi/bin/mpirun"
+                ],
+                "args": [
+                  "-N",
+                  "8",
+                  "--allow-run-as-root",
+                  "--mca",
+                  "plm_rsh_args",
+                  "-o StrictHostKeyChecking=no",
+                  "-x",
+                  "PATH=$PATH:/opt/amazon/efa/bin:/usr/bin",
+                  "-x",
+                  "NCCL_DEBUG=INFO",
+                  "-x",
+                  "FI_EFA_USE_DEVICE_RDMA=1",
+                  "-x",
+                  "FI_PROVIDER=efa",
+                  "-x",
+                  "NCCL_SOCKET_IFNAME=eth0",
+                  "-x",
+                  "LD_LIBRARY_PATH",
+                  "/opt/nccl-tests/build/all_reduce_perf",
+                  "-b",
+                  "8",
+                  "-e",
+                  "16G",
+                  "-f",
+                  "2",
+                  "-n",
+                  "100",
+                  "-N",
+                  "10"
+                ],
+                "numNodes": 2,
+                "numProcPerNode": 8
+              },
+              "runtimePatches": [
+                {
+                  "manager": "nvcre.nvidia.com/catalog",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "volumes": [
+                                      {
+                                        "name": "dshm",
+                                        "emptyDir": {
+                                          "medium": "Memory"
+                                        }
+                                      }
+                                    ],
+                                    "containers": [
+                                      {
+                                        "name": "node",
+                                        "volumeMounts": [
+                                          {
+                                            "name": "dshm",
+                                            "mountPath": "/dev/shm"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          },
+          "bandwidthMeasurement": {
+            "logProfileRef": "nccl-bandwidth",
+            "sampleInterval": "30s",
+            "testType": "all_reduce"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-B300"
+          }
+        },
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "nccl-all-reduce",
+              "trainer.kubeflow.org/framework": "mpi"
+            },
+            "name": "nccl-all-reduce-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "mpi": {
+                "mpiImplementation": "OpenMPI",
+                "numProcPerNode": 8,
+                "sshAuthMountPath": "/tmp/mpi-ssh-raw"
+              },
+              "numNodes": 1
+            },
+            "template": {
+              "spec": {
+                "network": {
+                  "publishNotReadyAddresses": true
+                },
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\nif ! test -x /usr/sbin/sshd; then\n  if ! command -v apt-get \u003e/dev/null 2\u003e\u00261 || ! command -v timeout \u003e/dev/null 2\u003e\u00261; then\n    echo \"sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd\" \u003e\u00262\n    exit 1\n  fi\n  apt=\"-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0\"\n  for attempt in 1 2 3; do\n    [ \"$attempt\" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a\n    timeout -s KILL 120 apt-get $apt update \u0026\u0026\n      timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server \u0026\u0026 break\n    echo \"sshd install attempt $attempt of 3 failed or timed out\" \u003e\u00262\n    [ \"$attempt\" -lt 3 ] || exit 1\n  done\nfi \u0026\u0026\nmkdir -p /var/run/sshd  \u0026\u0026\nchmod 0755 /var/run/sshd  \u0026\u0026\nmkdir -p /root/.ssh \u0026\u0026\nchmod 700 /root/.ssh \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026\n/usr/sbin/sshd -De"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda13.0.2-efa1.48.0-ofiv1.19.0-ncclv2.30.4-1-testsv2.18.3",
+                                "name": "node",
+                                "readinessProbe": {
+                                  "exec": {
+                                    "command": [
+                                      "sh",
+                                      "-c",
+                                      "command -v ssh \u003e/dev/null 2\u003e\u00261 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6\nset -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true\ncommand -v timeout \u003e/dev/null 2\u003e\u00261 \u0026\u0026 set -- timeout 8 \"$@\"\nexec \"$@\""
+                                    ]
+                                  },
+                                  "initialDelaySeconds": 5,
+                                  "periodSeconds": 30,
+                                  "timeoutSeconds": 10
+                                },
+                                "resources": {
+                                  "limits": {
+                                    "nvidia.com/gpu": "8",
+                                    "vpc.amazonaws.com/efa": "16"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "8",
+                                    "vpc.amazonaws.com/efa": "16"
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK",
+                                      "SYS_CHROOT"
+                                    ]
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "OnFailure"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "dependsOn": [
+                      {
+                        "name": "node",
+                        "status": "Ready"
+                      }
+                    ],
+                    "name": "launcher",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "backoffLimit": 1,
+                        "podFailurePolicy": {
+                          "rules": [
+                            {
+                              "action": "Ignore",
+                              "onPodConditions": [
+                                {
+                                  "status": "True",
+                                  "type": "DisruptionTarget"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "cpu": "2",
+                                    "memory": "1Gi"
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "initContainers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "fix-ssh-permissions",
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "Never",
+                            "volumes": [
+                              {
+                                "emptyDir": {},
+                                "name": "ssh-keys"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "successPolicy": {
+                  "operator": "All",
+                  "targetReplicatedJobs": [
+                    "launcher"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nccl-all-reduce-runtime-c65ff-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "b300",
+        "gpuProducts": [
+          "NVIDIA-B300"
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "aws-b300-node-01",
+              "aws-b300-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "aws-nc-b3-communication-n-c65ff-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
