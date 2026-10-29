@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A per-category memory request above its limit, named by the category index.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: "128"
+            memory: 800Gi
+          requests:
+            cpu: "64"
+            memory: 900Gi

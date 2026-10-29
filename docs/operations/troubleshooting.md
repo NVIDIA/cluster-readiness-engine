@@ -374,6 +374,7 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 **Solutions:**
 
 - A category is not registered in the catalog — the controller sets the Certification to `Failed` with reason `CategoryNotFound`. Verify your domain and variant values against `nvcrectl certification list-categories`.
+- A `resources` block has a request above its limit, or a negative quantity — the controller sets the Certification to `Failed` with reason `InvalidResources` before any category runs, and the condition message names the field and both values. Fix the values and re-create the Certification; see [Catalog](../concepts/catalog.md) for the rules.
 - A child Workflow is still running — the Certification waits for all Workflows to complete before transitioning.
 
 ## Stall detection not triggering

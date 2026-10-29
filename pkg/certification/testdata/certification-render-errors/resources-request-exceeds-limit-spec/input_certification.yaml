@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A spec-level CPU request above its limit. The CRD cannot reject the pair
+# without a CEL rule that Kubernetes 1.29 through 1.33 refuse to install
+# (ADR-105), so the offline render refuses it instead of rendering a run the
+# controller would fail.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  resources:
+    limits:
+      cpu: "128"
+    requests:
+      cpu: "256"
+  categories:
+    - domain: training
+      variant: nemotron5-8b

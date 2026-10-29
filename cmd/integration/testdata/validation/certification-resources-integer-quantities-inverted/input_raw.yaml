@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Quantities are int-or-string. Submitted raw, so the API server receives
+# the integers 128 and 256 rather than strings: the inverted pair is
+# accepted at admission and rejected by the controller (ADR-105).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-int-invalid
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: 128
+          requests:
+            cpu: 256
