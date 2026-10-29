@@ -305,7 +305,7 @@ func TestFinishWorkloadRunWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
 		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
-		Status: nvcrev1alpha1.WorkloadRunStat  us{Conditions: []metav1.Condition{{
+		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
 			Type: nvcrev1alpha1.WorkloadRunSucceeded,
 			Status: metav1.ConditionTrue,
 		}},
