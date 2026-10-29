@@ -143,7 +143,7 @@ spec:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
     image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
-    imagePullPolicy: Always
+    imagePullPolicy: IfNotPresent
     name: node
     resources:
       limits:
@@ -336,7 +336,7 @@ spec:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
     image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
-    imagePullPolicy: Always
+    imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:
       exec:
@@ -515,7 +515,7 @@ spec:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
     image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
-    imagePullPolicy: Always
+    imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:
       exec:
