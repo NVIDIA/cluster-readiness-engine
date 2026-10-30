@@ -101,14 +101,15 @@ func projectScriptComments(t testing.TB, in scriptCommentsInput) scriptCommentsP
 			// GpusPerNode resolves the way the controller resolves it, so the
 			// scripts render real GPU counts rather than zero.
 			spec, err := entry.Build(target, BuildConfig{
-				NodesPerJob:      in.NodesPerJob,
-				GpusPerNode:      GPUDefaults(arch, "").GpusPerNode,
-				GPUArchitecture:  arch,
-				EnableMNNVL:      in.EnableMNNVL,
-				EnableCheckpoint: in.EnableCheckpoint,
-				MlnxPerNode:      in.MlnxPerNode,
-				NicResourceName:  in.NicResourceName,
-				RDMADeviceAccess: in.RDMADeviceAccess,
+				NodesPerJob:         in.NodesPerJob,
+				GpusPerNode:         GPUDefaults(arch, "").GpusPerNode,
+				GPUArchitecture:     arch,
+				EnableMNNVL:         in.EnableMNNVL,
+				EnableCheckpoint:    in.EnableCheckpoint,
+				MlnxPerNode:         in.MlnxPerNode,
+				OCISecondaryNetwork: DefaultOCISecondaryNetwork,
+				NicResourceName:     in.NicResourceName,
+				RDMADeviceAccess:    in.RDMADeviceAccess,
 			})
 			if err != nil {
 				violations[source+": build failed: "+err.Error()] = true

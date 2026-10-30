@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Certification sets its own namespace, team-a, while --namespace is the
+# default. Detection prefers NADs in team-a, as the controller does, so the
+# local NAD is attached although a differing one exists elsewhere.
+platform: oci
+gpuArch: l40s
+dryRun: true
+namespace: default
+nads:
+  - namespace: team-a
+    name: local-rdma
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "local-rdma", "type": "host-device", "ipam": {"type": "static"}}'
+  - namespace: nvidia-network-operator
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'

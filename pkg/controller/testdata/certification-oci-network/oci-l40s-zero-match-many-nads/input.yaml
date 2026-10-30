@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Twelve NADs for another resource and none for nvidia.com/mlnxnics. The
+# zero-match message outgrows the 1024-byte event note, and the ways forward
+# come before the list of NADs found, so the cut Warning event still carries
+# them.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+expectLookup: true
+nads:
+  - namespace: team-01-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-02-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-03-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-04-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-05-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-06-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-07-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-08-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-09-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-10-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-11-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'
+  - namespace: team-12-training-workloads
+    name: sriov-rdma-network
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: openshift.io/mlx5_rdma
+    config: '{"cniVersion": "0.3.1", "name": "sriov-rdma-network", "type": "sriov", "ipam": {}}'

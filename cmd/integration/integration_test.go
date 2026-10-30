@@ -30,6 +30,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -113,8 +114,12 @@ func TestIntegration(t *testing.T) {
 		if cfg.VerifyNodePollEvents {
 			nodePollRecorder = &phaseCountingRecorder{inProgress: make(map[types.UID]int)}
 		}
+		var nadFailures *nadListFailingReader
+		if cfg.FailFirstNADLists > 0 {
+			nadFailures = &nadListFailingReader{remaining: cfg.FailFirstNADLists}
+		}
 		mgr, cancel, stopped := startManager(tt, suite.Config, fakeFetcher, deadline,
-			cfg.RejectWorkflowCreates, checkpoint, nodePollRecorder, cfg)
+			cfg.RejectWorkflowCreates, checkpoint, nodePollRecorder, nadFailures, cfg)
 
 		// Ensure cleanup always runs, even on test failure/timeout.
 		// Without this, a timed-out test leaks objects (e.g., cluster-scoped
@@ -215,6 +220,10 @@ func TestIntegration(t *testing.T) {
 		if checkpoint != nil {
 			require.Equal(tt, 1, checkpoint.recorder.count(checkpoint.jobUID), "restart emitted another InProgress Event")
 		}
+		if nadFailures != nil {
+			require.Zero(tt, nadFailures.left(),
+				"the injected NetworkAttachmentDefinition list failures were never served, so the case did not retry")
+		}
 		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), suite.Client, cfg, deadline, frozenGoodput, specImmutability)
 		return nil
 	})
@@ -298,14 +307,37 @@ func generateTestNodes(t *testing.T, c client.Client, spec *generateNodesSpec) {
 	}
 }
 
+// networkAttachmentDefinitions returns the NetworkAttachmentDefinitions among
+// the documents the scheme could not decode, as unstructured objects, so a
+// case can give OCI RDMA network detection a NAD to find (ADR-103). Every
+// other undecodable document (config structs, per-case CRDs) stays ignored.
+func networkAttachmentDefinitions(t *testing.T, raws []runtime.RawExtension) []client.Object {
+	t.Helper()
+	var nads []client.Object
+	for _, raw := range raws {
+		u := &unstructured.Unstructured{}
+		if err := sigyaml.Unmarshal(raw.Raw, &u.Object); err != nil {
+			continue
+		}
+		if u.GroupVersionKind() != (schema.GroupVersionKind{
+			Group: "k8s.cni.cncf.io", Version: "v1", Kind: "NetworkAttachmentDefinition",
+		}) {
+			continue
+		}
+		nads = append(nads, u)
+	}
+	return nads
+}
+
 // createTestObjects parses and creates objects from test case input files,
 // properly handling status subresource updates.
 func createTestObjects(t *testing.T, c client.Client, tc *testutil.TestCase) []client.Object {
 	t.Helper()
 	ctx := context.Background()
 
-	objs, _, err := tc.GetObjects(scheme.Scheme)
+	objs, raws, err := tc.GetObjects(scheme.Scheme)
 	require.NoError(t, err)
+	objs = append(objs, networkAttachmentDefinitions(t, raws)...)
 
 	created := make([]client.Object, 0, len(objs))
 	for _, obj := range objs {
@@ -450,6 +482,7 @@ func startManager(
 	t *testing.T, cfg *rest.Config, fetcher podlogs.PodLogFetcher, deadline time.Time, rejectWorkflowCreates bool,
 	checkpoint *checkpointObservation,
 	nodePollRecorder *phaseCountingRecorder,
+	nadFailures *nadListFailingReader,
 	caseCfg waitConfig,
 ) (ctrl.Manager, context.CancelFunc, <-chan struct{}) {
 	t.Helper()
@@ -537,8 +570,14 @@ func startManager(
 	if rejectWorkflowCreates {
 		certificationClient = &workflowCreateRejectingClient{Client: certificationClient}
 	}
+	var certificationAPIReader client.Reader
+	if nadFailures != nil {
+		nadFailures.Reader = mgr.GetAPIReader()
+		certificationAPIReader = nadFailures
+	}
 	err = (&controller.CertificationReconciler{
 		Client:                  certificationClient,
+		APIReader:               certificationAPIReader,
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                certificationRecorder,
 		WorkflowRequeueInterval: 1 * time.Second,
@@ -694,6 +733,11 @@ type waitConfig struct {
 	// The SelfSubjectAccessReview still reaches the real API server, which
 	// allows it, so the rejection is classified as admission, not RBAC.
 	RejectWorkloadCreatesWhile *collectSpec `json:"rejectWorkloadCreatesWhile,omitempty"`
+	// FailFirstNADLists makes the Certification controller's first N
+	// NetworkAttachmentDefinition Lists fail with a transient server error,
+	// so OCI RDMA network detection has to requeue rather than fail the
+	// Certification (ADR-103).
+	FailFirstNADLists int `json:"failFirstNADLists,omitempty"`
 	// NamespaceAccessTimeoutSeconds sets the Workflow controller's
 	// --namespace-access-timeout. Zero uses the default.
 	NamespaceAccessTimeoutSeconds int `json:"namespaceAccessTimeoutSeconds,omitempty"`
@@ -830,6 +874,39 @@ func (c *workloadCreateRejectingClient) Create(
 			obj.GetName(), fmt.Errorf("injected TrainJob Create rejection"))
 	}
 	return c.Client.Create(ctx, obj, opts...)
+}
+
+// nadListFailingReader fails the first remaining NetworkAttachmentDefinition
+// Lists with a transient server error, then reads through.
+type nadListFailingReader struct {
+	client.Reader
+	mu        sync.Mutex
+	remaining int
+}
+
+func (r *nadListFailingReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if u, ok := list.(*unstructured.UnstructuredList); ok &&
+		u.GroupVersionKind().Kind == "NetworkAttachmentDefinitionList" {
+		r.mu.Lock()
+		fail := r.remaining > 0
+		if fail {
+			r.remaining--
+		}
+		r.mu.Unlock()
+		if fail {
+			return apierrors.NewInternalError(errors.New("injected transient NetworkAttachmentDefinition list failure"))
+		}
+	}
+	return r.Reader.List(ctx, list, opts...)
+}
+
+// left is how many injected failures were not served. A case that reaches
+// its waitFor with failures left never retried a NetworkAttachmentDefinition
+// List, so it could not show the requeue it is there for.
+func (r *nadListFailingReader) left() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.remaining
 }
 
 // workloadAdmissionRejectingClient fails TrainJob creates the way an

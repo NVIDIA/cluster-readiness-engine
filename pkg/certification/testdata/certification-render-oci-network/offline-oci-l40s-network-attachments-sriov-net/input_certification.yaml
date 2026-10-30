@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A networkAttachments list that names network-operator/sriov-net itself, as a
+# site keeping the classic layout might. The list gates the OCI fragment off,
+# so nothing is detected and offline render prints no default-network note,
+# even though the annotation carries that name.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+  nodesPerJob: 2
+  networkAttachments:
+    - {network: network-operator/sriov-net, resourceName: nvidia.com/mlnxnics}
+    - {network: network-operator/sriov-net, resourceName: nvidia.com/mlnxnics}
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

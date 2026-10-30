@@ -1,0 +1,21 @@
+{
+  "requeue": true,
+  "nadLists": 2,
+  "conditions": [
+    {
+      "message": "Created Workflow for category communication/nccl-all-reduce (1 of 1)",
+      "reason": "WorkflowCreated",
+      "type": "InProgress"
+    }
+  ],
+  "events": [
+    "Normal SecondaryNetworkDetection communication/nccl-all-reduce: OCI RDMA network detection attached nvidia-network-operator/rdma-net; equivalent NetworkAttachmentDefinitions for nvidia.com/mlnxnics skipped: tenant-b/rdma-net."
+  ],
+  "workflows": [
+    {
+      "name": "oci-cert-communication-nc-db169",
+      "networks": "nvidia-network-operator/rdma-net,nvidia-network-operator/rdma-net,nvidia-network-operator/rdma-net,nvidia-network-operator/rdma-net",
+      "mlnxnicsRequested": true
+    }
+  ]
+}

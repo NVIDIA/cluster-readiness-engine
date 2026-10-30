@@ -1,0 +1,21 @@
+{
+  "workflows": [
+    {
+      "workflow": "oci-cert-diagnostics-dcgm-6b4ec",
+      "replicatedJobs": [
+        {
+          "dependency": "dcgm-level4-runtime",
+          "replicatedJob": "node",
+          "networks": "",
+          "resources": {
+            "node": [
+              "limits/nvidia.com/gpu=8",
+              "requests/nvidia.com/gpu=8"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "nadLists": 0
+}

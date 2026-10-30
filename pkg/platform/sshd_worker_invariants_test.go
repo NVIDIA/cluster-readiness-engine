@@ -263,10 +263,11 @@ func renderCatalogCase(t testing.TB, in sshdInvariantsInput) ([]foundContainer, 
 				NodeSelector: map[string]string{"nvidia.com/gpu.product": product},
 			}
 			spec, err := entry.Build(target, catalog.BuildConfig{
-				NodesPerJob:     in.NodesPerJob,
-				GPUArchitecture: catalog.GPUArchFromNodeSelector(target.NodeSelector),
-				NicResourceName: in.NicResourceName,
-				MlnxPerNode:     in.MlnxPerNode,
+				NodesPerJob:         in.NodesPerJob,
+				GPUArchitecture:     catalog.GPUArchFromNodeSelector(target.NodeSelector),
+				NicResourceName:     in.NicResourceName,
+				MlnxPerNode:         in.MlnxPerNode,
+				OCISecondaryNetwork: catalog.DefaultOCISecondaryNetwork,
 			})
 			source := fmt.Sprintf("%s/%s@%s", category.Domain, category.Variant, product)
 			if err != nil {

@@ -1,0 +1,5 @@
+{
+  "error": "OCI RDMA network detection cannot list NetworkAttachmentDefinitions (network-attachment-definitions.k8s.cni.cncf.io is forbidden: User \"system:serviceaccount:nvcre-system:nvcre-controller-manager\" cannot list resource). The chart grants get and list on network-attachment-definitions.k8s.cni.cncf.io to the manager; restore that grant, or list the networks explicitly with networkAttachments.",
+  "terminal": true,
+  "forbidden": true
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "arch": "l40s",
+    "mlnxPerNode": 2,
+    "attaches": [],
+    "noAttachment": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "gb300",
+    "mlnxPerNode": 4,
+    "attaches": [],
+    "noAttachment": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "h100",
+    "mlnxPerNode": 8,
+    "attaches": [],
+    "noAttachment": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  }
+]

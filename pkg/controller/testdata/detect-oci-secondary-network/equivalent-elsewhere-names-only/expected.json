@@ -1,0 +1,7 @@
+{
+  "name": "ns-1/rdma-one",
+  "skipped": [
+    "ns-2/rdma-two"
+  ],
+  "notice": "OCI RDMA network detection attached ns-1/rdma-one; equivalent NetworkAttachmentDefinitions for nvidia.com/mlnxnics skipped: ns-2/rdma-two."
+}

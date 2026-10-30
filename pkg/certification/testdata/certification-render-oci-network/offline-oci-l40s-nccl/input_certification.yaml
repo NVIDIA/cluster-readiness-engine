@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Offline render on OCI L40S attaches the default network-operator/sriov-net and
+# says on stderr that the controller detects the real network.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

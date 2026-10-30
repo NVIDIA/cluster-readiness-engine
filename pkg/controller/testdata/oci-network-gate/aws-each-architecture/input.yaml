@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No other platform renders the OCI fragment, so detection never runs there.
+platform: aws
+nodesPerJob: [2, 1, 4, 8, 16]

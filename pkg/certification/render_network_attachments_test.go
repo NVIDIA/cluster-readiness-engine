@@ -78,7 +78,7 @@ func TestCertificationRenderNetworkAttachments(t *testing.T) {
 		if len(cfg.Nodes) > 0 {
 			applyNICDetection(cert, cfg.Nodes, cfg.Platform)
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "")
+		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}
