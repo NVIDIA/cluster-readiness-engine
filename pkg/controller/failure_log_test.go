@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,8 +72,12 @@ func TestFailureLogTail(t *testing.T) {
 }
 
 // stubContainer is the main container's name in the catalog's pod templates,
-// and the worker replicatedJob's name.
-const stubContainer = "node"
+// and the worker replicatedJob's name. launcherInitContainer is the KAI
+// launcher's wait for the workers, which runs in an init container.
+const (
+	stubContainer         = "node"
+	launcherInitContainer = "wait-for-workers"
+)
 
 // failureLogInput is a Job's pods as captureFailureLog and launcherFailureLog
 // see them. A launcher pod carries the JobSet labels of the MPI launcher and
@@ -96,12 +101,21 @@ type failureLogInput struct {
 		Created    int64  `yaml:"created"`
 		Launcher   bool   `yaml:"launcher"`
 		Running    bool   `yaml:"running"`
+		Failed     bool   `yaml:"failed"`
 		ExitCode   int32  `yaml:"exitCode"`
 		Reason     string `yaml:"reason"`
 		FinishedAt int64  `yaml:"finishedAt"`
 		Log        string `yaml:"log"`
+		// InitExitCode, when non-zero, fails the pod in its launcherInitContainer
+		// init container, as the KAI launcher wait does, with InitLog as that
+		// container's log. The main container is left waiting.
+		InitExitCode int32  `yaml:"initExitCode"`
+		InitLog      string `yaml:"initLog"`
 		// DisruptionTarget marks the pod evicted or preempted.
 		DisruptionTarget bool `yaml:"disruptionTarget"`
+		// LogUnavailable makes the pod's log endpoint answer 500, so its
+		// log stream cannot be opened.
+		LogUnavailable bool `yaml:"logUnavailable"`
 	} `yaml:"pods"`
 }
 
@@ -127,6 +141,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 	at := func(sec int64) metav1.Time { return metav1.NewTime(time.Unix(1_700_000_000+sec, 0)) }
 
 	logs := map[string]string{}
+	var unavailable []string
 	objs := make([]client.Object, 0, len(in.Pods))
 	liveObjs := make([]client.Object, 0, len(in.Pods))
 	for _, sp := range in.Pods {
@@ -142,6 +157,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		pod.Spec.NodeName = "node-" + sp.Name
 		switch {
 		case sp.Running:
+			pod.Status.Phase = corev1.PodRunning
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
 				Name:  stubContainer,
 				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
@@ -156,12 +172,33 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 				}},
 			}}
 		}
+		if sp.InitExitCode != 0 {
+			pod.Status.InitContainerStatuses = []corev1.ContainerStatus{{
+				Name: launcherInitContainer,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					ExitCode:   sp.InitExitCode,
+					Reason:     "Error",
+					FinishedAt: at(sp.FinishedAt),
+				}},
+			}}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name:  stubContainer,
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "PodInitializing"}},
+			}}
+			logs[sp.Name+"/"+launcherInitContainer] = sp.InitLog
+		}
+		if sp.Failed {
+			pod.Status.Phase = corev1.PodFailed
+		}
 		if sp.DisruptionTarget {
 			pod.Status.Conditions = []corev1.PodCondition{{
 				Type: corev1.DisruptionTarget, Status: corev1.ConditionTrue,
 			}}
 		}
 		logs[sp.Name] = sp.Log
+		if sp.LogUnavailable {
+			unavailable = append(unavailable, sp.Name)
+		}
 		liveObjs = append(liveObjs, pod)
 		if !sp.Launcher {
 			objs = append(objs, pod.DeepCopy())
@@ -195,7 +232,7 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 		Build()
 	live := fake.NewClientBuilder().WithScheme(scheme).WithObjects(liveObjs...).Build()
 
-	cs, err := newPodLogClientset(t, logs)
+	cs, err := newPodLogClientset(t, logs, unavailable...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -203,14 +240,24 @@ func newFailureLogReconciler(t *testing.T, raw string) (*JobReconciler, *nvcrev1
 }
 
 // newPodLogClientset returns a Clientset backed by an httptest server whose
-// pod log endpoint serves logs[pod name], in any namespace.
-func newPodLogClientset(t *testing.T, logs map[string]string) (*kubernetes.Clientset, error) {
+// pod log endpoint serves logs[pod name], in any namespace, or
+// logs[pod name/container] when a container is asked for and has an entry.
+// The log endpoint of a pod named in unavailable answers 500.
+func newPodLogClientset(t *testing.T, logs map[string]string, unavailable ...string) (*kubernetes.Clientset, error) {
 	t.Helper()
 	// GET /api/v1/namespaces/<ns>/pods/<name>/log
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
 		if len(parts) != 7 || parts[6] != "log" {
 			http.NotFound(w, req)
+			return
+		}
+		if slices.Contains(unavailable, parts[5]) {
+			http.Error(w, "log unavailable", http.StatusInternalServerError)
+			return
+		}
+		if l, ok := logs[parts[5]+"/"+req.URL.Query().Get("container")]; ok {
+			_, _ = io.WriteString(w, l)
 			return
 		}
 		_, _ = io.WriteString(w, logs[parts[5]])
@@ -263,6 +310,37 @@ func TestLauncherFailureLog(t *testing.T) {
 		got := r.launcherFailureLog(context.Background(), job)
 
 		b, err := json.MarshalIndent(got, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+// captureTimeoutLog records the log of a Job that exceeded timeoutPerJob
+// before its workload is deleted. For an MPI run that is the launcher's, which
+// has the NCCL output, and the launcher carries no nvcre.nvidia.com/job label,
+// so it is found by its JobSet labels like a failed one (issue #546). A running
+// launcher comes first, then one that already finished. Without a launcher that
+// ran, the first running worker is recorded. When the selected pod's log cannot
+// be opened, a record the Job already carries is kept; without one, the
+// timeout record still names the pod, node and exit code.
+func TestTimeoutLogCapture(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "timeout-log-capture",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		jr, job, err := newFailureLogReconciler(t, tc.Inputs["input.yaml"])
+		if err != nil {
+			return err
+		}
+		r := &WorkflowReconciler{Client: jr.Client, APIReader: jr.APIReader, Scheme: jr.Scheme, Clientset: jr.Clientset}
+
+		r.captureTimeoutLog(context.Background(), job)
+
+		b, err := json.MarshalIndent(job.Status.FailureLog, "", "  ")
 		if err != nil {
 			return err
 		}

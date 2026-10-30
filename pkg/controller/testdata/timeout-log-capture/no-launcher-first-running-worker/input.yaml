@@ -1,0 +1,9 @@
+# A workload without a launcher produces its output on the node pods, so the
+# first running one is recorded, as before.
+workloadRef: j-workload
+pods:
+  - name: j-workload-node-0-0
+    log: "never started\n"
+  - name: j-workload-node-0-1
+    running: true
+    log: "dcgmi diag: running\n"
