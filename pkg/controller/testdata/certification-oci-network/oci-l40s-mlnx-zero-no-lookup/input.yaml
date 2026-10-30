@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The mlnxPerNode: 0 opt-out (ADR-087) on OCI L40S, whose nccl-all-reduce
+# otherwise attaches the RDMA network: the fragment renders empty, no NAD is
+# listed, and the Workflow is created without NICs.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  mlnxPerNode: 0
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+expectLookup: false
+nads: []

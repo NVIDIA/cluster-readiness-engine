@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -124,7 +124,7 @@ func TestCertificationRenderNScale(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, cfg.GPUArch, nil, "")
+		workflows, err := renderCertification(cert, cfg.Platform, cfg.GPUArch, nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}

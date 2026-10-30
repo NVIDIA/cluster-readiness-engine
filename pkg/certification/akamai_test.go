@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
@@ -44,7 +45,7 @@ func TestAkamaiTCPRendering(t *testing.T) {
 				MaxBytes: input.MaxBytes, NumIterations: input.NumIterations, NumCycles: input.NumCycles,
 			},
 		}}
-		workflows, err := renderCertification(cert, input.Platform, "rtxpro6000", nil, "")
+		workflows, err := renderCertification(cert, input.Platform, "rtxpro6000", nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}

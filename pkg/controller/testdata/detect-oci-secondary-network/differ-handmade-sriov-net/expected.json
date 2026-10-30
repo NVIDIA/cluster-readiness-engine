@@ -1,0 +1,4 @@
+{
+  "error": "OCI RDMA network detection found 2 NetworkAttachmentDefinitions for nvidia.com/mlnxnics across namespaces that are not equivalent. NVCRE does not choose between them: list the network to attach explicitly with networkAttachments, or remove the ones that should not be used. If network-operator/sriov-net is left over from an earlier setup or was created by hand as the workaround for issue #542, delete it: the platform's own network is detected now. Candidates: network-operator/sriov-net, nvidia-network-operator/rdma-net. Their spec.config differs in cniVersion.",
+  "terminal": true
+}

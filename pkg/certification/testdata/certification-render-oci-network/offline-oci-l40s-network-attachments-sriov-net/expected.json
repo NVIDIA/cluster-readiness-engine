@@ -1,0 +1,34 @@
+{
+  "workflows": [
+    {
+      "workflow": "oci-cert-communication-nc-db169",
+      "replicatedJobs": [
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "node",
+          "networks": "network-operator/sriov-net,network-operator/sriov-net",
+          "resources": {
+            "node": [
+              "limits/nvidia.com/gpu=4",
+              "limits/nvidia.com/mlnxnics=2",
+              "requests/nvidia.com/gpu=4",
+              "requests/nvidia.com/mlnxnics=2"
+            ]
+          }
+        },
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "launcher",
+          "networks": "",
+          "resources": {
+            "node": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "nadLists": 0
+}

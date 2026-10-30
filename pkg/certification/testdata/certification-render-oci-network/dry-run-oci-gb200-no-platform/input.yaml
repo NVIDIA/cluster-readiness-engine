@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --dry-run without --platform on OCI GB200 nodes. Node defaults come from the
+# detected platform, as in the controller, so mlnxPerNode resolves to 0: no
+# nvidia.com/mlnxnics, no networks annotation, and no NAD List, although the
+# cluster has no NAD. Architecture defaults would request eight NICs and fail
+# detection the controller never runs.
+dryRun: true
+namespace: default
+nodes:
+  - name: gpu-01
+    product: NVIDIA-GB200
+    providerID: ocid1.instance.oc1.iad.example
+  - name: gpu-02
+    product: NVIDIA-GB200
+    providerID: ocid1.instance.oc1.iad.example
+nads: []

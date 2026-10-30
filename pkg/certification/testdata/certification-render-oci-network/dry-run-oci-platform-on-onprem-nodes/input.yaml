@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --dry-run --platform oci against nodes that are not OCI, such as a Kind
+# cluster. The controller would attach no OCI RDMA network on these nodes, so
+# dry-run warns, renders the default and lists no NAD, although the cluster
+# has none.
+platform: oci
+dryRun: true
+namespace: default
+nodes:
+  - name: gpu-01
+    product: NVIDIA-GB300
+    providerID: ""
+  - name: gpu-02
+    product: NVIDIA-GB300
+    providerID: ""
+nads: []

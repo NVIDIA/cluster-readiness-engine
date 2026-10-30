@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The manager may not list NADs: terminal, and flagged so dry-run warns instead.
+namespace: default
+listError: forbidden
+nads: []

@@ -67,9 +67,9 @@ platformOverrides:
     gb200:
       gpusPerNode: 4
       # No NIC request by default: OCI GB200 shapes do not consistently expose
-      # nvidia.com/mlnxnics, and the sriov-net NetworkAttachmentDefinition the
-      # annotation references is not present on a stock cluster. Sites running
-      # the SR-IOV device plugin opt in with mlnxPerNode. See ADR-087.
+      # nvidia.com/mlnxnics, and a stock cluster has no NetworkAttachmentDefinition
+      # for it to attach. Sites running the SR-IOV device plugin opt in with
+      # mlnxPerNode, and the controller then detects the network (ADR-087, ADR-103).
       mlnxPerNode: 0
     gb300:
       gpusPerNode: 4

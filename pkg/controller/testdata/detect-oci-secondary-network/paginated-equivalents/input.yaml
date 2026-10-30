@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The list is served one NAD per page, so every page has to be read: three
+# equivalent NADs resolve to the first in sorted order, naming the other two.
+namespace: default
+pageSize: 1
+nads:
+  - namespace: tenant-c
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'
+  - namespace: tenant-a
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'
+  - namespace: tenant-b
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'

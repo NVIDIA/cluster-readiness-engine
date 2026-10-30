@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AICR's layout: the platform's host-device NAD lives in nvidia-network-operator,
+# and the Certification runs in default. One match anywhere is used.
+namespace: default
+nads:
+  - namespace: nvidia-network-operator
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'

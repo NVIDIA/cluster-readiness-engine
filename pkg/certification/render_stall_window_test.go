@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -30,7 +30,7 @@ func TestRenderStartupStallWindow(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "aws", "", nil, "")
+		workflows, err := renderCertification(cert, "aws", "", nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}

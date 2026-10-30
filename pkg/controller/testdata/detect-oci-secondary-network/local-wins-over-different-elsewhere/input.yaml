@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A NAD in the workload namespace wins over a different one elsewhere: under
+# Multus namespaceIsolation it is the only one the pod can attach, and the
+# equivalence rule never compares it with the cluster-wide NAD.
+namespace: certs
+nads:
+  - namespace: certs
+    name: local-rdma
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "local-rdma", "type": "host-device", "ipam": {}, "mtu": 9000}'
+  - namespace: nvidia-network-operator
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'

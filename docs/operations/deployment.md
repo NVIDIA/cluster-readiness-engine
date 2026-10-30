@@ -363,6 +363,7 @@ The controller's permissions are split between two ClusterRoles, and neither has
 | `authorization.k8s.io` SelfSubjectAccessReviews | create | — | Check the controller's own access in a run namespace before writing there |
 | `events` | create, patch | — | Emit Kubernetes events, including in a namespace that lacks the RoleBinding |
 | `resource.k8s.io` ResourceSlices | get, list, watch | — | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
+| `k8s.cni.cncf.io` NetworkAttachmentDefinitions | get, list | — | Find the OCI RDMA network annotated for `nvidia.com/mlnxnics`; read uncached, only when a category attaches it |
 | `trainer.kubeflow.org` TrainJobs | get, list, watch; `trainjobs/status` get | create, delete, patch, update | Training workloads via Kubeflow Trainer |
 | `configmaps` | — | create, delete, get, patch, update | Workflow dependencies and node-result records |
 | `persistentvolumeclaims` | — | create, delete, get, update | Checkpoint storage dependencies; `update` sets the Job owner reference on a job-scoped checkpoint PVC |
