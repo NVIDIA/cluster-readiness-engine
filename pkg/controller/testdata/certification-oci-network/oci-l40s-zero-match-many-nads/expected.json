@@ -1,0 +1,15 @@
+{
+  "requeue": false,
+  "nadLists": 1,
+  "conditions": [
+    {
+      "message": "communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088). NetworkAttachmentDefinitions found: team-01-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-02-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-03-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-04-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-05-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-06-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-07-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-08-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-09-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-10-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma) and 2 more.",
+      "reason": "SecondaryNetworkDetectionFailed",
+      "type": "Failed"
+    }
+  ],
+  "events": [
+    "Warning SecondaryNetworkDetectionFailed communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088). NetworkAttachmentDefinitions found: team-01-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-02-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-03-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-04-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-05-training-workloads/sriov-rdma-network (resourceName openshift.io/mlx5_rdma), team-06-training-workloads/sriov-rdma-network (resourc... [truncated]"
+  ],
+  "workflows": []
+}

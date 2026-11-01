@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two equivalent NADs for nvidia.com/mlnxnics elsewhere: the first in sorted
+# order is attached and a Normal SecondaryNetworkDetection event names the
+# one skipped.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-GB300
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-GB300
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+expectLookup: true
+nads:
+  - namespace: nvidia-network-operator
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'
+  - namespace: tenant-b
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "host-device", "ipam": {}}'

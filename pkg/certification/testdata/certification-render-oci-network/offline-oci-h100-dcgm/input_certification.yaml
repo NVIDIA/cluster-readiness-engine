@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgm-level4 on OCI H100 attaches nothing, so offline render prints no note.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4

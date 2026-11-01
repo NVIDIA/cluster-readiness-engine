@@ -13,6 +13,36 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [Unreleased]
+
+### Changed
+
+- On OCI, the controller no longer attaches workload pods to a hard-coded
+  `network-operator/sriov-net` NetworkAttachmentDefinition. It finds the one annotated
+  `k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics`, whatever its name and
+  namespace, so clusters laid out differently, such as AICR's `nvidia-network-operator`,
+  attach their RDMA network without a hand-made copy. Detection runs only for a category
+  whose rendered Workflow attaches the network. Matches in the Certification's
+  namespace are preferred; several equivalent candidates resolve to the first in sorted
+  order with a `SecondaryNetworkDetection` event; none, several that differ, a refused
+  list or no NetworkAttachmentDefinition API fail the Certification with
+  `SecondaryNetworkDetectionFailed` before any of its Workflows is created. The
+  manager role gains `get` and `list` on
+  `network-attachment-definitions.k8s.cni.cncf.io`.
+  `nvcrectl certification render --dry-run` detects the same way; offline render keeps
+  the old name and says so. A NetworkAttachmentDefinition written by hand without the
+  annotation, or a hand-made `network-operator/sriov-net` that differs from the
+  platform's own, now fails with a message saying what to do
+  ([ADR-103](docs/designs/103-oci-rdma-network-detection.md), #542).
+
+### Fixed
+
+- `nvcrectl certification render --dry-run` without `--platform` now takes GPU and NIC
+  counts from the platform it detects on the target nodes, as the controller does.
+  Before, OCI L40S, GB200 and GB300, and Nscale GB300 previewed the architecture
+  defaults, such as eight NICs on OCI GB200 where the controller requests none
+  ([ADR-103](docs/designs/103-oci-rdma-network-detection.md), #542).
+
 ## [0.9.0] - 2026-10-26
 
 ### Added

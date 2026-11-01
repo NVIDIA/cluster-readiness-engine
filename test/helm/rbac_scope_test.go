@@ -130,8 +130,9 @@ func downwardEnv(containers []corev1.Container) []managerEnvView {
 
 // TestHelmRoleSplitDiff diffs the controller's cluster-mode grant, the union
 // of nvcre-manager-role and nvcre-run-role, against the rule set shipped before
-// ADR-092 split the role. The golden lists exactly the differences ADR-092
-// names, so rbac.scope: cluster, this release's default, cannot gain or lose a
+// ADR-092 split the role. The golden lists exactly the differences ADR-092 and
+// later ADRs name (ADR-103 adds get and list on NetworkAttachmentDefinitions),
+// so rbac.scope: cluster, this release's default, cannot gain or lose a
 // permission nobody decided on. It also lists each role's own grants, so a
 // rule that moves between the two roles shows up as a golden change even when
 // the union is unchanged.

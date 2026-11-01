@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A generic Network Operator SR-IOV install, the layout NVCRE hard-coded before:
+# network-operator/sriov-net carries the annotation and is detected like any other.
+namespace: default
+nads:
+  - namespace: network-operator
+    name: sriov-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "sriov-net", "type": "sriov", "ipam": {"type": "whereabouts", "range": "192.168.0.0/16"}}'

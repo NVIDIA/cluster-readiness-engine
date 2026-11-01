@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB200 resolves mlnxPerNode 0, so the fragment renders empty and no NAD is listed.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-GB200
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-GB200
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+expectLookup: false
+nads: []

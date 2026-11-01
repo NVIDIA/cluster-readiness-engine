@@ -1,0 +1,35 @@
+{
+  "workflows": [
+    {
+      "workflow": "oci-cert-communication-nc-db169",
+      "replicatedJobs": [
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "node",
+          "networks": "nvidia-network-operator/rdma-net,nvidia-network-operator/rdma-net",
+          "resources": {
+            "node": [
+              "limits/nvidia.com/gpu=4",
+              "limits/nvidia.com/mlnxnics=2",
+              "requests/nvidia.com/gpu=4",
+              "requests/nvidia.com/mlnxnics=2"
+            ]
+          }
+        },
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "launcher",
+          "networks": "",
+          "resources": {
+            "node": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "stderr": "Auto-detected OCI RDMA network nvidia-network-operator/rdma-net (annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics)\n",
+  "nadLists": 1
+}

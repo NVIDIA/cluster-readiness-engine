@@ -138,7 +138,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "", "", nil, "")
+		workflows, err := renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}
@@ -221,7 +221,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "", "", nil, "")
+			_, err = renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork)
 		}
 
 		type result struct {

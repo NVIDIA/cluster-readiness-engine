@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Another platform never renders the OCI fragment, so no NAD is listed.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-H100-80GB-HBM3
+    providerID: aws://us-east-1/i-0abc
+    allocatable:
+      nvidia.com/gpu: "8"
+  - name: gpu-02
+    product: NVIDIA-H100-80GB-HBM3
+    providerID: aws://us-east-1/i-0abc
+    allocatable:
+      nvidia.com/gpu: "8"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+expectLookup: false
+nads: []

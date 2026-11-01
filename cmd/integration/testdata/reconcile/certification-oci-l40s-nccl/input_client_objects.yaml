@@ -35,3 +35,22 @@ spec:
   categories:
     - domain: communication
       variant: nccl-all-reduce
+---
+# The platform's host-device NAD for nvidia.com/mlnxnics, at
+# network-operator/sriov-net, the name NVCRE attached before detection
+# (ADR-103). Detection finds it by its resourceName annotation, so this case
+# renders exactly as it did then.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: network-operator
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: sriov-net
+  namespace: network-operator
+  annotations:
+    k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+spec:
+  config: '{"cniVersion": "0.3.1", "name": "sriov-net", "type": "host-device", "ipam": {}}'

@@ -1,0 +1,69 @@
+{
+  "Certification/oci-nad-missing": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "oci-nad-missing",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-L40S"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "SecondaryNetworkDetectionFailed",
+          "message": "communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, and the cluster has no NetworkAttachmentDefinitions at all. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088)."
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "SecondaryNetworkDetectionFailed",
+      "message": "communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, and the cluster has no NetworkAttachmentDefinitions at all. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088).",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "oci-nad-missing"
+      },
+      "count": 1
+    }
+  ],
+  "expectAbsent": {
+    "Workflow/oci-nad-missing-communica-46b83": "notCreated"
+  }
+}

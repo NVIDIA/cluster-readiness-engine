@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two NADs with no spec.config: Multus reads their configs from disk by name,
+# which NVCRE cannot see, so they are never equivalent and detection fails closed.
+namespace: default
+nads:
+  - namespace: ns-1
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+  - namespace: ns-2
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics

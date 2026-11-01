@@ -1,0 +1,35 @@
+{
+  "workflows": [
+    {
+      "workflow": "oci-cert-communication-nc-db169",
+      "replicatedJobs": [
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "node",
+          "networks": "network-operator/sriov-net,network-operator/sriov-net,network-operator/sriov-net,network-operator/sriov-net",
+          "resources": {
+            "node": [
+              "limits/nvidia.com/gpu=4",
+              "limits/nvidia.com/mlnxnics=4",
+              "requests/nvidia.com/gpu=4",
+              "requests/nvidia.com/mlnxnics=4"
+            ]
+          }
+        },
+        {
+          "dependency": "nccl-all-reduce-runtime",
+          "replicatedJob": "launcher",
+          "networks": "",
+          "resources": {
+            "node": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "stderr": "Warning: --platform oci does not match onprem, the platform detected on the target nodes, where the controller attaches no OCI RDMA network. Rendering the default network-operator/sriov-net.\n",
+  "nadLists": 0
+}

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nemotron5-8b includes the OCI fragment only in its L40S/L40, GB200 and GB300
+# blocks, so on OCI H100, which resolves mlnxPerNode 8, no NAD is listed even
+# though the cluster has none, and the Workflow is created.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-H100-80GB-HBM3
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "8"
+  - name: gpu-02
+    product: NVIDIA-H100-80GB-HBM3
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "8"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+expectLookup: false
+nads: []
