@@ -1,14 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Requests SR-IOV NICs and attaches the matching secondary networks. The whole
-# document is gated on mlnxPerNode: at 0 it renders empty, so neither the
-# resource nor the annotation is emitted and the call site's "dependencies:"
+# Requests RDMA NICs and attaches the matching secondary network once per NIC.
+# The whole document is gated on mlnxPerNode: at 0 it renders empty, so neither
+# the resource nor the annotation is emitted and the call site's "dependencies:"
 # key resolves to an empty list. The annotation must not outlive the resource:
-# attaching sriov-net without requesting nvidia.com/mlnxnics is not a valid
+# attaching the network without requesting nvidia.com/mlnxnics is not a valid
 # configuration. See ADR-087. An explicit networkAttachments list replaces this
 # default wiring entirely, resource and annotation together (issue #400), so the
 # document is also gated on its absence.
+#
+# The network is .OCISecondaryNetwork, never a fixed name. The controller
+# detects the NetworkAttachmentDefinition annotated
+# k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, and builds with a
+# sentinel first so it only looks when this document survives overlay
+# application; offline render names network-operator/sriov-net. See ADR-103.
 {{- if and (gt (int .MlnxPerNode) 0) (not .HasNetworkAttachments) }}
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
@@ -24,7 +30,7 @@
               template:
                 metadata:
                   annotations:
-                    k8s.v1.cni.cncf.io/networks: {{ repeat (int .MlnxPerNode) "network-operator/sriov-net," | trimSuffix "," }}
+                    k8s.v1.cni.cncf.io/networks: {{ repeat (int .MlnxPerNode) (printf "%s," .OCISecondaryNetwork) | trimSuffix "," }}
                 spec:
                   containers:
                   - name: node

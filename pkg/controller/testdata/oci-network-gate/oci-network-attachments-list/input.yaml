@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An explicit networkAttachments list gates the OCI fragment off (ADR-104),
+# so no entry carries the sentinel and detection never runs.
+platform: oci
+architectures: [l40s, gb300, h100]
+nodesPerJob: [2, 1, 4, 8, 16]
+networkAttachments:
+  - network: nvidia-network-operator/rdma-net
+    resourceName: nvidia.com/mlnxnics

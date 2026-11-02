@@ -1,0 +1,160 @@
+[
+  {
+    "arch": "a100",
+    "mlnxPerNode": 8,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "b200",
+    "mlnxPerNode": 8,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "b300",
+    "mlnxPerNode": 8,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "gb200",
+    "mlnxPerNode": 0,
+    "attaches": [],
+    "noAttachment": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "gb300",
+    "mlnxPerNode": 4,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4"
+    ]
+  },
+  {
+    "arch": "h100",
+    "mlnxPerNode": 8,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "h200",
+    "mlnxPerNode": 8,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  },
+  {
+    "arch": "l40",
+    "mlnxPerNode": 4,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4"
+    ]
+  },
+  {
+    "arch": "l40s",
+    "mlnxPerNode": 2,
+    "attaches": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ],
+    "noAttachment": [
+      "diagnostics/dcgm-level4"
+    ]
+  },
+  {
+    "arch": "rtxpro6000",
+    "mlnxPerNode": 0,
+    "attaches": [],
+    "noAttachment": [
+      "communication/nccl-all-gather",
+      "communication/nccl-all-reduce",
+      "communication/nccl-alltoall",
+      "communication/nccl-loopback",
+      "communication/nccl-loopback-nvswitch",
+      "diagnostics/dcgm-level4",
+      "training/nemotron5-56b",
+      "training/nemotron5-8b"
+    ]
+  }
+]

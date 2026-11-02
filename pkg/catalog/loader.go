@@ -6,6 +6,7 @@ package catalog
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -70,6 +71,28 @@ const (
 	// a3-megagpu-8g node, one per GPU. It matches --num_nics and
 	// NCCL_FASTRAK_IFNAME in the GCP H100 TCPXO templates.
 	GKETCPXONICsPerNode = 8
+
+	// DefaultOCISecondaryNetwork is the NetworkAttachmentDefinition offline
+	// render attaches on OCI, the name the catalog hardcoded before
+	// detection existed (ADR-103). The controller never renders it.
+	DefaultOCISecondaryNetwork = "network-operator/sriov-net"
+
+	// OCISecondaryNetworkUnresolved is the sentinel the controller and
+	// nvcrectl render build with first. It is not a valid <namespace>/<name>,
+	// so a Workflow that still carries it after overlay application attaches
+	// the OCI network and needs detection, and one that does not, does not
+	// attach it (ADR-103).
+	OCISecondaryNetworkUnresolved = "nvcre.unresolved/oci-secondary-network"
+
+	// OCIMlnxResourceName is the extended resource the OCI RDMA fragment
+	// requests, and the k8s.v1.cni.cncf.io/resourceName a NAD must carry to
+	// be detected as its network.
+	OCIMlnxResourceName = "nvidia.com/mlnxnics"
+
+	// NADResourceNameAnnotation is the NetworkAttachmentDefinition annotation
+	// Multus reads to pair an attachment with a device allocated for that
+	// extended resource. OCI RDMA network detection keys on it.
+	NADResourceNameAnnotation = "k8s.v1.cni.cncf.io/resourceName"
 )
 
 // DefaultGKETCPXONetworks returns the GKE Network names the GCP H100 TCPXO
@@ -81,6 +104,19 @@ func DefaultGKETCPXONetworks() []string {
 		names[i] = fmt.Sprintf("gpu-nic%d", i)
 	}
 	return names
+}
+
+// SpecReferencesNetwork reports whether name appears anywhere in spec,
+// overrides included. Callers pass OCISecondaryNetworkUnresolved after overlay
+// application to learn whether the resolved Workflow attaches the OCI RDMA
+// network (ADR-103), so the render, not its inputs, decides whether detection
+// runs.
+func SpecReferencesNetwork(spec *nvcrev1alpha1.WorkflowSpec, name string) (bool, error) {
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return false, fmt.Errorf("marshaling workflow spec: %w", err)
+	}
+	return bytes.Contains(raw, []byte(name)), nil
 }
 
 //go:embed all:entries
@@ -132,6 +168,11 @@ type TemplateData struct {
 	// explicitly. Fragments that render a default NIC wiring the list
 	// replaces wrap it in {{- if not .HasNetworkAttachments }}.
 	HasNetworkAttachments bool
+
+	// OCISecondaryNetwork is the <namespace>/<name> the OCI RDMA fragment
+	// attaches once per NIC (ADR-103), copied from BuildConfig as is.
+	// Templates use: {{ repeat (int .MlnxPerNode) (printf "%s," .OCISecondaryNetwork) }}
+	OCISecondaryNetwork string
 
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order (always
@@ -452,6 +493,14 @@ func loadAndRegisterEntries() error {
 						"%s/%s: GPUArchitecture is required but was not provided",
 						domain, variant)
 				}
+				// The OCI RDMA fragment renders on every target, so a caller
+				// that forgot to name its network would otherwise attach an
+				// empty name (ADR-103).
+				if config.MlnxPerNode > 0 && config.OCISecondaryNetwork == "" {
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf(
+						"%s/%s: OCISecondaryNetwork is required when MlnxPerNode is above 0",
+						domain, variant)
+				}
 
 				configArch := ConfigArch(config.GPUArchitecture)
 
@@ -502,6 +551,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		NicResourceName:            config.NicResourceName,
 		RDMADeviceAccess:           config.RDMADeviceAccess,
 		HasNetworkAttachments:      len(config.NetworkAttachments) > 0,
+		OCISecondaryNetwork:        config.OCISecondaryNetwork,
 		GKETCPXONetworks:           config.GKETCPXONetworks,
 		EnableMNNVL:                config.EnableMNNVL,
 		EnableCheckpoint:           config.EnableCheckpoint,

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: oci
+gpuArch: l40s
+dryRun: true
+namespace: default
+listForbidden: true
+nads: []

@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The first category has succeeded and the second, nccl-all-reduce, attaches
+# the RDMA network on a cluster with no NAD for it: creating the later
+# category's Workflow fails the Certification with
+# SecondaryNetworkDetectionFailed and a Warning event, as for the first.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  categoryStatuses:
+    - domain: diagnostics
+      variant: dcgm-level4
+      status: Succeeded
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Pending
+expectLookup: true
+nads: []

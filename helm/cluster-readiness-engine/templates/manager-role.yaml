@@ -54,6 +54,15 @@ rules:
   - selfsubjectaccessreviews
   verbs:
   - create
+# Read-only: OCI RDMA network detection lists NetworkAttachmentDefinitions
+# to find the one annotated for nvidia.com/mlnxnics (ADR-103).
+- apiGroups:
+  - k8s.cni.cncf.io
+  resources:
+  - network-attachment-definitions
+  verbs:
+  - get
+  - list
 - apiGroups:
   - nvcre.nvidia.com
   resources:

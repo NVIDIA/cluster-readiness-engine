@@ -1,7 +1,8 @@
 # The nvcre-manager-role rules shipped before ADR-092 split them, with the
 # PVC update grant from #463. The golden is the cluster-mode union of
 # nvcre-manager-role and nvcre-run-role diffed against this, so the default
-# mode cannot gain or lose a permission ADR-092 does not name.
+# mode cannot gain or lose a permission ADR-092, or a later ADR such as
+# ADR-103, does not name.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

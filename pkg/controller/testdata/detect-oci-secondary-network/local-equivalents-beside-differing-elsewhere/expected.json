@@ -1,0 +1,7 @@
+{
+  "name": "certs/rdma-a",
+  "skipped": [
+    "certs/rdma-b"
+  ],
+  "notice": "OCI RDMA network detection attached certs/rdma-a; equivalent NetworkAttachmentDefinitions for nvidia.com/mlnxnics skipped: certs/rdma-b."
+}

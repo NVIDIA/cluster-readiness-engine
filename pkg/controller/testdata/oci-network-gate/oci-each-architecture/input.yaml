@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every catalog entry on OCI, for every architecture in gpu-defaults.yaml (the
+# test enumerates them, so a new one appears here without editing this file).
+# mlnxPerNode resolves above 0 for most architectures, but only the entries
+# whose OCI override blocks include deps/oci-mlnxnics-comm.yaml for that
+# architecture attach the network: dcgm-level4 never does, and nemotron only
+# for L40S, L40 and GB300 (its GB200 block renders empty at mlnxPerNode 0).
+platform: oci
+nodesPerJob: [2, 1, 4, 8, 16]

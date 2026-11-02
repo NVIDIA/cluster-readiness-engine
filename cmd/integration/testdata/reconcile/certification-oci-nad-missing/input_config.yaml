@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-103: nccl-all-reduce on OCI L40S attaches the RDMA network, and the
+# cluster has no NetworkAttachmentDefinition for nvidia.com/mlnxnics. The
+# Certification fails with SecondaryNetworkDetectionFailed before any Workflow
+# exists, instead of producing pods that start without their RDMA interfaces.
+# Detection lists NADs cluster-wide, so this relies on the earlier OCI cases
+# deleting theirs at cleanup, which they do.
+waitFor:
+  kind: Certification
+  name: oci-nad-missing
+  namespace: default
+  condition: Failed
+  reason: SecondaryNetworkDetectionFailed
+collect:
+  - kind: Certification
+    name: oci-nad-missing
+    namespace: default
+expectAbsent:
+  - kind: Workflow
+    name: oci-nad-missing-communica-46b83
+    namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: oci-nad-missing
+    namespace: default
+    expect:
+      - {type: Warning, reason: SecondaryNetworkDetectionFailed}

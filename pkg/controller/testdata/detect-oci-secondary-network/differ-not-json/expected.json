@@ -1,0 +1,4 @@
+{
+  "error": "OCI RDMA network detection found 2 NetworkAttachmentDefinitions for nvidia.com/mlnxnics across namespaces that are not equivalent. NVCRE does not choose between them: list the network to attach explicitly with networkAttachments, or remove the ones that should not be used. Candidates: ns-1/rdma-net, ns-2/rdma-net. The spec.config of ns-2/rdma-net is empty or not a JSON object, so it cannot be compared.",
+  "terminal": true
+}

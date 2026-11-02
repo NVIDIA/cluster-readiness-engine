@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Several equivalent NADs in the workload namespace beside a differing one
+# elsewhere: only the local ones are candidates, and the first in sorted order
+# is attached with the rest named as skipped.
+namespace: certs
+nads:
+  - namespace: certs
+    name: rdma-b
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-b", "type": "host-device", "ipam": {}}'
+  - namespace: certs
+    name: rdma-a
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-a", "type": "host-device", "ipam": {}}'
+  - namespace: nvidia-network-operator
+    name: rdma-net
+    annotations:
+      k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics
+    config: '{"cniVersion": "0.3.1", "name": "rdma-net", "type": "sriov", "ipam": {"type": "whereabouts", "range": "192.168.0.0/16"}}'

@@ -98,7 +98,7 @@ func TestCertificationRenderMlnxNIC(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "")
+		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "", catalog.DefaultOCISecondaryNetwork)
 		if err != nil {
 			return err
 		}

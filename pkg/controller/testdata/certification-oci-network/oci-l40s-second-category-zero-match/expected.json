@@ -1,0 +1,15 @@
+{
+  "requeue": false,
+  "nadLists": 1,
+  "conditions": [
+    {
+      "message": "communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, and the cluster has no NetworkAttachmentDefinitions at all. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088).",
+      "reason": "SecondaryNetworkDetectionFailed",
+      "type": "Failed"
+    }
+  ],
+  "events": [
+    "Warning SecondaryNetworkDetectionFailed communication/nccl-all-reduce: OCI RDMA network detection found no NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, and the cluster has no NetworkAttachmentDefinitions at all. Create a NetworkAttachmentDefinition annotated k8s.v1.cni.cncf.io/resourceName: nvidia.com/mlnxnics, list the networks explicitly with networkAttachments, or set mlnxPerNode: 0, which certifies without RDMA NICs unless rdmaDeviceAccess: hostPath is also set on a cluster that exposes /dev/infiniband without a device plugin (ADR-088)."
+  ],
+  "workflows": []
+}

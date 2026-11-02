@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The NetworkAttachmentDefinition CRD was removed after the client resolved
+# its API, so the List gets NotFound rather than NoMatch: terminal all the same.
+namespace: default
+listError: notFound
+nads: []

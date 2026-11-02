@@ -99,7 +99,7 @@
                 "kind": "TrainingRuntime"
               },
               "trainer": {
-                "image": "public.ecr.aws/hpc-cloud/nccl-tests:latest",
+                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0",
                 "command": [
                   "/usr/bin/env",
                   "-u",
@@ -296,7 +296,7 @@
                                     "value": "1"
                                   }
                                 ],
-                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:latest",
+                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0",
                                 "name": "node",
                                 "readinessProbe": {
                                   "exec": {
@@ -392,7 +392,7 @@
                           "spec": {
                             "containers": [
                               {
-                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:latest",
+                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0",
                                 "name": "node",
                                 "resources": {
                                   "limits": {
