@@ -201,25 +201,32 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	if len(certification.Spec.Categories) == 0 {
 		return ctrl.Result{}, fmt.Errorf("certification has no categories")
 	}
-	// Detect the OCI RDMA network for every category before the first Workflow
-	// exists (ADR-103). Each category's creation detects again, to catch a NAD
-	// that changes during the run. Other errors are left to that creation.
-	if err := r.preflightOCISecondaryNetwork(ctx, certification); err != nil {
-		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
-			if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
-				log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
-				return ctrl.Result{}, statusErr
-			}
-			return ctrl.Result{}, nil
-		}
-		if _, ok := errors.AsType[*retryableCreateError](err); ok {
-			log.Info("OCI RDMA network detection failed for a retryable reason, will retry", "cause", err.Error())
-			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
-		}
-		log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
-	}
 	firstCategory := certification.Spec.Categories[0]
-	workflowName, err := r.createWorkflowForCategory(ctx, certification, firstCategory)
+	// A Workflow this Certification already created for the first category
+	// means an earlier pass got past every check below and its status write
+	// was lost (issue #566). Adopt it before running them again.
+	workflowName, err := r.adoptExistingWorkflow(ctx, certification, firstCategory)
+	if err == nil && workflowName == "" {
+		// Detect the OCI RDMA network for every category before the first
+		// Workflow exists (ADR-103). Each category's creation detects again,
+		// to catch a NAD that changes during the run. Other errors are left
+		// to that creation.
+		if err := r.preflightOCISecondaryNetwork(ctx, certification); err != nil {
+			if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+				if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
+					log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
+					return ctrl.Result{}, statusErr
+				}
+				return ctrl.Result{}, nil
+			}
+			if _, ok := errors.AsType[*retryableCreateError](err); ok {
+				log.Info("OCI RDMA network detection failed for a retryable reason, will retry", "cause", err.Error())
+				return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+			}
+			log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
+		}
+		workflowName, err = r.createWorkflowForCategory(ctx, certification, firstCategory)
+	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
@@ -337,7 +344,12 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 		return ctrl.Result{}, fmt.Errorf("category index %d out of range (spec has %d categories)", activeIdx, len(certification.Spec.Categories))
 	}
 	category := certification.Spec.Categories[activeIdx]
-	workflowName, err := r.createWorkflowForCategory(ctx, certification, category)
+	// As for the first category: adopt a Workflow an earlier pass created
+	// before its checks run again (issue #566).
+	workflowName, err := r.adoptExistingWorkflow(ctx, certification, category)
+	if err == nil && workflowName == "" {
+		workflowName, err = r.createWorkflowForCategory(ctx, certification, category)
+	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", category.Domain, "variant", category.Variant)
@@ -512,6 +524,46 @@ func (r *CertificationReconciler) finalizeCertification(ctx context.Context, cer
 }
 
 // DefaultEnableMNNVL is defined in helpers.go.
+
+// adoptExistingWorkflow returns the name of the category's Workflow when it
+// is already on the API server and this Certification controls it, and ""
+// when it is not.
+//
+// Workflow creation runs again for a category whose Workflow already exists
+// when the status write after its Create is lost: the write fails, the next
+// reconcile reads a cached Certification that predates it (the Create's own
+// Owns(Workflow) event requeues it, so this is routine), or the controller
+// restarts in between. createWorkflowForCategory adopts such a Workflow only
+// once its Create reports AlreadyExists, after node discovery, GPU
+// architecture detection, the capacity checks and OCI RDMA network
+// detection have all run again. Any of them can fail terminally if the
+// cluster changed in between, and the Certification was then marked Failed
+// while its Workflow kept running, with no workflowRef for
+// recoverIfWorkflowStillRunning to recover from (issue #566).
+//
+// The Workflow name is deterministic, so it is read here first, live: the
+// cache can lag the Create by exactly this window. The existing Workflow's
+// spec is not rebuilt or compared, as in the AlreadyExists branch. A holder
+// this Certification does not control is left to createWorkflowForCategory,
+// which reports it. A failed read is retryable.
+func (r *CertificationReconciler) adoptExistingWorkflow(ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) (string, error) {
+	workflowName := r.getWorkflowName(certification, category)
+	existing := &nvcrev1alpha1.Workflow{}
+	if err := r.workflowReader().Get(ctx, client.ObjectKey{Namespace: certification.Namespace, Name: workflowName}, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", &retryableCreateError{
+			err: fmt.Errorf("failed to check for an existing Workflow %s: %w", workflowName, err),
+		}
+	}
+	if !metav1.IsControlledBy(existing, certification) {
+		return "", nil
+	}
+	logf.FromContext(ctx).Info("Workflow already exists and is controlled by this Certification, adopting it",
+		"name", workflowName, "domain", category.Domain, "variant", category.Variant)
+	return workflowName, nil
+}
 
 // createWorkflowForCategory creates a single Workflow for the given category.
 // It performs full resolution: discovers nodes, detects platform/GPU, resolves

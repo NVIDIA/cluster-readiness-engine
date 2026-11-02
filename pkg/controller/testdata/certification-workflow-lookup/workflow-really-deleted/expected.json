@@ -29,7 +29,7 @@
       "workflowsInCluster": 1
     }
   ],
-  "apiReads": 1,
+  "apiReads": 2,
   "conditions": [
     {
       "type": "InProgress",
