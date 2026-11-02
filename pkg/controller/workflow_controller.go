@@ -3639,7 +3639,10 @@ func (r *WorkflowReconciler) getJobRequeueInterval() time.Duration {
 
 // captureTimeoutLog captures tail logs from running pods before a timed-out workload
 // is deleted. For MPI tests, targets the launcher pod (which has the actual NCCL
-// output). Falls back to the first running node pod for non-MPI workloads.
+// output), preferring a running one to one that already finished. Falls back to
+// a node pod, a running one first, when no launcher ran. The record's reason is
+// Timeout, which describes the Job; its exit code is the selected container's
+// (see timeoutContainer).
 // Best-effort: errors are logged, not returned.
 func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1alpha1.Job) {
 	log := logf.FromContext(ctx)
@@ -3647,29 +3650,49 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		return
 	}
 
-	// The Job's workload pods. Launchers carry no job label, so the launcher
-	// branch below cannot match yet (ADR-102, Notes).
+	// The Job's workload pods. They carry the job label, which the MPI
+	// launcher does not, so the launchers are listed by their JobSet labels
+	// and put first (issue #546).
 	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
 	if err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
 	}
+	launchers, err := launcherPods(ctx, r.Client, r.APIReader, job)
+	if err != nil {
+		log.V(1).Info("Failed to list launcher pods for timeout log capture", "error", err)
+		launchers = nil
+	}
+	pods = append(launchers, pods...)
 
-	// Find the best pod to capture logs from:
-	// 1. Prefer the launcher pod (MPI tests — has the actual test output)
-	// 2. Fall back to the first running node pod
+	// Find the best pod to capture logs from, the first one in this order:
+	// 1. a running launcher (MPI tests, it has the actual test output)
+	// 2. a launcher that ran: one that failed or succeeded just before the
+	//    timeout still holds the diagnosis, which a worker's sshd output does
+	//    not (issue #546)
+	// 3. a running node pod
+	// 4. a node pod that ran
 	var targetPod *corev1.Pod
+	targetRank := 0
 	for i := range pods {
 		pod := &pods[i]
-		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
+		running := pod.Status.Phase == corev1.PodRunning
+		if !running && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			continue
 		}
-		if pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer" {
-			targetPod = pod
-			break // launcher found, use it
+		isLauncher := i < len(launchers) || pod.Labels["trainer.kubeflow.org/trainjob-ancestor-step"] == "trainer"
+		rank := 1
+		if !isLauncher {
+			rank += 2
 		}
-		if targetPod == nil {
-			targetPod = pod
+		if !running {
+			rank++
+		}
+		if targetPod == nil || rank < targetRank {
+			targetPod, targetRank = pod, rank
+		}
+		if targetRank == 1 {
+			break // running launcher found, use it
 		}
 	}
 	if targetPod == nil {
@@ -3677,12 +3700,16 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 		return
 	}
 
-	// Find the main container name (prefer "node", fall back to first)
-	containerName := ""
-	for _, c := range targetPod.Spec.Containers {
-		if containerName == "" || c.Name == labelNode {
-			containerName = c.Name
-		}
+	containerName, exitCode := timeoutContainer(targetPod)
+	// A record already made, such as a launcher failure launcherFailureLog
+	// read before the timeout, is kept if this pod's log cannot be opened,
+	// rather than replaced by a record with no tail.
+	prior := job.Status.FailureLog
+	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
+		PodName:  targetPod.Name,
+		NodeName: targetPod.Spec.NodeName,
+		ExitCode: exitCode,
+		Reason:   "Timeout",
 	}
 
 	tailLines := int64(failureLogTailLines)
@@ -3694,10 +3721,8 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
-		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
-			PodName:  targetPod.Name,
-			NodeName: targetPod.Spec.NodeName,
-			Reason:   "Timeout",
+		if prior != nil {
+			job.Status.FailureLog = prior
 		}
 		return
 	}
@@ -3707,14 +3732,39 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	if err != nil {
 		log.V(1).Info("Failed to read pod logs", "pod", targetPod.Name, "error", err)
 	}
+	job.Status.FailureLog.Tail = tail
+	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName,
+		"exitCode", exitCode, "bytes", len(tail))
+}
 
-	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
-		PodName:  targetPod.Name,
-		NodeName: targetPod.Spec.NodeName,
-		Reason:   "Timeout",
-		Tail:     tail,
+// timeoutContainer returns the container of the pod captureTimeoutLog selected
+// whose log the timeout record carries, and that container's exit code.
+//
+// A pod that already finished is read as a failure record is: the container
+// failedContainerOf picks, so a launcher that exited 1 is recorded with exit
+// code 1 rather than 0, and one that failed in an init container (the KAI
+// launcher wait) is read there. Otherwise it is the main container, the one
+// named "node" or else the first, with its exit code if it has terminated. A
+// running pod's main container has not, so its record keeps exit code 0, as
+// before.
+func timeoutContainer(pod *corev1.Pod) (string, int32) {
+	if pod.Status.Phase != corev1.PodRunning {
+		if _, cs := failedContainerOf([]corev1.Pod{*pod}); cs != nil {
+			return cs.Name, cs.State.Terminated.ExitCode
+		}
 	}
-	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName, "bytes", len(tail))
+	name := ""
+	for _, c := range pod.Spec.Containers {
+		if name == "" || c.Name == labelNode {
+			name = c.Name
+		}
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name == name && cs.State.Terminated != nil {
+			return name, cs.State.Terminated.ExitCode
+		}
+	}
+	return name, 0
 }
 
 // handleDeletion handles the cleanup when a Workflow is being deleted.
