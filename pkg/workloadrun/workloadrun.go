@@ -1182,7 +1182,7 @@ Check its status:
 	// observes a terminal WorkloadRun. The report shows the freshest state,
 	// while the nonzero exit consistently indicates that the wait deadline elapsed.
 	if writeErr != nil {
-			return errors.Join(waitErr, writeErr)
+		return errors.Join(waitErr, writeErr)
 	}
 	return waitErr
 }
