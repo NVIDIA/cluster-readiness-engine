@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
+
+	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podread"
@@ -51,6 +54,9 @@ func TestJobStallWorkersExited(t *testing.T) {
 				// BeforeWorkload creates the pod before the current workload,
 				// as a pod of the workload a checkpoint restart replaced is.
 				BeforeWorkload bool `yaml:"beforeWorkload"`
+				// Index is the pod's completion index. It defaults to the
+				// pod's position in the list.
+				Index *int `yaml:"index"`
 			} `yaml:"pods"`
 			// MaxRestarts, when set, gives the Job a checkpoint restart budget
 			// and the measurement a saved checkpoint, so a stall restarts the
@@ -66,6 +72,8 @@ func TestJobStallWorkersExited(t *testing.T) {
 		now := time.Now()
 
 		job := newLookupJob(true)
+		// The TrainJob asks for two workers, indexes 0 and 1.
+		job.Spec.Workload.TrainJob.Trainer = &trainerv1alpha1.Trainer{NumNodes: new(int32(2))}
 		multiplier := int32(3)
 		job.Spec.StallMultiplier = &multiplier
 		start := metav1.NewTime(now.Add(-2 * time.Hour))
@@ -99,14 +107,21 @@ func TestJobStallWorkersExited(t *testing.T) {
 		}
 
 		objects := []client.Object{job.DeepCopy(), tj, gm}
-		for _, wp := range input.Pods {
+		for i, wp := range input.Pods {
+			index := i
+			if wp.Index != nil {
+				index = *wp.Index
+			}
 			created := now.Add(-time.Hour)
 			if wp.BeforeWorkload {
 				created = now.Add(-3 * time.Hour)
 			}
 			pod := &corev1.Pod{
 				Name: wp.Name, Namespace: testNS,
-				Labels:            map[string]string{podread.JobLabel: testJobName},
+				Labels: map[string]string{
+					podread.JobLabel:        testJobName,
+					jobCompletionIndexLabel: strconv.Itoa(index),
+				},
 				CreationTimestamp: metav1.NewTime(created),
 			}
 			pod.Spec.NodeName = "node-" + wp.Name

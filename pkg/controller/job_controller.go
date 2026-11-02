@@ -896,7 +896,7 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		// exited 0 are not stalled: the workload finished and the TrainJob
 		// has yet to report it (issue #575).
 		if stalled, stallMsg := r.checkStallTimeout(ctx, job, workloadStart); stalled &&
-			!r.workersExitedCleanly(ctx, job, obj) {
+			!r.workersExitedCleanly(ctx, job, obj, adapter) {
 			if r.shouldRestart(ctx, job) {
 				return r.restartFromCheckpoint(ctx, job, ref, adapter)
 			}
@@ -983,6 +983,10 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 	return false
 }
 
+// jobCompletionIndexLabel is the label the Job controller puts on each pod of
+// an Indexed Job, holding the pod's completion index.
+const jobCompletionIndexLabel = "batch.kubernetes.io/job-completion-index"
+
 // workersExitedCleanly reports whether every worker pod of the current
 // workload has exited successfully (issue #575). A training framework stops
 // logging steps once it reaches its configured exit, then saves its exit
@@ -999,14 +1003,26 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 // current workload belong to the one a checkpoint restart replaced under the
 // same name, and are left out, as in launcherPods. No pods, or a failed read,
 // is not evidence that the run finished, so both return false.
-func (r *JobReconciler) workersExitedCleanly(ctx context.Context, job *nvcrev1alpha1.Job, current client.Object) bool {
+//
+// Every worker index the workload asks for must have a Succeeded pod: a
+// sibling that exited 0 says nothing about an index whose pod is not there
+// yet, so a missing index, or a node count the adapter cannot report, keeps
+// the stall verdict. A worker index is the pod's
+// batch.kubernetes.io/job-completion-index label; a pod without one counts
+// under its own name.
+func (r *JobReconciler) workersExitedCleanly(ctx context.Context, job *nvcrev1alpha1.Job, current client.Object, adapter workload.Adapter) bool {
+	want, err := adapter.NodesRequired(&job.Spec.Workload)
+	if err != nil || want < 1 {
+		logf.FromContext(ctx).V(1).Info("Worker count unknown for the worker exit check", "error", err)
+		return false
+	}
 	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
 	if err != nil {
 		logf.FromContext(ctx).V(1).Info("Failed to list pods for the worker exit check", "error", err)
 		return false
 	}
 	created := current.GetCreationTimestamp()
-	found := false
+	exited := make(map[string]struct{}, want)
 	for i := range pods {
 		if pods[i].CreationTimestamp.Before(&created) {
 			continue
@@ -1014,12 +1030,17 @@ func (r *JobReconciler) workersExitedCleanly(ctx context.Context, job *nvcrev1al
 		if pods[i].Status.Phase != corev1.PodSucceeded {
 			return false
 		}
-		found = true
+		idx, ok := pods[i].Labels[jobCompletionIndexLabel]
+		if !ok {
+			idx = "pod/" + pods[i].Name
+		}
+		exited[idx] = struct{}{}
 	}
-	if found {
-		logf.FromContext(ctx).Info("Stall budget exceeded after every worker exited successfully; waiting for the workload to report completion")
+	if len(exited) < want {
+		return false
 	}
-	return found
+	logf.FromContext(ctx).Info("Stall budget exceeded after every worker exited successfully; waiting for the workload to report completion")
+	return true
 }
 
 // checkStallTimeout checks if the workload has stalled based on the configured
