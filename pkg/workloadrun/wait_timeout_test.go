@@ -306,7 +306,7 @@ func TestFinishWorkloadRunWaitReturnsResultsWriteError(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
 		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
 		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
-			Type: nvcrev1alpha1.WorkloadRunSucceeded,
+			Type:   nvcrev1alpha1.WorkloadRunSucceeded,
 			Status: metav1.ConditionTrue,
 		}},
 			WorkflowRef: &nvcrev1alpha1.WorkflowReference{Name: testWorkloadRunTimeoutRun + "-wf"},
