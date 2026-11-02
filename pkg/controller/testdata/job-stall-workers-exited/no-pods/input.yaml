@@ -1,0 +1,3 @@
+# No worker pods are visible. Nothing shows the run finished, so the stall
+# verdict stands.
+pods: []

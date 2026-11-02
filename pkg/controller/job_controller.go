@@ -892,8 +892,11 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 			workloadStart = firstObservedRunning
 		}
 
-		// Check for stall before marking as running.
-		if stalled, stallMsg := r.checkStallTimeout(ctx, job, workloadStart); stalled {
+		// Check for stall before marking as running. Workers that have all
+		// exited 0 are not stalled: the workload finished and the TrainJob
+		// has yet to report it (issue #575).
+		if stalled, stallMsg := r.checkStallTimeout(ctx, job, workloadStart); stalled &&
+			!r.workersExitedCleanly(ctx, job, obj) {
 			if r.shouldRestart(ctx, job) {
 				return r.restartFromCheckpoint(ctx, job, ref, adapter)
 			}
@@ -978,6 +981,45 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 		}
 	}
 	return false
+}
+
+// workersExitedCleanly reports whether every worker pod of the current
+// workload has exited successfully (issue #575). A training framework stops
+// logging steps once it reaches its configured exit, then saves its exit
+// checkpoint and exits 0, and the workload reports completion some time after
+// that. Until it does, the adapter reports the workload as running and the
+// stall budget keeps counting from the last logged step. A stall verdict over
+// workers that have all exited 0 would fail a finished run, so the caller
+// waits for the workload's own verdict instead. timeoutPerJob still bounds
+// the wait.
+//
+// The pods are the Job's workers, read from the cache: every one carries the
+// job label. An MPI launcher does not, so it is not read here; a failed
+// launcher fails the workload, which reports it. Pods created before the
+// current workload belong to the one a checkpoint restart replaced under the
+// same name, and are left out, as in launcherPods. No pods, or a failed read,
+// is not evidence that the run finished, so both return false.
+func (r *JobReconciler) workersExitedCleanly(ctx context.Context, job *nvcrev1alpha1.Job, current client.Object) bool {
+	pods, err := newPodReader(r.Client, r.APIReader).JobPods(ctx, job.Namespace, job.Name)
+	if err != nil {
+		logf.FromContext(ctx).V(1).Info("Failed to list pods for the worker exit check", "error", err)
+		return false
+	}
+	created := current.GetCreationTimestamp()
+	found := false
+	for i := range pods {
+		if pods[i].CreationTimestamp.Before(&created) {
+			continue
+		}
+		if pods[i].Status.Phase != corev1.PodSucceeded {
+			return false
+		}
+		found = true
+	}
+	if found {
+		logf.FromContext(ctx).Info("Stall budget exceeded after every worker exited successfully; waiting for the workload to report completion")
+	}
+	return found
 }
 
 // checkStallTimeout checks if the workload has stalled based on the configured

@@ -1,0 +1,7 @@
+# One worker exited 1. The run did not finish cleanly, so the stall verdict
+# stands.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Failed
