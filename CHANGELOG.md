@@ -36,6 +36,10 @@ followed them.
   annotation, or a hand-made `network-operator/sriov-net` that differs from the
   platform's own, now fails with a message saying what to do
   ([ADR-103](docs/designs/103-oci-rdma-network-detection.md), #542).
+- `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
+  it was asked for, as `workloadrun report` already did. It used to print a
+    warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
+    without `--wait`, which used to exit 0 having written nothing (#564).
 
 ### Fixed
 
