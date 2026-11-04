@@ -106,7 +106,8 @@ count.
 
 **NIC resource name on Azure, Forge and TogetherAI.** On these platforms the
 catalog requests `mlnxPerNode` RDMA NICs per worker under `nvidia.com/mlnxnics`,
-the name the Mellanox host-device plugin advertises. A cluster whose device
+the name the Mellanox host-device plugin advertises (on Forge, only the L40 NCCL
+collectives request NICs, and a WorkloadRun requests none). A cluster whose device
 plugin advertises its NICs under another name, such as AKS with the NVIDIA
 Network Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), sets
 `nicResourceName` to that name, and every category that requests NICs on these

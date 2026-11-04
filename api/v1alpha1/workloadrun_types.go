@@ -244,8 +244,8 @@ type WorkloadRunSpec struct {
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
-	// event explaining what was found. On Azure, Forge and TogetherAI, whose
-	// catalogs always request a NIC resource, the field replaces the default
+	// event explaining what was found. On Azure and TogetherAI, whose platform
+	// overrides request a NIC resource, the field replaces the default
 	// nvidia.com/mlnxnics name (for example rdma/hca_shared_devices_a from
 	// the Network Operator's shared RDMA device plugin); the name is not
 	// auto-detected there. Offline nvcrectl render (without

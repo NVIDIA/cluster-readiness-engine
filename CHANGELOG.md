@@ -17,8 +17,8 @@ followed them.
 
 ### Fixed
 
-- On Azure, Forge and TogetherAI, `nicResourceName` now sets the NIC resource the
-  catalog requests, for Certifications and WorkloadRuns alike, so a cluster that
+- `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
+  Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
   advertises its RDMA NICs under another name, such as AKS with the NVIDIA Network
   Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), no longer leaves
   worker pods Pending on `nvidia.com/mlnxnics`. Without the field, these platforms
