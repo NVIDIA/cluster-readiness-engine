@@ -1,6 +1,6 @@
 # ADR-103: Detect the OCI RDMA NetworkAttachmentDefinition Instead of Assuming `network-operator/sriov-net`
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
