@@ -52,8 +52,9 @@ type BuildConfig struct {
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// requested by the on-prem GB200/GB300 and HGX B200/B300 templates (e.g., "rdma/ib"). Empty
-	// means the templates omit the NIC resource block. The per-container count
-	// comes from MlnxPerNode.
+	// means the templates omit the NIC resource block. The Azure, Forge and
+	// TogetherAI templates always request a NIC resource and use this name when
+	// it is set, else nvidia.com/mlnxnics. The per-container count comes from MlnxPerNode.
 	NicResourceName string
 
 	// RDMADeviceAccess selects how workload containers reach the host's RDMA

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName names the resource; mlnxPerNode still decides whether one is
+# requested. At 0 the guard drops the resources key exactly as it does for the
+# default name, so the base runtime GPU request is all that remains.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
