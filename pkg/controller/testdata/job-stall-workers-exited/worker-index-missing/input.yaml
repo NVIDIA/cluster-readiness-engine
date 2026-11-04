@@ -1,0 +1,6 @@
+# The TrainJob asks for two workers. Worker 0 exited 0, and worker 1 has no
+# pod yet. A sibling's clean exit says nothing about the missing worker, so
+# the stall verdict stands.
+pods:
+  - name: worker-0
+    phase: Succeeded

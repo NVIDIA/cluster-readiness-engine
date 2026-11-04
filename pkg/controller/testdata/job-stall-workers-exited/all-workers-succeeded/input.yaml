@@ -1,0 +1,8 @@
+# Both workers exited 0 after the exit checkpoint save, and the TrainJob has
+# not reported Complete yet. The stall budget has run out, but the Job keeps
+# waiting for the TrainJob's verdict instead of failing as WorkloadStalled.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Succeeded
