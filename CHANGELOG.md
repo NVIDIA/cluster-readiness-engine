@@ -15,6 +15,8 @@ followed them.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-02
+
 ### Changed
 
 - On OCI, the controller no longer attaches workload pods to a hard-coded
@@ -37,6 +39,24 @@ followed them.
 
 ### Fixed
 
+- The Certification CRD installs on Kubernetes 1.29 through 1.33. Every earlier release
+  shipped one that those API servers refuse (`estimated rule cost exceeds budget`), so
+  `nvcrectl setup init` stopped at `[helm] apply CRD certifications.nvcre.nvidia.com`
+  and a `helm install` of either chart failed the same way, although the install guide
+  said 1.29+. Through 1.33 the API server costs any CEL rule on a `resource.Quantity`
+  as a 3 MiB string whatever its `maxLength`, so no CEL rule reads a quantity any more:
+  `cpu` and `memory` carry a `Pattern` instead, and the controller rejects a request
+  above its limit. `make test-crd-compat` now installs every chart CRD on each
+  Kubernetes minor from 1.29 up
+  ([ADR-105](docs/designs/105-kubernetes-floor-and-crd-cel-cost-budget.md), #533).
+- A Job that times out records the MPI launcher's log in `failureLog`. It used to
+  record the first running worker's sshd output, with no NCCL in it, because only
+  worker pods carry the `nvcre.nvidia.com/job` label. A running launcher is preferred;
+  workloads without a launcher still record their first running node pod (#546).
+- The AWS GB300 NCCL categories pin `public.ecr.aws/hpc-cloud/nccl-tests` to a versioned
+  tag instead of `:latest`, so a moved upstream tag no longer changes what a
+  certification runs. The worker image pull policy follows the tag, from `Always` to
+  `IfNotPresent` (#573).
 - `nvcrectl certification render --dry-run` without `--platform` now takes GPU and NIC
   counts from the platform it detects on the target nodes, as the controller does.
   Before, OCI L40S, GB200 and GB300, and Nscale GB300 previewed the architecture
@@ -953,6 +973,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.10.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.10.0
 [0.9.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.9.0
 [0.8.2]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.2
 [0.8.1]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.1

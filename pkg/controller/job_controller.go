@@ -1609,7 +1609,7 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
 	}
-	launchers, err := r.launcherPods(ctx, job)
+	launchers, err := launcherPods(ctx, r.Client, r.APIReader, job)
 	if err != nil {
 		log.V(1).Info("Failed to list launcher pods for failure log capture", "error", err)
 		return
@@ -1648,10 +1648,10 @@ const (
 // launcherPods lists the MPI launcher pods of the Job's workload. They need a
 // lookup of their own: the nvcre.nvidia.com/job label is injected only into
 // the worker replicatedJob (see workerTargetJob in pkg/workload), so the
-// launcher, whose log is the diagnosis when an MPI run fails, is not among the
-// pods that label selects, and the manager's cache does not hold it. They are
-// read live through podread.WorkloadPods (ADR-102). The launcher pod cache
-// backs only the watch.
+// launcher, whose log is the diagnosis when an MPI run fails or times out, is
+// not among the pods that label selects, and the manager's cache does not hold
+// it. They are read live through podread.WorkloadPods (ADR-102). The launcher
+// pod cache backs only the watch.
 //
 // Only pods of the current workload are returned. restartFromCheckpoint
 // deletes the workload and creates its replacement under the same name, and
@@ -1671,7 +1671,7 @@ const (
 // evicted or preempted launcher did not decide the run, and recording it would
 // keep it as the failure cause if the replacement later failed: neither
 // launcherFailureLog nor setJobFailed overwrites a record already present.
-func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job) ([]corev1.Pod, error) {
+func launcherPods(ctx context.Context, cached, live client.Reader, job *nvcrev1alpha1.Job) ([]corev1.Pod, error) {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
 		return nil, nil
@@ -1680,7 +1680,7 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 	if ns == "" {
 		ns = job.Namespace
 	}
-	launchers, err := newPodReader(r.Client, r.APIReader).WorkloadPods(ctx, ns, ref.Name, workload.LauncherJobName)
+	launchers, err := newPodReader(cached, live).WorkloadPods(ctx, ns, ref.Name, workload.LauncherJobName)
 	if err != nil {
 		return nil, err
 	}
@@ -1699,7 +1699,7 @@ func (r *JobReconciler) launcherPods(ctx context.Context, job *nvcrev1alpha1.Job
 		return nil, err
 	}
 	current := adapter.NewObject()
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, current); err != nil {
+	if err := cached.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, current); err != nil {
 		if apierrors.IsNotFound(err) {
 			return counted, nil
 		}
@@ -1740,7 +1740,7 @@ func (r *JobReconciler) launcherFailureLog(ctx context.Context, job *nvcrev1alph
 	if r.Clientset == nil || job.Status.FailureLog != nil {
 		return nil
 	}
-	pods, err := r.launcherPods(ctx, job)
+	pods, err := launcherPods(ctx, r.Client, r.APIReader, job)
 	if err != nil {
 		logf.FromContext(ctx).V(1).Info("Failed to list launcher pods for failure log capture", "error", err)
 		return nil
