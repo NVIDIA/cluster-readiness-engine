@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #583: an AKS cluster running the Network Operator shared RDMA device
+# plugin advertises its NICs as rdma/hca_shared_devices_a and has no
+# nvidia.com/mlnxnics. nicResourceName must replace the Azure default on
+# deps/azure-ib-with-topo-comm.yaml, at the resolved h100 count of 8. Read
+# against azure-h100-control, which pins the default name when the field is
+# unset.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

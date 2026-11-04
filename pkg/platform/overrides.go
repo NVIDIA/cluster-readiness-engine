@@ -42,7 +42,8 @@ type OverrideConfig struct {
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// for the on-prem GB200/GB300 and HGX B200/B300 overrides. Empty means the override omits
-	// the NIC resource block. The per-container count comes from MlnxPerNode.
+	// the NIC resource block. The Azure and TogetherAI overrides use it in place
+	// of their nvidia.com/mlnxnics default. The per-container count comes from MlnxPerNode.
 	NicResourceName string
 
 	EnableMNNVL   bool
