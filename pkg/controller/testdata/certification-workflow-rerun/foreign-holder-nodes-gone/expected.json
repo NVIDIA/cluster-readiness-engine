@@ -1,0 +1,15 @@
+{
+  "requeue": false,
+  "error": "communication/nccl-all-reduce: no nodes match target",
+  "conditions": [
+    {
+      "message": "communication/nccl-all-reduce: no nodes match target",
+      "reason": "WorkflowValidationFailed",
+      "type": "Failed"
+    }
+  ],
+  "categories": [],
+  "workflows": [
+    "cert-communication-nccl-a-9db8e"
+  ]
+}
