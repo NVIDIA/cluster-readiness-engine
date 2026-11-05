@@ -131,6 +131,11 @@ func lookupOutput(spec nvcrev1alpha1.WorkflowSpec) map[string]any {
 		if tj.Trainer != nil && tj.Trainer.Image != nil {
 			trainJob["trainerImage"] = *tj.Trainer.Image
 		}
+		if tj.Trainer != nil && len(tj.Trainer.Command) == 1 && tj.Trainer.Command[0] == "dcgmi" {
+			trainJob["trainerCommand"] = tj.Trainer.Command
+			trainJob["trainerArgs"] = tj.Trainer.Args
+			orch["timeoutPerJob"] = spec.Orchestration.Execution.TimeoutPerJob.Duration.String()
+		}
 		job["trainJob"] = trainJob
 	}
 	if spec.JobTemplate.Spec.NodeHealthMonitor != nil && spec.JobTemplate.Spec.NodeHealthMonitor.CEL != nil {

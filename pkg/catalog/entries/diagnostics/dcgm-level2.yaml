@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+dependencies:
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    labels:
+      app: dcgm-level2
+    name: dcgm-level2-runtime
+  spec:
+    mlPolicy:
+      numNodes: 1
+      torch:
+        numProcPerNode: 1
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              backoffLimit: 0
+              template:
+                spec:
+                  containers:
+                  - image: nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04
+                    name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                    securityContext:
+                      privileged: true
+                  dnsPolicy: ClusterFirstWithHostNet
+                  hostNetwork: true
+                  restartPolicy: Never
+                  tolerations:
+                  - operator: Exists
+jobTemplate:
+  spec:
+    nodeHealthMonitor:
+      cel:
+        expression: node.spec.unschedulable == true
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: dcgm-level2-runtime
+        trainer:
+          args:
+          - diag
+          - --host
+          - nvidia-dcgm.gpu-operator.svc:5555
+          - --run
+          - "2"
+          - --json
+          - --verbose
+          command:
+          - dcgmi
+          image: nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04
+          numNodes: 1
+          numProcPerNode: 1
+orchestration:
+{{- if gt .MaxConcurrent 0 }}
+  execution:
+    maxConcurrent: {{ .MaxConcurrent }}
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- else }}
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- end }}
+  iterations: 1
+overrides:
+{{ lib "overrides/gb200-topology-key.yaml" . }}
+- when:
+    gpuArchitecture:
+      in: [a100]
+# --- OCI (DGXC / CRI-O) ---
+# CRI-O rejects privileged containers with device plugin GPU injection
+# (device paths already exist on host).
+- when:
+    platform:
+      equals: oci
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: dcgm-level2-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      securityContext:
+                        privileged: false

@@ -12,6 +12,24 @@
     },
     "trainJob": {
       "runtimeRef": "dcgm-level4-runtime",
+      "trainerArgs": [
+        "diag",
+        "--host",
+        "nvidia-dcgm.gpu-operator.svc:5555",
+        "--run",
+        "4",
+        "--json",
+        "--verbose",
+        "-p",
+        "targeted_power.test_duration=1200s",
+        "-p",
+        "targeted_stress.test_duration=1200s",
+        "-p",
+        "nvbandwidth.is_allowed=true"
+      ],
+      "trainerCommand": [
+        "dcgmi"
+      ],
       "trainerImage": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04"
     }
   },
@@ -19,6 +37,7 @@
     "iterations": 1,
     "targetNodeSelector": {
       "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
-    }
+    },
+    "timeoutPerJob": "2h0m0s"
   }
 }

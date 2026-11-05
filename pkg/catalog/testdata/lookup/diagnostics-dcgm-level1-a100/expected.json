@@ -1,0 +1,37 @@
+{
+  "dependencies": [
+    {
+      "kind": "TrainingRuntime",
+      "name": "dcgm-level1-runtime"
+    }
+  ],
+  "found": true,
+  "jobTemplate": {
+    "nodeHealthMonitorCEL": {
+      "expression": "node.spec.unschedulable == true"
+    },
+    "trainJob": {
+      "runtimeRef": "dcgm-level1-runtime",
+      "trainerArgs": [
+        "diag",
+        "--host",
+        "nvidia-dcgm.gpu-operator.svc:5555",
+        "--run",
+        "1",
+        "--json",
+        "--verbose"
+      ],
+      "trainerCommand": [
+        "dcgmi"
+      ],
+      "trainerImage": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04"
+    }
+  },
+  "orchestration": {
+    "iterations": 1,
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
+    },
+    "timeoutPerJob": "1h0m0s"
+  }
+}

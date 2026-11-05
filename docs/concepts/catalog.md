@@ -21,7 +21,10 @@ Each catalog entry is a YAML file at `pkg/catalog/entries/<domain>/<variant>.yam
 | `communication` | `nccl-alltoall` | All-to-all collective bandwidth |
 | `communication` | `nccl-loopback` | Loopback bandwidth (single-node NVLink/NVSwitch) |
 | `communication` | `nccl-loopback-nvswitch` | Loopback bandwidth via NVSwitch fabric |
-| `diagnostics` | `dcgm-level4` | DCGM level-4 diagnostics |
+| `diagnostics` | `dcgm-level1` | DCGM software and deployment checks |
+| `diagnostics` | `dcgm-level2` | Level 1 plus GPU memory and PCIe/NVLink checks |
+| `diagnostics` | `dcgm-level3` | Level 2 plus compute, memory bandwidth, stress/power, and available interconnect diagnostics |
+| `diagnostics` | `dcgm-level4` | Level 3 plus memory stress and pulse diagnostics |
 | `training` | `nemotron5-8b` | End-to-end training throughput (NeMo, Nemotron 5 8B) |
 | `training` | `nemotron5-56b` | End-to-end training throughput (NeMo, Nemotron 5 56B) |
 
@@ -44,9 +47,13 @@ To see all available categories from the CLI:
 nvcrectl certification list-categories
 ```
 
+All four DCGM entries use image `dcgm:4.5.2-1-ubuntu22.04` and the same standalone DCGM service and GPU prerequisites. Their suites follow the [pinned DCGM 4.5.2 implementation](https://github.com/NVIDIA/DCGM/blob/v4.5.2/nvvs/src/NvidiaValidationSuite.cpp). Each higher level includes the preceding levels; selecting a lower level does not bypass software checks such as persistence mode.
+
+Levels 1–3 keep DCGM's default diagnostic durations and use the catalog's existing `1h` job budget. Level 3 explicitly enables NVBandwidth, as level 4 does. Level 4 retains its two `1200s` power/stress overrides and `2h` job budget. These budgets include scheduling and image pull; they are timeouts, not expected diagnostic runtimes. An explicit `timeoutPerJob` overrides the catalog budget.
+
 ## Per-node category options
 
-`nccl-loopback`, `nccl-loopback-nvswitch`, and `dcgm-level4` run one Job per node. They support two additional options:
+`nccl-loopback`, `nccl-loopback-nvswitch`, and all four DCGM entries run one Job per node. They support two additional options:
 
 | Option | Description |
 |--------|-------------|
@@ -56,7 +63,7 @@ nvcrectl certification list-categories
 ```yaml
 categories:
   - domain: diagnostics
-    variant: dcgm-level4
+    variant: dcgm-level2
     options:
       maxConcurrent: 4
       timeoutPerJob: 30m
