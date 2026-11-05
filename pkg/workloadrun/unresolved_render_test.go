@@ -98,7 +98,7 @@ func TestUnresolvedRenderRetainsIntentAndOverrides(t *testing.T) {
 
 	// No --platform, so the overrides stay conditional and unresolved.
 	emitted, err := captureStdout(t, func() error {
-		return runWorkloadRunRender(path, "yaml", "", "")
+		return runWorkloadRunRender(path, "yaml", "", "", "")
 	})
 	require.NoError(t, err, "rendering without --platform must succeed: "+
 		"unresolved output is a template, not a validated manifest")

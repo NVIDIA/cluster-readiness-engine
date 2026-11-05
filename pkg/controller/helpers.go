@@ -115,10 +115,30 @@ const (
 	// or the cluster does not serve (ADR-103). The Failed transition emits
 	// it as a Warning event with the same message. No Workflow is created.
 	ReasonSecondaryNetworkDetectionFailed = "SecondaryNetworkDetectionFailed"
+
+	// ReasonFabricValidationFailed marks a Certification or WorkloadRun
+	// failed because spec.fabric names a fabric the target cannot carry: one
+	// NVCRE does not render on the detected platform and GPU architecture, or
+	// one whose devices some target nodes lack (ADR-110). The run never falls
+	// back to the detected fabric. No Workflow is created.
+	ReasonFabricValidationFailed = "FabricValidationFailed"
+
+	// ReasonFabricDetection is the Normal event the Certification and
+	// WorkloadRun reconcilers emit when AWS GB300 fabric detection found
+	// conflicting or partial signals and rendered the default fabric
+	// (ADR-110). It says what was found and that spec.fabric resolves it.
+	ReasonFabricDetection = "FabricDetection"
 )
 
 // WorkloadRun tier reasons (WorkloadRun → Workflow).
 const (
+	// ReasonWorkflowBuildRetrying is the Warning the WorkloadRun emits when
+	// building its Workflow failed for a reason a retry can clear: node
+	// discovery or the fabric's ResourceSlice list failed (ADR-110). The run
+	// requeues instead of failing, and the event says why nothing has
+	// happened yet.
+	ReasonWorkflowBuildRetrying = "WorkflowBuildRetrying"
+
 	// ReasonBuildFailedStatusUpdateFailed reports a WorkloadRun build error
 	// when recording its Failed condition also fails. This action-failure
 	// Warning does not claim that the Failed phase was persisted.

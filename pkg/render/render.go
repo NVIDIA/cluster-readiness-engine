@@ -9,6 +9,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -117,9 +118,12 @@ type DryRunResult struct {
 
 // renderMetadata captures detection and override results from resolving a Workflow.
 type renderMetadata struct {
-	DetectedPlatform        string                          `json:"detectedPlatform"`
-	DetectedGPUArchitecture string                          `json:"detectedGPUArchitecture"`
-	AppliedOverrides        []nvcrev1alpha1.AppliedOverride `json:"appliedOverrides"`
+	DetectedPlatform        string `json:"detectedPlatform"`
+	DetectedGPUArchitecture string `json:"detectedGPUArchitecture"`
+	// DetectedFabric is the resolved fabric, set only where it chose the
+	// render: spec.fabric was set, or the target is AWS GB300 (ADR-110).
+	DetectedFabric   string                          `json:"detectedFabric,omitempty"`
+	AppliedOverrides []nvcrev1alpha1.AppliedOverride `json:"appliedOverrides"`
 }
 
 // readWorkflow parses a Workflow YAML file from disk.
@@ -150,6 +154,17 @@ func ResolveWorkflow(workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node) (*re
 func ResolveWorkflowForPlatform(
 	workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node, platformName string,
 ) (*renderMetadata, error) {
+	return ResolveWorkflowWithFabric(workflow, nodes, platformName, nil)
+}
+
+// ResolveWorkflowWithFabric is ResolveWorkflowForPlatform with the fabric the
+// caller resolved (ADR-110): the certification render paths pass the one they
+// resolved from spec.fabric, --fabric or the cluster. nil takes the platform
+// default for the detected platform and architecture, which is what a
+// hand-written Workflow's when.fabric matches offline.
+func ResolveWorkflowWithFabric(
+	workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node, platformName string, fabric *controller.FabricResolution,
+) (*renderMetadata, error) {
 	if platformName == "" {
 		platformName = controller.DetectPlatform(nodes)
 	}
@@ -157,8 +172,15 @@ func ResolveWorkflowForPlatform(
 		DetectedPlatform:        platformName,
 		DetectedGPUArchitecture: controller.DetectGPUArchitecture(nodes),
 	}
+	if fabric == nil {
+		fr, err := controller.OfflineFabric("", orch.DetectedPlatform, orch.DetectedGPUArchitecture)
+		if err != nil {
+			return nil, err
+		}
+		fabric = &fr
+	}
 
-	octx := controller.BuildOverrideContext(&workflow.Spec, orch, nodes)
+	octx := controller.BuildOverrideContext(&workflow.Spec, orch, nodes, fabric.Fabric)
 
 	applied, err := controller.ApplyOverridesWithTracking(&workflow.Spec, octx)
 	if err != nil {
@@ -199,11 +221,15 @@ func ResolveWorkflowForPlatform(
 	// Clear overrides since they've been resolved.
 	workflow.Spec.Overrides = nil
 
-	return &renderMetadata{
+	meta := &renderMetadata{
 		DetectedPlatform:        orch.DetectedPlatform,
 		DetectedGPUArchitecture: orch.DetectedGPUArchitecture,
 		AppliedOverrides:        applied,
-	}, nil
+	}
+	if fabric.Surface {
+		meta.DetectedFabric = fabric.Fabric
+	}
+	return meta, nil
 }
 
 // render resolves overrides and returns the full Workflow with metadata.
@@ -287,6 +313,43 @@ func run(workflowFile, platform, gpuArch, nodesFile, outputFormat string,
 	return nil
 }
 
+// ResolveDryRunFabric resolves the fabric for a CLI dry-run the way the
+// controllers do (ADR-110) and reports what it found on stderr. Every dry-run
+// path calls it, so the three print the same messages: the FabricDetection
+// notice when detection could not conclude, the detected fabric when it did,
+// and a warning when the ResourceSlice list that checks an explicit roce is
+// refused. That list runs with the user's kubeconfig rather than the
+// controller's service account, so a refusal keeps the explicit value
+// unchecked instead of failing the preview, as for a refused OCI network list
+// (ADR-103). Any other validation failure is returned as the error the
+// controllers record as FabricValidationFailed. nodes are the nodes the job
+// runs on (controller.FabricNodes).
+func ResolveDryRunFabric(
+	ctx context.Context, reader client.Reader, field nvcrev1alpha1.Fabric,
+	platformName, gpuArch string, nodes []corev1.Node, stderr io.Writer,
+) (controller.FabricResolution, error) {
+	fabric, err := controller.ResolveFabric(ctx, reader, field, platformName, gpuArch, nodes)
+	switch {
+	case controller.IsFabricListRefused(err):
+		_, _ = fmt.Fprintf(stderr, "Warning: %v. Rendering fabric %q unchecked; the controller lists"+
+			" ResourceSlices with its own service account and checks it when it reconciles.\n", err, fabric.Fabric)
+		return fabric, nil
+	case err != nil:
+		return fabric, fmt.Errorf("fabric: %w", err)
+	}
+	if fabric.Notice != "" {
+		_, _ = fmt.Fprintln(stderr, fabric.Notice)
+	}
+	if fabric.Source == controller.FabricSourceDetected {
+		_, _ = fmt.Fprintf(stderr, "Auto-detected fabric %q on every target node\n", fabric.Fabric)
+	}
+	return fabric, nil
+}
+
+// DetectedFabricAnnotation records the resolved fabric on a rendered
+// Workflow, only where the fabric chose the render (ADR-110).
+const DetectedFabricAnnotation = "nvcrectl.nvidia.com/detected-fabric"
+
 // SetRenderAnnotations stores detection metadata as annotations on the Workflow.
 func SetRenderAnnotations(workflow *nvcrev1alpha1.Workflow, meta *renderMetadata) {
 	if workflow.Annotations == nil {
@@ -294,6 +357,9 @@ func SetRenderAnnotations(workflow *nvcrev1alpha1.Workflow, meta *renderMetadata
 	}
 	workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
 	workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
+	if meta.DetectedFabric != "" {
+		workflow.Annotations[DetectedFabricAnnotation] = meta.DetectedFabric
+	}
 	if len(meta.AppliedOverrides) > 0 {
 		overridesJSON, _ := json.Marshal(meta.AppliedOverrides)
 		workflow.Annotations["nvcrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
@@ -327,7 +393,20 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 		Kind:       "Workflow",
 	}
 
-	meta, err := ResolveWorkflow(workflow, nodes)
+	// A hand-written Workflow that matches on when.fabric gets the fabric the
+	// Workflow controller would resolve for it (ADR-110): detected on AWS
+	// GB300 from the primary architecture's nodes, otherwise the default.
+	var fabric *controller.FabricResolution
+	if controller.OverridesUseFabric(workflow.Spec.Overrides) {
+		fr, ferr := ResolveDryRunFabric(ctx, c, "", controller.DetectPlatform(nodes),
+			controller.DetectGPUArchitecture(nodes), controller.FabricNodes(nodes, 0), os.Stderr)
+		if ferr != nil {
+			return nil, nil, nil, ferr
+		}
+		fabric = &fr
+	}
+
+	meta, err := ResolveWorkflowWithFabric(workflow, nodes, "", fabric)
 	if err != nil {
 		return nil, nil, nil, err
 	}

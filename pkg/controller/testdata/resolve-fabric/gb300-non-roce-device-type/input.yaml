@@ -1,0 +1,21 @@
+# A dra.networking.k8s.aws device of another type is not RoCE.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+resourceSlices:
+  - nodeName: gb300-a
+    driver: dra.networking.k8s.aws
+    pool: gb300-a
+    generation: 1
+    devices:
+      - name: efa0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: efa

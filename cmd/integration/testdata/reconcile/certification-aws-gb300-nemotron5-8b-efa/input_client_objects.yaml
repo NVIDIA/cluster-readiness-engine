@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Torch training on AWS GB300 with spec.fabric efa (ADR-110). The nodes carry two
+# EFA devices each, so the count comes from allocatable: the runtime requests two,
+# keeps the pytorch image's aws-ofi-nccl plugin, and selects the EFA provider.
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-tr-1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: aws-gb300-tr-1
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "2"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-tr-2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: aws-gb300-tr-2
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000002"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "2"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-gb300-tr
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+  fabric: efa
+  categories:
+    - domain: training
+      variant: nemotron5-8b

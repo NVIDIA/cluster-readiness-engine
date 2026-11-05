@@ -1,0 +1,19 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    }
+  ],
+  "finalWorkflowRef": "\u003cnil\u003e",
+  "boundToOwnWorkflow": false,
+  "conditions": null,
+  "events": [
+    "Warning WorkflowBuildRetrying Building the Workflow failed and will be retried: discovering target nodes: failed to list nodes: simulated node list failure",
+    "Warning WorkflowBuildRetrying Building the Workflow failed and will be retried: discovering target nodes: failed to list nodes: simulated node list failure"
+  ]
+}

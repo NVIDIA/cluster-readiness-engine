@@ -96,6 +96,7 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 	var outputFormat string
 	var platformFlag string
 	var gpuArchFlag string
+	var fabricFlag string
 	var dryRun bool
 
 	configFlags := kubeconfig.NewConfigFlags(true)
@@ -114,9 +115,9 @@ Combining --platform with --dry-run overrides the detected platform while still 
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, gpuArchFlag, configFlags)
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, gpuArchFlag, fabricFlag, configFlags)
 			}
-			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag)
+			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag, fabricFlag)
 		},
 	}
 
@@ -125,6 +126,8 @@ Combining --platform with --dry-run overrides the detected platform while still 
 		"Simulate platform for override matching ("+platform.NamesList()+")")
 	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
 		"GPU architecture for offline render; wins over target.nodeSelector's nvidia.com/gpu.product label")
+	cmd.Flags().StringVar(&fabricFlag, "fabric", "",
+		"Network fabric to render for ("+controller.FabricNamesList()+"); wins over spec.fabric")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -132,7 +135,7 @@ Combining --platform with --dry-run overrides the detected platform while still 
 	return cmd
 }
 
-func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) error {
+func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag, fabricFlag string) error {
 	if err := platform.ValidateFlag(platformFlag); err != nil {
 		return err
 	}
@@ -140,10 +143,17 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	if err != nil {
 		return err
 	}
+	fabricOverride, err := controller.ParseFabricFlag(fabricFlag)
+	if err != nil {
+		return err
+	}
 
 	run, err := readWorkloadRun(file)
 	if err != nil {
 		return err
+	}
+	if fabricOverride != "" {
+		run.Spec.Fabric = fabricOverride
 	}
 
 	// --gpu-arch wins over the nodeSelector-derived value when set; a
@@ -154,6 +164,12 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	}
 	if gpuArch == "" {
 		return fmt.Errorf("cannot determine GPU architecture: pass --gpu-arch or set nvidia.com/gpu.product in target.nodeSelector")
+	}
+	// Offline there is no cluster to detect the fabric from: spec.fabric (or
+	// --fabric) when set, otherwise the default for --platform (ADR-110).
+	fabric, err := controller.OfflineFabric(run.Spec.Fabric, platformFlag, gpuArch)
+	if err != nil {
+		return fmt.Errorf("fabric: %w", err)
 	}
 
 	// Resolve hardware defaults from the catalog. Platform comes from --platform
@@ -195,12 +211,12 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
 	if platformFlag != "" {
-		applyPlatformMPIArgs(run, platformFlag, gpuArch,
-			gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+		applyPlatformMPIArgsForFabric(run, platformFlag, gpuArch,
+			gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType, fabric)
 	}
 
 	// Build WorkflowSpec.
-	workflowSpec, err := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	workflowSpec, err := BuildWorkflowSpecForFabric(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType, fabric)
 	if err != nil {
 		return err
 	}
@@ -212,7 +228,7 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 			DetectedPlatform:        platformFlag,
 			DetectedGPUArchitecture: gpuArch,
 		}
-		octx := controller.BuildOverrideContext(workflowSpec, orch, nodes)
+		octx := controller.BuildOverrideContext(workflowSpec, orch, nodes, fabric.Fabric)
 		if _, overrideErr := controller.ApplyOverridesWithTracking(workflowSpec, octx); overrideErr != nil {
 			return fmt.Errorf("applying overrides: %w", overrideErr)
 		}
@@ -264,6 +280,9 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	if platformFlag != "" {
 		workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = platformFlag
 	}
+	if fabric.Surface && fabric.Fabric != "" {
+		workflow.Annotations[render.DetectedFabricAnnotation] = fabric.Fabric
+	}
 
 	switch outputFormat {
 	case outputJSON:
@@ -285,6 +304,17 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 func BuildWorkflowSpec(
 	run *nvcrev1alpha1.WorkloadRun,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
+) (*nvcrev1alpha1.WorkflowSpec, error) {
+	return BuildWorkflowSpecForFabric(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType,
+		controller.FabricResolution{})
+}
+
+// BuildWorkflowSpecForFabric is BuildWorkflowSpec with the resolved fabric
+// (ADR-110), whose EFA device count the platform overrides render. Override
+// matching on the fabric happens where the overrides are applied.
+func BuildWorkflowSpecForFabric(
+	run *nvcrev1alpha1.WorkloadRun,
+	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string, fabric controller.FabricResolution,
 ) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
@@ -400,6 +430,8 @@ func BuildWorkflowSpec(
 		GpusPerNode:     gpusPerNode,
 		MlnxPerNode:     mlnxPerNode,
 		NicResourceName: derefString(spec.NicResourceName),
+		Fabric:          fabric.Surfaced(),
+		EFAPerNode:      fabric.EFAPerNode,
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
 		UserEnv:         spec.Env,
@@ -459,6 +491,22 @@ func applyPlatformMPIArgs(
 	run *nvcrev1alpha1.WorkloadRun, platformName, gpuArch string,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
 ) {
+	// Without a resolved fabric, take the platform default, as offline
+	// render does for a WorkloadRun that sets no spec.fabric.
+	fabric, err := controller.OfflineFabric(run.Spec.Fabric, platformName, gpuArch)
+	if err != nil {
+		fabric = controller.FabricResolution{Fabric: string(run.Spec.Fabric)}
+	}
+	applyPlatformMPIArgsForFabric(run, platformName, gpuArch, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType, fabric)
+}
+
+// applyPlatformMPIArgsForFabric is applyPlatformMPIArgs with the resolved
+// fabric (ADR-110), which picks between the AWS GB300 RoCE transport pins and
+// the EFA transport env.
+func applyPlatformMPIArgsForFabric(
+	run *nvcrev1alpha1.WorkloadRun, platformName, gpuArch string,
+	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string, fabric controller.FabricResolution,
+) {
 	if run.Spec.Framework.MPI == nil {
 		return
 	}
@@ -468,6 +516,8 @@ func applyPlatformMPIArgs(
 		GpusPerNode:     gpusPerNode,
 		MlnxPerNode:     mlnxPerNode,
 		NicResourceName: derefString(run.Spec.NicResourceName),
+		Fabric:          fabric.Surfaced(),
+		EFAPerNode:      fabric.EFAPerNode,
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
 		UserEnv:         run.Spec.Env,
@@ -475,6 +525,7 @@ func applyPlatformMPIArgs(
 	octx := controller.OverrideContext{
 		Platform:        platformName,
 		GPUArchitecture: gpuArch,
+		Fabric:          fabric.Fabric,
 	}
 	controller.ApplyWRPreTemplateOverrides(&run.Spec, wrOverrides, octx)
 }
@@ -601,7 +652,7 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 // catalog defaults, NIC resource detection, MPI override baking, override
 // matching, the printed status, and the recorded annotations.
 func runWorkloadRunRenderDryRun(
-	file, outputFormat, platformFlag, gpuArchFlag string, configFlags *kubeconfig.ConfigFlags,
+	file, outputFormat, platformFlag, gpuArchFlag, fabricFlag string, configFlags *kubeconfig.ConfigFlags,
 ) error {
 	if gpuArchFlag != "" {
 		return errors.New("--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch")
@@ -609,10 +660,17 @@ func runWorkloadRunRenderDryRun(
 	if err := platform.ValidateFlag(platformFlag); err != nil {
 		return err
 	}
+	fabricOverride, err := controller.ParseFabricFlag(fabricFlag)
+	if err != nil {
+		return err
+	}
 
 	run, err := readWorkloadRun(file)
 	if err != nil {
 		return err
+	}
+	if fabricOverride != "" {
+		run.Spec.Fabric = fabricOverride
 	}
 
 	ctx := context.Background()
@@ -682,13 +740,24 @@ func runWorkloadRunRenderDryRun(
 	// the NIC wiring (issue #400), so then applyWRNICDetection does nothing.
 	applyWRNICDetection(run, effectivePlatform, gpuArch, nodes, mlnxPerNode)
 
+	// The fabric, mirroring the WorkloadRun controller (ADR-110): spec.fabric
+	// (or --fabric) is validated against the discovered nodes, and AWS GB300
+	// is otherwise detected from them.
+	// Resolved on the nodes the Workflow runs the job on, as the WorkloadRun
+	// controller resolves it.
+	fabric, err := render.ResolveDryRunFabric(ctx, c, run.Spec.Fabric, effectivePlatform, gpuArch,
+		controller.FabricNodes(nodes, gpusPerNode), os.Stderr)
+	if err != nil {
+		return err
+	}
+
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
-	applyPlatformMPIArgs(run, effectivePlatform, gpuArch,
-		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	applyPlatformMPIArgsForFabric(run, effectivePlatform, gpuArch,
+		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType, fabric)
 
-	workflowSpec, err := BuildWorkflowSpec(
-		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	workflowSpec, err := BuildWorkflowSpecForFabric(
+		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType, fabric)
 	if err != nil {
 		return err
 	}
@@ -697,7 +766,7 @@ func runWorkloadRunRenderDryRun(
 		DetectedPlatform:        effectivePlatform,
 		DetectedGPUArchitecture: gpuArch,
 	}
-	octx := controller.BuildOverrideContext(workflowSpec, orch, nodes)
+	octx := controller.BuildOverrideContext(workflowSpec, orch, nodes, fabric.Fabric)
 	if _, overrideErr := controller.ApplyOverridesWithTracking(
 		workflowSpec, octx); overrideErr != nil {
 		return fmt.Errorf("applying overrides: %w", overrideErr)
@@ -733,6 +802,9 @@ func runWorkloadRunRenderDryRun(
 			"nvcrectl.nvidia.com/detected-platform":         effectivePlatform,
 		},
 		Spec: *workflowSpec,
+	}
+	if fabric.Surface && fabric.Fabric != "" {
+		workflow.Annotations[render.DetectedFabricAnnotation] = fabric.Fabric
 	}
 
 	switch outputFormat {

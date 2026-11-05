@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -108,16 +109,30 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	workflowSpec, archFallbackMessage, buildErr := r.buildWorkflowSpecWithWarning(ctx, &run)
+	workflowSpec, notes, buildErr := r.buildWorkflowSpecWithWarning(ctx, &run)
 	if buildErr != nil {
+		// A transient node discovery or ResourceSlice list failure: the next
+		// reconcile can still succeed, so requeue rather than fail the run.
+		// The Warning says why nothing has happened yet; repeats of the same
+		// message collapse into one event series rather than one per retry.
+		if _, ok := errors.AsType[*retryableCreateError](buildErr); ok {
+			log.Info("Building the Workflow failed for a retryable reason, will retry", "cause", buildErr.Error())
+			r.warnf(&run, ReasonWorkflowBuildRetrying,
+				"Building the Workflow failed and will be retried: %v", buildErr)
+			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
+		}
 		// The spec is immutable, so this cannot succeed on a later reconcile;
 		// fail the WorkloadRun rather than retrying forever. Record it the way
 		// every other terminal write in this file does: a bare Status().Update
 		// drops the condition on a conflict, and the next pass then re-runs the
 		// same deterministic build failure and re-emits the Warning below.
+		reason := ReasonBuildFailed
+		if _, ok := errors.AsType[*fabricValidationError](buildErr); ok {
+			reason = ReasonFabricValidationFailed
+		}
 		message := fmt.Sprintf("workloadrun %s: %v", run.Name, buildErr)
 		if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
-			nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed, message); err != nil {
+			nvcrev1alpha1.WorkloadRunFailed, reason, message); err != nil {
 			r.warnf(&run, ReasonBuildFailedStatusUpdateFailed,
 				"WorkloadRun build failed: %s; recording the WorkloadRun Failed condition also failed: %v",
 				message, err)
@@ -144,8 +159,11 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// Only the reconcile whose Create succeeded warns, so a retry that
 		// adopts the Workflow it already created does not repeat it
 		// (ADR-094).
-		if archFallbackMessage != "" {
-			r.warnf(&run, ReasonGPUArchitectureDefaults, "%s", archFallbackMessage)
+		if notes.archFallbackMessage != "" {
+			r.warnf(&run, ReasonGPUArchitectureDefaults, "%s", notes.archFallbackMessage)
+		}
+		if notes.fabric.Notice != "" {
+			r.normalf(&run, ReasonFabricDetection, "%s", notes.fabric.Notice)
 		}
 	} else {
 		if !apierrors.IsAlreadyExists(err) {
@@ -223,6 +241,9 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		o.Status.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
 			Name:      workflow.Name,
 			Namespace: workflow.Namespace,
+		}
+		if notes.fabric.Surface {
+			o.Status.ResolvedFabric = nvcrev1alpha1.Fabric(notes.fabric.Fabric)
 		}
 		return true
 	}
@@ -426,6 +447,49 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	return ws, err
 }
 
+// resolveWRFabric resolves the fabric the way a Certification resolves it
+// (ADR-110): an explicit spec.fabric is validated against the discovered
+// nodes and fails the run if they cannot carry it; otherwise AWS GB300 is
+// detected and every other target takes its platform default. A transient
+// ResourceSlice list failure comes back as a *retryableCreateError.
+func (r *WorkloadRunReconciler) resolveWRFabric(
+	ctx context.Context, spec *nvcrev1alpha1.WorkloadRunSpec, platformName, gpuArch string, nodes []corev1.Node,
+) (FabricResolution, error) {
+	fabric, err := resolveFabric(ctx, r.workflowReader(), spec.Fabric, platformName, gpuArch, nodes)
+	if err == nil {
+		return fabric, nil
+	}
+	if _, ok := errors.AsType[*fabricValidationError](err); ok {
+		return fabric, err
+	}
+	return fabric, &retryableCreateError{err: fmt.Errorf("fabric detection: %w", err)}
+}
+
+// settleUserFabricOverrides returns the user's spec.overrides with every
+// when.fabric matcher settled against the resolved fabric, once it is known
+// from spec.fabric or from discovered nodes. The Workflow controller
+// re-applies them with its own context, which has no spec.fabric; with
+// neither known, the matchers are left for it to resolve against the nodes it
+// discovers. The platform overrides carry no matcher: their template already
+// chose the fabric's blocks.
+func settleUserFabricOverrides(
+	spec *nvcrev1alpha1.WorkloadRunSpec, nodesFound bool, fabric FabricResolution,
+) []nvcrev1alpha1.OverrideSpec {
+	if spec.Fabric == "" && !nodesFound {
+		return spec.Overrides
+	}
+	return resolveFabricOverrides(spec.Overrides, fabric.Fabric)
+}
+
+// wrBuildNotes is what buildWorkflowSpecWithWarning resolves besides the spec
+// that Reconcile reports once the Workflow is created.
+type wrBuildNotes struct {
+	// archFallbackMessage is the GPUArchitectureDefaults message, or "".
+	archFallbackMessage string
+	// fabric is the resolved fabric (ADR-110).
+	fabric FabricResolution
+}
+
 // buildWorkflowSpecWithWarning is buildWorkflowSpec plus the
 // GPUArchitectureDefaults message to emit once the Workflow is created, or ""
 // when the detected architecture is listed in gpu-defaults.yaml (ADR-094).
@@ -433,11 +497,11 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 // repeat it; the tests that only need the spec call buildWorkflowSpec.
 func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	ctx context.Context, run *nvcrev1alpha1.WorkloadRun,
-) (*nvcrev1alpha1.WorkflowSpec, string, error) {
+) (*nvcrev1alpha1.WorkflowSpec, wrBuildNotes, error) {
 	spec := &run.Spec
 
 	if err := ValidateWRPlacement(spec.Orchestration); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -450,8 +514,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	gpuArch := ""
 	archFallbackMessage := ""
 	// Cordoned nodes are discarded here: this call only detects GPU and platform
-	// defaults, and a WorkloadRun has no coverage verdict to qualify.
-	nodes, _, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
+	// defaults, and a WorkloadRun has no coverage verdict to qualify. A failed
+	// discovery is retried rather than read as "no nodes": the defaults, and
+	// the fabric the platform override template commits to (ADR-110), would
+	// otherwise be decided without the nodes, and an explicit spec.fabric
+	// would go unvalidated. A target that matches no node is not an error; the
+	// Workflow then fails on its own discovery.
+	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
+	if err != nil {
+		return nil, wrBuildNotes{}, &retryableCreateError{err: fmt.Errorf("discovering target nodes: %w", err)}
+	}
 	if len(nodes) > 0 {
 		gpuArch = DetectGPUArchitecture(nodes)
 		detectedPlatform = DetectPlatform(nodes)
@@ -498,6 +570,14 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		enableMNNVL = *spec.EnableMNNVL
 	}
 
+	// Resolved on the nodes the Workflow will run the job on, as a
+	// Certification resolves it: the primary architecture's nodes with the
+	// GPUs the run requests.
+	fabric, err := r.resolveWRFabric(ctx, spec, detectedPlatform, gpuArch, fabricNodes(nodes, gpusPerNode))
+	if err != nil {
+		return nil, wrBuildNotes{}, err
+	}
+
 	// Determine framework type.
 	frameworkType := FrameworkExec
 	if spec.Framework.Torch != nil {
@@ -510,10 +590,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	// path is refused here, before the Workflow exists, with the checks the
 	// render path runs.
 	if err := platform.ValidateWorkloadVolumes(spec.Volumes, spec.VolumeMounts, frameworkType, spec.Config != nil); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 	if err := platform.ValidateWorkloadInitContainers(spec.InitContainers); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 
 	// Build merged env vars.
@@ -597,6 +677,8 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		GpusPerNode:     gpusPerNode,
 		MlnxPerNode:     mlnxPerNode,
 		NicResourceName: nicResourceName,
+		Fabric:          fabric.Surfaced(),
+		EFAPerNode:      fabric.EFAPerNode,
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
 		UserEnv:         spec.Env,
@@ -615,15 +697,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	// spec.overrides are appended below untouched and are still the last word
 	// on the rendered objects, as for every other WorkloadRun field.
 	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 	if err := platform.ApplyNetworkAttachmentsToOverrides(wrOverrides, spec.NetworkAttachments); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 
 	octx := OverrideContext{
 		Platform:        detectedPlatform,
 		GPUArchitecture: gpuArch,
+		Fabric:          fabric.Fabric,
 	}
 
 	// Pre-template overrides: modify the WorkloadRun spec before the job
@@ -644,7 +727,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
 	}
-	overrides = append(overrides, spec.Overrides...)
+	overrides = append(overrides, settleUserFabricOverrides(spec, len(nodes) > 0, fabric)...)
 
 	workflowSpec := &nvcrev1alpha1.WorkflowSpec{
 		JobTemplate:   *jobTemplate,
@@ -667,10 +750,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 
 	if err := platform.ApplyWorkloadRunScheduling(
 		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
-		return nil, "", err
+		return nil, wrBuildNotes{}, err
 	}
 
-	return workflowSpec, archFallbackMessage, nil
+	return workflowSpec, wrBuildNotes{archFallbackMessage: archFallbackMessage, fabric: fabric}, nil
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
