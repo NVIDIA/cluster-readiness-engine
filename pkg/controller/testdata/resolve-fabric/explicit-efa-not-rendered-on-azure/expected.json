@@ -1,0 +1,8 @@
+{
+  "fabric": "efa",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"efa\" is not rendered for platform \"azure\" and GPU architecture \"h100\"; NVCRE renders ib there"
+}

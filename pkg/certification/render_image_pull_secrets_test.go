@@ -90,7 +90,7 @@ func TestCertificationRenderImagePullSecrets(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "", catalog.DefaultOCISecondaryNetwork)
+		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,6 @@
+{
+  "fabric": "efa",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true
+}

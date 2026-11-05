@@ -80,7 +80,8 @@ func TestWorkloadRunWorkloadMetadata(t *testing.T) {
 				DetectedPlatform:        in.Platform,
 				DetectedGPUArchitecture: in.GPUArchitecture,
 			}
-			octx := controller.BuildOverrideContext(spec, orch, nodes)
+			octx := controller.BuildOverrideContext(spec, orch, nodes,
+				controller.DefaultFabric(in.Platform, in.GPUArchitecture))
 			if _, overrideErr := controller.ApplyOverridesWithTracking(spec, octx); overrideErr != nil {
 				return overrideErr
 			}

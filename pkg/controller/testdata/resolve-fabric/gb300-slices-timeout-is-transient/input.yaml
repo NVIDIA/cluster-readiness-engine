@@ -1,0 +1,13 @@
+# A timeout says nothing about the cluster: retried, never decided on.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+listError: timeout

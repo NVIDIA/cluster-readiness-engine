@@ -196,7 +196,9 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// validation checks. On the first reconcile DetectedPlatform is empty
 	// so platform/GPU overrides won't match yet; discoverAndPartition
 	// applies them authoritatively once detection completes.
-	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil)); err != nil {
+	// The fabric is not resolved yet either, so a when.fabric override waits
+	// for the authoritative call too.
+	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil, "")); err != nil {
 		message := fmt.Sprintf("Failed to apply overrides: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError", message); statusErr != nil {
 			logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after override failure")
@@ -663,9 +665,23 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// and write nothing.
 	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
+	// A Certification or WorkloadRun settles every when.fabric matcher before
+	// it creates the Workflow (ADR-110), so only a hand-written Workflow still
+	// carries one. Resolve the fabric for it the way a parent with no
+	// spec.fabric would: detect on AWS GB300, otherwise the platform default.
+	// Skipped entirely otherwise, so no other Workflow lists ResourceSlices.
+	fabric := ""
+	if overridesUseFabric(workflow.Spec.Overrides) {
+		fr, ferr := resolveFabric(ctx, r.jobReader(), "", orch.DetectedPlatform, gpuArch, nodes)
+		if ferr != nil {
+			return ctrl.Result{}, ferr
+		}
+		fabric = fr.Fabric
+	}
+
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
 	// This is the authoritative call — emit events, log details, and populate status.
-	octx := buildOverrideContext(&workflow.Spec, orch, nodes)
+	octx := buildOverrideContext(&workflow.Spec, orch, nodes, fabric)
 	applied, err := applyOverridesWithTracking(&workflow.Spec, octx)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",

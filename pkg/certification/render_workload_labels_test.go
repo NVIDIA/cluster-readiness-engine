@@ -63,7 +63,7 @@ func TestCertificationRenderWorkloadLabels(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, "", nil, "", catalog.DefaultOCISecondaryNetwork)
+		workflows, err := renderCertification(cert, cfg.Platform, "", nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		if err != nil {
 			return err
 		}

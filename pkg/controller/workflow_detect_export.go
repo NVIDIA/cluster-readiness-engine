@@ -6,6 +6,9 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -110,9 +113,48 @@ func ResolveTCPXOPluginVersion(
 	return d.Version, fallbackMessage, d.Ran
 }
 
-// BuildOverrideContext is the exported version of buildOverrideContext for use by CLI tools.
-func BuildOverrideContext(spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
-	return buildOverrideContext(spec, orch, nodes)
+// BuildOverrideContext is the exported version of buildOverrideContext for use
+// by CLI tools. fabric is the resolved fabric (ResolveFabric, or DefaultFabric
+// offline).
+func BuildOverrideContext(
+	spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node, fabric string,
+) OverrideContext {
+	return buildOverrideContext(spec, orch, nodes, fabric)
+}
+
+// ResolveFabric is the exported version of resolveFabric for the CLI dry-run
+// paths, so "certification render --dry-run" and "workloadrun render
+// --dry-run" resolve the fabric exactly as a reconcile of the same target
+// would. An explicit value the cluster cannot carry returns the error the
+// controllers record as FabricValidationFailed.
+func ResolveFabric(
+	ctx context.Context, reader client.Reader, field nvcrev1alpha1.Fabric,
+	platformName, gpuArch string, nodes []corev1.Node,
+) (FabricResolution, error) {
+	return resolveFabric(ctx, reader, field, platformName, gpuArch, nodes)
+}
+
+// IsFabricListRefused reports whether err is a fabric validation that could
+// not run because the ResourceSlice list was refused. The CLI dry-run lists
+// with the user's kubeconfig, so it warns on this one and keeps the explicit
+// value, as it does for a refused OCI network list.
+func IsFabricListRefused(err error) bool {
+	fvErr, ok := errors.AsType[*fabricValidationError](err)
+	return ok && fvErr.ListRefused
+}
+
+// OfflineFabric resolves the fabric for an offline render, which reads no
+// cluster: field when set (checked only against the fabrics NVCRE renders on
+// the target), otherwise the platform default, with the default EFA count.
+func OfflineFabric(field nvcrev1alpha1.Fabric, platformName, gpuArch string) (FabricResolution, error) {
+	return ResolveFabric(context.Background(), nil, field, platformName, gpuArch, nil)
+}
+
+// ResolveFabricOverrides is the exported version of resolveFabricOverrides
+// for the workloadrun render path, which hands overrides to a Workflow the
+// same way the WorkloadRun controller does.
+func ResolveFabricOverrides(overrides []nvcrev1alpha1.OverrideSpec, fabric string) []nvcrev1alpha1.OverrideSpec {
+	return resolveFabricOverrides(overrides, fabric)
 }
 
 // ApplyOverridesWithTracking is the exported version of applyOverridesWithTracking for use by CLI tools.
@@ -178,4 +220,48 @@ func ResolveOCISecondaryNetwork(
 		notice = ociNetworkSkippedMessage(sel)
 	}
 	return sel.Name, notice, false, nil
+}
+
+// FabricNames lists the values spec.fabric and --fabric accept (ADR-110).
+func FabricNames() []string {
+	return []string{
+		string(nvcrev1alpha1.FabricEFA), string(nvcrev1alpha1.FabricIB),
+		string(nvcrev1alpha1.FabricRoCE), string(nvcrev1alpha1.FabricTCPXO),
+	}
+}
+
+// FabricNamesList is FabricNames joined for flag help text.
+func FabricNamesList() string {
+	return strings.Join(FabricNames(), ", ")
+}
+
+// ParseFabricFlag validates a --fabric value. "" is accepted and means the
+// flag was not given.
+func ParseFabricFlag(value string) (nvcrev1alpha1.Fabric, error) {
+	if value == "" || slices.Contains(FabricNames(), value) {
+		return nvcrev1alpha1.Fabric(value), nil
+	}
+	return "", fmt.Errorf("invalid --fabric %q: must be one of %s", value, FabricNamesList())
+}
+
+// DefaultFabric is the exported version of defaultFabric: the fabric NVCRE
+// renders for a platform and GPU architecture when spec.fabric is unset and
+// nothing is detected (ADR-110).
+func DefaultFabric(platformName, gpuArch string) string {
+	return defaultFabric(platformName, gpuArch)
+}
+
+// FabricNodes is the exported version of fabricNodes for the CLI dry-run
+// paths. The certification controller applies the capacity filter per
+// category; "certification render --dry-run" passes the spec-level count, so
+// a category with its own gpusPerNode can see a different set.
+func FabricNodes(nodes []corev1.Node, gpusPerNode int32) []corev1.Node {
+	return fabricNodes(nodes, gpusPerNode)
+}
+
+// OverridesUseFabric is the exported version of overridesUseFabric, so
+// "workflow render --dry-run" decides whether to resolve the fabric exactly as
+// the Workflow controller does.
+func OverridesUseFabric(overrides []nvcrev1alpha1.OverrideSpec) bool {
+	return overridesUseFabric(overrides)
 }

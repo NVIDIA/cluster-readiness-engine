@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS GB300 on an EFA fabric (ADR-110), consumed through `| toMpiArgs` by the
+# communication entries, where a shell expands "$PATH" and "$LD_LIBRARY_PATH".
+# The library path adds the EFA libfabric and aws-ofi-nccl directories the
+# RoCE arm (aws-gb300-roce-env.yaml) deletes. The FI_* transport selection is
+# shared with the WorkloadRun overrides through aws-efa-transport-env.yaml.
+- name: PATH
+  value: "$PATH:/opt/amazon/efa/bin:/usr/bin:/bin"
+- name: LD_LIBRARY_PATH
+  value: "/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/aws-ofi-nccl/install/lib:/opt/amazon/ofi-nccl/lib/aarch64-linux-gnu:/usr/local/nvidia/lib:$LD_LIBRARY_PATH"
+- name: NCCL_DEBUG
+  value: INFO
+{{ lib "nccl/aws-efa-transport-env.yaml" . }}
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"

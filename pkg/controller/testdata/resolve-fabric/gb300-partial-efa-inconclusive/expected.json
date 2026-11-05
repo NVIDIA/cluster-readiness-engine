@@ -1,0 +1,7 @@
+{
+  "fabric": "roce",
+  "source": "default",
+  "efaPerNode": 1,
+  "surface": true,
+  "message": "fabric detection was inconclusive: 1 of 2 target nodes advertise vpc.amazonaws.com/efa, and 0 of 2 have RoCE devices from the dra.networking.k8s.aws DRA driver; rendering the default fabric \"roce\". Set spec.fabric to choose one."
+}

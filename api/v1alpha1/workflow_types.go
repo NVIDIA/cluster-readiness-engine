@@ -297,6 +297,13 @@ type WhenSpec struct {
 	// +optional
 	Topology *TopologyMatchSpec `json:"topology,omitempty"`
 
+	// fabric matches against the resolved network fabric (efa, ib, roce,
+	// tcpxo): the parent's spec.fabric when set, otherwise the detected
+	// fabric or the platform default (ADR-110). A Certification or
+	// WorkloadRun resolves these matchers before it creates the Workflow.
+	// +optional
+	Fabric *StringMatchSpec `json:"fabric,omitempty"`
+
 	// config matches against values in validation.performance.config.
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields

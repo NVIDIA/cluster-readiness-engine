@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# gb300-c offers two GPUs where four are requested, so it never runs the job:
+# its missing EFA must not fail the explicit efa.
+fabric: efa
+nodes:
+  - name: gb300-a
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "1"}
+  - name: gb300-b
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "1"}
+  - name: gb300-c
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "2"}

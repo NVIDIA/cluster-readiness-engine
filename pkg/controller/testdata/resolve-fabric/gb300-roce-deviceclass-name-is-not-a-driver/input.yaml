@@ -1,0 +1,22 @@
+# roce.networking.k8s.aws is the DeviceClass, not the driver. A slice that
+# names it as its driver is not a RoCE signal.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+resourceSlices:
+  - nodeName: gb300-a
+    driver: roce.networking.k8s.aws
+    pool: gb300-a
+    generation: 1
+    devices:
+      - name: rocep201s0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: roce

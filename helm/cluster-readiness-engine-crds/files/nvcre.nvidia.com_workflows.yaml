@@ -61,6 +61,27 @@ spec:
                             Available variables: gpuArchitecture, platform, workloadKind, topology, config
                             Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                           type: string
+                        fabric:
+                          description: |-
+                            fabric matches against the resolved network fabric (efa, ib, roce,
+                            tcpxo): the parent's spec.fabric when set, otherwise the detected
+                            fabric or the platform default (ADR-110). A Certification or
+                            WorkloadRun resolves these matchers before it creates the Workflow.
+                          properties:
+                            equals:
+                              description: equals checks for exact match.
+                              type: string
+                            in:
+                              description: in checks if value is in the list.
+                              items:
+                                type: string
+                              type: array
+                            notIn:
+                              description: notIn checks if value is not in the list.
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         gpuArchitecture:
                           description: gpuArchitecture matches against detected GPU
                             architecture.
@@ -7186,6 +7207,28 @@ spec:
                                   Available variables: gpuArchitecture, platform, workloadKind, topology, config
                                   Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                                 type: string
+                              fabric:
+                                description: |-
+                                  fabric matches against the resolved network fabric (efa, ib, roce,
+                                  tcpxo): the parent's spec.fabric when set, otherwise the detected
+                                  fabric or the platform default (ADR-110). A Certification or
+                                  WorkloadRun resolves these matchers before it creates the Workflow.
+                                properties:
+                                  equals:
+                                    description: equals checks for exact match.
+                                    type: string
+                                  in:
+                                    description: in checks if value is in the list.
+                                    items:
+                                      type: string
+                                    type: array
+                                  notIn:
+                                    description: notIn checks if value is not in the
+                                      list.
+                                    items:
+                                      type: string
+                                    type: array
+                                type: object
                               gpuArchitecture:
                                 description: gpuArchitecture matches against detected
                                   GPU architecture.
@@ -7453,6 +7496,27 @@ spec:
                             Available variables: gpuArchitecture, platform, workloadKind, topology, config
                             Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                           type: string
+                        fabric:
+                          description: |-
+                            fabric matches against the resolved network fabric (efa, ib, roce,
+                            tcpxo): the parent's spec.fabric when set, otherwise the detected
+                            fabric or the platform default (ADR-110). A Certification or
+                            WorkloadRun resolves these matchers before it creates the Workflow.
+                          properties:
+                            equals:
+                              description: equals checks for exact match.
+                              type: string
+                            in:
+                              description: in checks if value is in the list.
+                              items:
+                                type: string
+                              type: array
+                            notIn:
+                              description: notIn checks if value is not in the list.
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         gpuArchitecture:
                           description: gpuArchitecture matches against detected GPU
                             architecture.

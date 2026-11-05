@@ -10,10 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,6 +57,9 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			// for every Workflow Get while the object store still holds it, so
 			// only a read through APIReader can see the holder.
 			CacheHidesWorkflow bool `yaml:"cacheHidesWorkflow"`
+			// NodeListFails fails every Node list, modelling a node
+			// discovery the API server cannot answer.
+			NodeListFails bool `yaml:"nodeListFails"`
 			// Reconciles is how many passes to drive.
 			Reconciles int `yaml:"reconciles"`
 		}
@@ -62,6 +69,9 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 
 		ctx := context.Background()
 		scheme := newWorkflowScheme(t)
+		// Node discovery lists Nodes; an unregistered type used to fail it
+		// silently, and a failed discovery is now retried, never ignored.
+		require.NoError(t, clientgoscheme.AddToScheme(scheme))
 
 		run := &nvcrev1alpha1.WorkloadRun{
 			Name: testRunName, Namespace: testNS, UID: testRunUID,
@@ -97,6 +107,14 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 							obj.GetName(), fmt.Errorf("simulated lost status write"))
 					}
 					return cl.SubResource(sub).Update(ctx, obj, opts...)
+				},
+				List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList,
+					opts ...client.ListOption,
+				) error {
+					if _, isNodes := list.(*corev1.NodeList); isNodes && input.NodeListFails {
+						return apierrors.NewServiceUnavailable("simulated node list failure")
+					}
+					return cl.List(ctx, list, opts...)
 				},
 			}).
 			Build()

@@ -1,0 +1,7 @@
+# Node discovery fails on every pass (ADR-110): the run must neither fail nor
+# build a Workflow from defaults decided without the nodes. It requeues, and a
+# Warning event says why nothing has happened yet.
+holder: none
+statusWriteFailures: 0
+nodeListFails: true
+reconciles: 2
