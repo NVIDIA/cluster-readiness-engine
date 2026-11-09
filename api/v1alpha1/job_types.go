@@ -268,7 +268,10 @@ type JobSpec struct {
 	// the Job controller compares the time since the last training step against
 	// stallMultiplier * avgStepTime (from the associated GoodputMeasurement).
 	// If the elapsed time exceeds this product, the workload is marked as Failed
-	// with reason "WorkloadStalled".
+	// with reason "WorkloadStalled", unless every worker pod of the current
+	// workload has already exited successfully. The workload has then finished
+	// and has yet to report it, so the Job waits for the workload's own verdict
+	// instead, still bounded by timeoutPerJob.
 	// Requires a GoodputMeasurement for this Job; if none exists, stall
 	// detection is skipped.
 	// Example: a value of 10 means the job is stalled if no step has been
@@ -280,7 +283,8 @@ type JobSpec struct {
 	// startupStallTimeoutSeconds is the maximum time (in seconds) to wait after
 	// the application framework starts for the first training step. If no step
 	// is observed within this timeout, the workload is marked Failed with reason
-	// "WorkloadStalled". Only active when stallMultiplier is set.
+	// "WorkloadStalled", with the same exception as stallMultiplier for workers
+	// that have all exited successfully. Only active when stallMultiplier is set.
 	// Default: 1200 (20 minutes).
 	// +optional
 	// +kubebuilder:validation:Minimum=1
