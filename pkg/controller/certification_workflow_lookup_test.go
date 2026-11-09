@@ -90,6 +90,14 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 			// reports the name taken, so this models a 5xx or a timeout
 			// arriving at exactly that point.
 			AdoptReadError string `yaml:"adoptReadError"`
+			// AdoptRace makes the second category's Workflow appear between
+			// the adoption read and the Create: every odd-numbered live read
+			// of that name returns NotFound, so adoptExistingWorkflow finds
+			// nothing, the Create reports AlreadyExists, and the read the
+			// AlreadyExists handler makes next sees the holder (or
+			// AdoptReadError). Without it, the adoption read finds the holder
+			// first and the handler is never reached.
+			AdoptRace bool `yaml:"adoptRace"`
 			// StatusWriteFailures fails that many leading status writes with a
 			// conflict, modelling a write lost to a lagging cache.
 			StatusWriteFailures int `yaml:"statusWriteFailures"`
@@ -221,6 +229,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 			Build()
 
 		apiReads := 0
+		secondReads := 0
 		apiBuilder := fake.NewClientBuilder().WithScheme(scheme).
 			WithInterceptorFuncs(interceptor.Funcs{
 				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey,
@@ -230,8 +239,17 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 					if input.APIError != "" {
 						return errors.New(input.APIError)
 					}
-					if input.AdoptReadError != "" && key.Name == secondWorkflowName {
-						return errors.New(input.AdoptReadError)
+					if key.Name == secondWorkflowName {
+						secondReads++
+						if input.AdoptRace && secondReads%2 == 1 {
+							return apierrors.NewNotFound(schema.GroupResource{
+								Group:    nvcrev1alpha1.GroupVersion.Group,
+								Resource: workflowResourceName,
+							}, key.Name)
+						}
+						if input.AdoptReadError != "" {
+							return errors.New(input.AdoptReadError)
+						}
 					}
 					return c.Get(ctx, key, obj, opts...)
 				},

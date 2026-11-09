@@ -1,0 +1,12 @@
+# As adopt-race-holder-confirmed-live, but the AlreadyExists handler's live
+# read fails for its own reasons. A timeout says nothing about the holder, so
+# this requeues instead of burning the whole Certification: no category
+# WorkflowRef is recorded on this path, so recoverIfWorkflowStillRunning could
+# not undo it.
+inCache: true
+inAPI: true
+succeeded: true
+adoptHolder: api-only
+adoptReadError: "etcdserver: request timed out"
+adoptRace: true
+reconciles: 3

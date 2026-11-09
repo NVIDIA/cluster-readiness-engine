@@ -1,0 +1,13 @@
+# The create race the AlreadyExists handler is still there for. Category 0
+# finishes, so pass 1 moves on to category 1. The adoption read finds no
+# Workflow under its name, another writer creates one before this pass's
+# Create, and Create reports the name already taken. The handler confirms the
+# holder live and, since this Certification controls it, records it. Reading
+# the cache instead would fail the whole Certification over a Workflow it
+# already owns.
+inCache: true
+inAPI: true
+succeeded: true
+adoptHolder: api-only
+adoptRace: true
+reconciles: 2
