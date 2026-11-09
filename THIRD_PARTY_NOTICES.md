@@ -19,7 +19,7 @@ also excluded.
 | `github.com/kubeflow/trainer/v2` | v2.2.1 | Apache-2.0 | https://github.com/kubeflow/trainer/blob/v2.2.1/LICENSE |
 | `github.com/prometheus/client_golang` | v1.25.0 | Apache-2.0 | https://github.com/prometheus/client_golang/blob/v1.25.0/LICENSE |
 | `github.com/spf13/cobra` | v1.10.2 | Apache-2.0 | https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt |
-| `github.com/spf13/pflag` | v1.0.10 | BSD-3-Clause | https://github.com/spf13/pflag/blob/v1.0.10/LICENSE |
+| `github.com/spf13/pflag` | v1.1.0 | BSD-3-Clause | https://github.com/spf13/pflag/blob/v1.1.0/LICENSE |
 | `k8s.io/api` | v0.36.6 | Apache-2.0 | https://github.com/kubernetes/api/blob/v0.36.6/LICENSE |
 | `k8s.io/apiextensions-apiserver` | v0.36.6 | Apache-2.0 | https://github.com/kubernetes/apiextensions-apiserver/blob/v0.36.6/LICENSE |
 | `k8s.io/apimachinery` | v0.36.6 | Apache-2.0 | https://github.com/kubernetes/apimachinery/blob/v0.36.6/LICENSE |
@@ -956,9 +956,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### github.com/spf13/pflag
 
-* Version: v1.0.10
+* Version: v1.1.0
 * License: BSD-3-Clause
-* Source: https://github.com/spf13/pflag/blob/v1.0.10/LICENSE
+* Source: https://github.com/spf13/pflag/blob/v1.1.0/LICENSE
 
 #### LICENSE
 
