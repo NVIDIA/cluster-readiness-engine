@@ -60,6 +60,9 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			// NodeListFails fails every Node list, modelling a node
 			// discovery the API server cannot answer.
 			NodeListFails bool `yaml:"nodeListFails"`
+			// NodeListFailures fails that many leading Node lists and lets
+			// the rest through, modelling a discovery that recovers.
+			NodeListFailures int `yaml:"nodeListFailures"`
 			// Reconciles is how many passes to drive.
 			Reconciles int `yaml:"reconciles"`
 		}
@@ -90,6 +93,7 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 		}
 
 		statusWrites := 0
+		nodeLists := 0
 		c := fake.NewClientBuilder().WithScheme(scheme).
 			WithObjects(objects...).
 			WithStatusSubresource(&nvcrev1alpha1.WorkloadRun{}, &nvcrev1alpha1.Workflow{}).
@@ -111,8 +115,11 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 				List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList,
 					opts ...client.ListOption,
 				) error {
-					if _, isNodes := list.(*corev1.NodeList); isNodes && input.NodeListFails {
-						return apierrors.NewServiceUnavailable("simulated node list failure")
+					if _, isNodes := list.(*corev1.NodeList); isNodes {
+						nodeLists++
+						if input.NodeListFails || nodeLists <= input.NodeListFailures {
+							return apierrors.NewServiceUnavailable("simulated node list failure")
+						}
 					}
 					return cl.List(ctx, list, opts...)
 				},

@@ -523,6 +523,15 @@ func offlineRenderFabric(
 // winning over node-based detection as in applyNICDetection.
 // render.ResolveDryRunFabric reports what it found and handles a refused
 // ResourceSlice list.
+//
+// The fabric is resolved once for the whole Certification, and the same
+// divergence applies as for detectGKETCPXONetworks: the controller resolves
+// it per category, filtering the nodes on that category's gpusPerNode, which
+// options.gpusPerNode can override. A Certification that sets a per-category
+// count can therefore preview a fabric, or an EFA count, decided over a
+// different node set than the run uses. The two agree when no category
+// overrides gpusPerNode, or on a fleet whose nodes all carry the same GPU
+// count.
 func resolveDryRunFabric(
 	ctx context.Context, reader client.Reader, cert *nvcrev1alpha1.Certification, nodes []corev1.Node,
 	platformFlag string, stderr io.Writer,

@@ -305,13 +305,16 @@ func BuildWorkflowSpec(
 	run *nvcrev1alpha1.WorkloadRun,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
 ) (*nvcrev1alpha1.WorkflowSpec, error) {
+	// No fabric is resolved here, so spec.fabric, when set, is the one the
+	// user's when.fabric matchers settle against.
 	return BuildWorkflowSpecForFabric(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType,
-		controller.FabricResolution{})
+		controller.FabricResolution{Fabric: string(run.Spec.Fabric)})
 }
 
 // BuildWorkflowSpecForFabric is BuildWorkflowSpec with the resolved fabric
-// (ADR-110), whose EFA device count the platform overrides render. Override
-// matching on the fabric happens where the overrides are applied.
+// (ADR-110), whose EFA device count the platform overrides render. The
+// user's when.fabric matchers are settled here when spec.fabric is set; the
+// rest of override matching happens where the overrides are applied.
 func BuildWorkflowSpecForFabric(
 	run *nvcrev1alpha1.WorkloadRun,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string, fabric controller.FabricResolution,
@@ -454,7 +457,12 @@ func BuildWorkflowSpecForFabric(
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
 	}
-	overrides = append(overrides, spec.Overrides...)
+	// The user's when.fabric matchers are settled as the controller settles
+	// them (ADR-110), so a render that sets spec.fabric (or --fabric) emits a
+	// Workflow the Workflow controller cannot re-decide from its nodes. No
+	// nodes are passed: the offline render has none, and the dry-run applies
+	// every override against its resolved fabric right after this.
+	overrides = append(overrides, controller.SettleUserFabricOverrides(spec, false, fabric)...)
 
 	workflowSpec := &nvcrev1alpha1.WorkflowSpec{
 		JobTemplate:   *jobTemplate,

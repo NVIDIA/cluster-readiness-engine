@@ -115,10 +115,15 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// reconcile can still succeed, so requeue rather than fail the run.
 		// The Warning says why nothing has happened yet; repeats of the same
 		// message collapse into one event series rather than one per retry.
+		// The InProgress condition says the same on the object itself, so
+		// a run that never starts does not sit with an empty status.
 		if _, ok := errors.AsType[*retryableCreateError](buildErr); ok {
 			log.Info("Building the Workflow failed for a retryable reason, will retry", "cause", buildErr.Error())
-			r.warnf(&run, ReasonWorkflowBuildRetrying,
-				"Building the Workflow failed and will be retried: %v", buildErr)
+			message := fmt.Sprintf("Building the Workflow failed and will be retried: %v", buildErr)
+			r.warnf(&run, ReasonWorkflowBuildRetrying, "%s", message)
+			if err := r.setWorkflowBuildRetrying(ctx, &run, message); err != nil {
+				return ctrl.Result{}, err
+			}
 			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
 		}
 		// The spec is immutable, so this cannot succeed on a later reconcile;
@@ -386,6 +391,24 @@ func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *nvcrev1alpha1.Workl
 // refetches the run in place, so anything mutated outside this callback is
 // silently discarded on the retry. That is how a lost write used to strand a
 // run with no workflowRef and no conditions at all (#383).
+// setWorkflowBuildRetrying records InProgress with ReasonWorkflowBuildRetrying
+// while the Workflow build waits on a retryable failure. It writes only when
+// the condition changes, so a run retrying on the same error does not write
+// its status on every requeue. It emits no transition event: the
+// WorkflowBuildRetrying Warning beside it already reports the same thing.
+func (r *WorkloadRunReconciler) setWorkflowBuildRetrying(
+	ctx context.Context, run *nvcrev1alpha1.WorkloadRun, message string,
+) error {
+	return updateStatusWithRetry(ctx, r.Client, run, func(o *nvcrev1alpha1.WorkloadRun) bool {
+		if c := meta.FindStatusCondition(o.Status.Conditions, nvcrev1alpha1.WorkloadRunInProgress); c != nil &&
+			c.Status == metav1.ConditionTrue && c.Reason == ReasonWorkflowBuildRetrying && c.Message == message {
+			return false
+		}
+		r.setWorkloadRunCondition(o, nvcrev1alpha1.WorkloadRunInProgress, ReasonWorkflowBuildRetrying, message)
+		return true
+	})
+}
+
 func (r *WorkloadRunReconciler) setWorkloadRunConditionAndUpdate(
 	ctx context.Context,
 	run *nvcrev1alpha1.WorkloadRun,
@@ -407,6 +430,11 @@ func (r *WorkloadRunReconciler) setWorkloadRunConditionAndUpdate(
 		before := append([]metav1.Condition(nil), o.Status.Conditions...)
 		r.setWorkloadRunCondition(o, condType, reason, message)
 		previousTrueType = trueConditionType(before, executionTypes)
+		// A run still retrying its Workflow build had not started, so its
+		// first real InProgress gets the transition event all the same.
+		if c := meta.FindStatusCondition(before, previousTrueType); c != nil && c.Reason == ReasonWorkflowBuildRetrying {
+			previousTrueType = ""
+		}
 		newTrueType = trueConditionType(o.Status.Conditions, executionTypes)
 		return true
 	}); err != nil {

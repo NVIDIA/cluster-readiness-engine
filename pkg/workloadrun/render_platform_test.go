@@ -64,6 +64,11 @@ func TestRenderPlatformFlag(t *testing.T) {
 			EFADevicesRequested     *bool  `json:"efaDevicesRequested,omitempty"`
 			RoCEClaimRequested      *bool  `json:"roceClaimRequested,omitempty"`
 			EFATransportForwarded   *bool  `json:"efaTransportForwarded,omitempty"`
+			// Recorded only without --platform, where the user's overrides
+			// reach the output still conditional: the when.fabric matchers
+			// left in it, and which of the user's fabric arms survived.
+			FabricMatchersLeft *int     `json:"fabricMatchersLeft,omitempty"`
+			UserFabricArmsKept []string `json:"userFabricArmsKept,omitempty"`
 		}
 		var r result
 		if renderErr != nil {
@@ -79,6 +84,21 @@ func TestRenderPlatformFlag(t *testing.T) {
 				r.EFADevicesRequested = new(strings.Contains(emitted, "vpc.amazonaws.com/efa"))
 				r.RoCEClaimRequested = new(strings.Contains(emitted, "roce.networking.k8s.aws"))
 				r.EFATransportForwarded = new(strings.Contains(emitted, "FI_PROVIDER=efa"))
+			}
+			if cfg.Fabric != "" && cfg.Platform == "" {
+				left := 0
+				for _, o := range workflow.Spec.Overrides {
+					if o.When.Fabric != nil {
+						left++
+					}
+				}
+				r.FabricMatchersLeft = &left
+				r.UserFabricArmsKept = []string{}
+				for _, arm := range []string{"user-efa-arm", "user-roce-arm"} {
+					if strings.Contains(emitted, arm) {
+						r.UserFabricArmsKept = append(r.UserFabricArmsKept, arm)
+					}
+				}
 			}
 		}
 

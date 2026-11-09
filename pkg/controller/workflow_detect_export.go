@@ -150,11 +150,15 @@ func OfflineFabric(field nvcrev1alpha1.Fabric, platformName, gpuArch string) (Fa
 	return ResolveFabric(context.Background(), nil, field, platformName, gpuArch, nil)
 }
 
-// ResolveFabricOverrides is the exported version of resolveFabricOverrides
-// for the workloadrun render path, which hands overrides to a Workflow the
-// same way the WorkloadRun controller does.
-func ResolveFabricOverrides(overrides []nvcrev1alpha1.OverrideSpec, fabric string) []nvcrev1alpha1.OverrideSpec {
-	return resolveFabricOverrides(overrides, fabric)
+// SettleUserFabricOverrides is the exported version of
+// settleUserFabricOverrides for the workloadrun render path, which hands the
+// user's spec.overrides to a Workflow the same way the WorkloadRun controller
+// does: with every when.fabric matcher settled against an explicit
+// spec.fabric, or against the fabric resolved from discovered nodes.
+func SettleUserFabricOverrides(
+	spec *nvcrev1alpha1.WorkloadRunSpec, nodesFound bool, fabric FabricResolution,
+) []nvcrev1alpha1.OverrideSpec {
+	return settleUserFabricOverrides(spec, nodesFound, fabric)
 }
 
 // ApplyOverridesWithTracking is the exported version of applyOverridesWithTracking for use by CLI tools.

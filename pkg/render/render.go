@@ -161,7 +161,11 @@ func ResolveWorkflowForPlatform(
 // caller resolved (ADR-110): the certification render paths pass the one they
 // resolved from spec.fabric, --fabric or the cluster. nil takes the platform
 // default for the detected platform and architecture, which is what a
-// hand-written Workflow's when.fabric matches offline.
+// hand-written Workflow's when.fabric matches offline. A nil fabric is not
+// recorded in the metadata when no override matches on when.fabric: the
+// Workflow controller resolves no fabric for such a Workflow, so the fabric
+// chose nothing and a default derived without the cluster would only mislabel
+// it.
 func ResolveWorkflowWithFabric(
 	workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node, platformName string, fabric *controller.FabricResolution,
 ) (*renderMetadata, error) {
@@ -176,6 +180,9 @@ func ResolveWorkflowWithFabric(
 		fr, err := controller.OfflineFabric("", orch.DetectedPlatform, orch.DetectedGPUArchitecture)
 		if err != nil {
 			return nil, err
+		}
+		if !controller.OverridesUseFabric(workflow.Spec.Overrides) {
+			fr.Surface = false
 		}
 		fabric = &fr
 	}
@@ -395,7 +402,9 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 
 	// A hand-written Workflow that matches on when.fabric gets the fabric the
 	// Workflow controller would resolve for it (ADR-110): detected on AWS
-	// GB300 from the primary architecture's nodes, otherwise the default.
+	// GB300 from the primary architecture's nodes, otherwise the default. One
+	// that does not gets none, as from the controller, and no detected-fabric
+	// annotation.
 	var fabric *controller.FabricResolution
 	if controller.OverridesUseFabric(workflow.Spec.Overrides) {
 		fr, ferr := ResolveDryRunFabric(ctx, c, "", controller.DetectPlatform(nodes),

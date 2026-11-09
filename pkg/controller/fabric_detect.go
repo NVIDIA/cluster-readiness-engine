@@ -250,7 +250,7 @@ func resolveFabric(
 			if missing := nodesMissing(nodes, func(n string) bool { _, ok := efa[n]; return ok }); len(missing) > 0 {
 				return res, &fabricValidationError{Message: fmt.Sprintf(
 					"fabric \"efa\" is set, but %d of %d target nodes advertise no %s allocatable: %s",
-					len(missing), len(nodes), efaResourceName, strings.Join(missing, ", "))}
+					len(missing), len(nodes), efaResourceName, joinLimited(missing))}
 			}
 			res.EFAPerNode = minEFA(efa)
 		case nvcrev1alpha1.FabricRoCE:
@@ -269,7 +269,7 @@ func resolveFabric(
 			if missing := nodesMissing(nodes, func(n string) bool { return roce[n] }); len(missing) > 0 {
 				return res, &fabricValidationError{Message: fmt.Sprintf(
 					"fabric \"roce\" is set, but %d of %d target nodes have no RoCE device published by the %s DRA driver: %s",
-					len(missing), len(nodes), awsNetworkingDRADriver, strings.Join(missing, ", "))}
+					len(missing), len(nodes), awsNetworkingDRADriver, joinLimited(missing))}
 			}
 		}
 		return res, nil
