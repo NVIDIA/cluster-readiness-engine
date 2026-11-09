@@ -1,0 +1,9 @@
+# Two Succeeded pods, but both hold completion index 0, and index 1 has no
+# pod. Two pods are not two workers, so the stall verdict stands.
+pods:
+  - name: worker-0-a
+    phase: Succeeded
+    index: 0
+  - name: worker-0-b
+    phase: Succeeded
+    index: 0

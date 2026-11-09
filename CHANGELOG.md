@@ -62,6 +62,12 @@ followed them.
   Before, OCI L40S, GB200 and GB300, and Nscale GB300 previewed the architecture
   defaults, such as eight NICs on OCI GB200 where the controller requests none
   ([ADR-103](docs/designs/103-oci-rdma-network-detection.md), #542).
+- A training Job is no longer failed as `WorkloadStalled` after every worker pod has
+  exited successfully. Megatron stops logging steps once it reaches
+  `exitDurationMins`, then saves its exit checkpoint and exits, and the TrainJob
+  reports `Complete` some seconds later. A stall budget that ran out in between
+  failed a finished run, or restarted it from its checkpoint. The Job now waits for
+  the workload's own verdict, still bounded by `timeoutPerJob` (#575).
 
 ## [0.9.0] - 2026-10-26
 
