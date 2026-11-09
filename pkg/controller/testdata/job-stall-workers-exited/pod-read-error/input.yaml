@@ -1,0 +1,8 @@
+# Both workers exited 0, but the pod list fails. A failed read is not evidence
+# that the run finished, so the stall verdict stands.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Succeeded
+podListError: true

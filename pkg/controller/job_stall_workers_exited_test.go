@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/yaml"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
@@ -35,7 +37,8 @@ import (
 // all exited successfully: the Job waits for the TrainJob's own verdict, and
 // timeoutPerJob still bounds that wait.
 //
-// Every case has a stalled GoodputMeasurement, so only the worker pods decide.
+// Every case has a stalled GoodputMeasurement, so only the worker pods, and
+// whether they can be read and counted, decide.
 func TestJobStallWorkersExited(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "job-stall-workers-exited",
@@ -58,6 +61,12 @@ func TestJobStallWorkersExited(t *testing.T) {
 				// pod's position in the list.
 				Index *int `yaml:"index"`
 			} `yaml:"pods"`
+			// NoNumNodes leaves the TrainJob's worker count unset, so the
+			// adapter cannot report how many workers to expect.
+			NoNumNodes bool `yaml:"noNumNodes"`
+			// PodListError fails every pod list, so the worker pods cannot
+			// be read.
+			PodListError bool `yaml:"podListError"`
 			// MaxRestarts, when set, gives the Job a checkpoint restart budget
 			// and the measurement a saved checkpoint, so a stall restarts the
 			// workload instead of failing the Job.
@@ -74,6 +83,9 @@ func TestJobStallWorkersExited(t *testing.T) {
 		job := newLookupJob(true)
 		// The TrainJob asks for two workers, indexes 0 and 1.
 		job.Spec.Workload.TrainJob.Trainer = &trainerv1alpha1.Trainer{NumNodes: new(int32(2))}
+		if input.NoNumNodes {
+			job.Spec.Workload.TrainJob.Trainer.NumNodes = nil
+		}
 		multiplier := int32(3)
 		job.Spec.StallMultiplier = &multiplier
 		start := metav1.NewTime(now.Add(-2 * time.Hour))
@@ -134,14 +146,25 @@ func TestJobStallWorkersExited(t *testing.T) {
 				}}
 			case corev1.PodFailed:
 				state = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
-					ExitCode: 1, Reason: "Error",
+					ExitCode: 1,
 				}}
 			}
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: stubContainer, State: state}}
 			objects = append(objects, pod)
 		}
 
-		apiServer := fake.NewClientBuilder().WithScheme(scheme).
+		builder := fake.NewClientBuilder().WithScheme(scheme)
+		if input.PodListError {
+			builder = builder.WithInterceptorFuncs(interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					if _, ok := list.(*corev1.PodList); ok {
+						return errors.New("pod list refused")
+					}
+					return c.List(ctx, list, opts...)
+				},
+			})
+		}
+		apiServer := builder.
 			WithObjects(objects...).
 			WithStatusSubresource(&nvcrev1alpha1.Job{}).
 			WithIndex(&nvcrev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField, func(obj client.Object) []string {
