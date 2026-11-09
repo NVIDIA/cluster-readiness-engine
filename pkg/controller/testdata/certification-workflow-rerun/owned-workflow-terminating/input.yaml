@@ -1,0 +1,16 @@
+# As first-category-nodes-gone, but the Workflow this Certification controls
+# is already being deleted. This controller deletes its own Workflow only from
+# the Certification finalizer, so something else deleted it. It is adopted all
+# the same, and the Workflow-deleted handling takes over from there, as after
+# any other adoption and as in the AlreadyExists branch. Waiting instead would
+# need a second state to park the category in.
+nodes: []
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+existingWorkflow: 0
+terminating: true

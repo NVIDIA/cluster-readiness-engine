@@ -59,6 +59,9 @@ func TestCertificationWorkflowRerun(t *testing.T) {
 			// ForeignHolder makes that Workflow belong to another
 			// Certification.
 			ForeignHolder bool `json:"foreignHolder"`
+			// Terminating gives that Workflow a deletionTimestamp, as if
+			// something other than this Certification deleted it.
+			Terminating bool `json:"terminating"`
 			// ExpectLookup says whether this case may list NADs at all.
 			ExpectLookup bool       `json:"expectLookup"`
 			NADs         []nadInput `json:"nads"`
@@ -105,11 +108,17 @@ func TestCertificationWorkflowRerun(t *testing.T) {
 			if input.ForeignHolder {
 				owner.UID = "a-different-certification-uid"
 			}
-			objs = append(objs, &nvcrev1alpha1.Workflow{
+			wf := &nvcrev1alpha1.Workflow{
 				Name:            WorkflowName(testCertName, input.Spec.Categories[i]),
 				Namespace:       testNS,
 				OwnerReferences: []metav1.OwnerReference{owner},
-			})
+			}
+			if input.Terminating {
+				deleted := metav1.Now()
+				wf.DeletionTimestamp = &deleted
+				wf.Finalizers = []string{workflowFinalizer}
+			}
+			objs = append(objs, wf)
 		}
 
 		c := fake.NewClientBuilder().
