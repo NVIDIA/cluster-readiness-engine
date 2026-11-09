@@ -1,0 +1,25 @@
+# On OCI, the NetworkAttachmentDefinition the first Workflow was built with
+# has been deleted since its Create (ADR-103). The Workflow this Certification
+# controls is adopted before the up-front network check runs, so no NAD is
+# listed and the Certification is not failed.
+nodes:
+  - name: gpu-01
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gpu-02
+    product: NVIDIA-L40S
+    providerID: ocid1.instance.oc1.iad.example
+    allocatable:
+      nvidia.com/gpu: "4"
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+existingWorkflow: 0
+expectLookup: false
+nads: []

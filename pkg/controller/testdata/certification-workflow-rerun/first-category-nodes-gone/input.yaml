@@ -1,0 +1,13 @@
+# The first Workflow was created, but the status write recording it was lost,
+# so this pass starts over with no category statuses. The target nodes have
+# since gone away, past nodeDiscoveryTimeout. The Workflow this Certification
+# controls is adopted and recorded; the Certification is not failed.
+nodes: []
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+existingWorkflow: 0

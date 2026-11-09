@@ -62,6 +62,11 @@ followed them.
   Before, OCI L40S, GB200 and GB300, and Nscale GB300 previewed the architecture
   defaults, such as eight NICs on OCI GB200 where the controller requests none
   ([ADR-103](docs/designs/103-oci-rdma-network-detection.md), #542).
+- A Certification is no longer marked `Failed` while its Workflow keeps
+  running when Workflow creation for a category runs again after a lost
+  status write. A Workflow the Certification already controls is now adopted
+  before node discovery, the capacity checks and OCI RDMA network detection
+  run again, so a cluster change in between can no longer fail it (#566).
 
 ## [0.9.0] - 2026-10-26
 
