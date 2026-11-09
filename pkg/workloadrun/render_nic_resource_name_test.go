@@ -20,7 +20,7 @@ import (
 // the platform override requests. On Azure and TogetherAI, nicResourceName
 // replaces the nvidia.com/mlnxnics default (issue #583), the same answer
 // certification render gives through the catalog fragments; unset, the
-// default stays.
+// default stays, and mlnxPerNode: 0 drops the request whichever name is set.
 func TestWorkloadRunRenderNICResourceName(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-nic-resource-name",

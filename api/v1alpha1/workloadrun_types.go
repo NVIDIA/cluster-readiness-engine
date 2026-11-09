@@ -229,7 +229,8 @@ type WorkloadRunSpec struct {
 	// If not specified, derived from GPU architecture and platform via the
 	// catalog's gpu-defaults.yaml.
 	// Setting it to 0 is an opt-out, not a request for zero devices: the Azure
-	// override stops requesting nvidia.com/mlnxnics altogether rather than
+	// and TogetherAI overrides stop requesting their NIC resource
+	// (nvidia.com/mlnxnics, or nicResourceName when set) altogether rather than
 	// emitting a count of zero.
 	// +optional
 	// +kubebuilder:validation:Minimum=0

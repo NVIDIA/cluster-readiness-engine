@@ -27,8 +27,8 @@ const (
 	// the k8s-rdma-shared-dev-plugin family uses.
 	nicResourcePrefixRDMA = "rdma/"
 	// nicResourceMlnxNics is the one exact-name candidate outside the rdma/
-	// domain: the name the Mellanox host-device plugin advertises, already
-	// consumed by the Azure override.
+	// domain: the name the Mellanox host-device plugin advertises, and the
+	// default the Azure, Forge and TogetherAI templates request.
 	nicResourceMlnxNics = "nvidia.com/mlnxnics"
 )
 
@@ -36,8 +36,10 @@ const (
 // pair is one the on-prem NIC-requesting overrides match: the ADR-075 NVL72
 // block (gb200, gb300) or the ADR-094 x86 HGX block (b200, b300). NIC
 // detection is gated on it so no other platform ever sees a detected name or
-// a detection event: nicResourceName is only consumed by those overrides' dep
-// fragments.
+// a detection event. Azure, Forge and TogetherAI also consume nicResourceName
+// (issue #583), but they fall back to nvidia.com/mlnxnics when it is unset, so
+// detecting a name there would change what a cluster that leaves the field
+// unset requests.
 func isOnPremNICOverrideTarget(platformName, gpuArch string) bool {
 	if platformName != platformOnPrem {
 		return false
