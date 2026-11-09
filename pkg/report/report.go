@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -2641,9 +2640,18 @@ func humanSize(bytes int64) string {
 }
 
 // WriteJSON serializes the report as JSON and writes it to the given path.
-// Called when CRE_RESULTS_FILE is set, allowing programmatic consumers
-// (e.g. k8s-platform-validator) to read structured results without log parsing.
+// Driven by --results-file, so programmatic consumers can read structured
+// results without parsing logs.
+//
+// A single report is written as an object and several as an array, which is
+// the shape consumers already depend on (ADR-071) and so is kept.
+//
+// The write is atomic: a reader never sees a half-written results file. See
+// writeFileAtomic.
 func WriteJSON(path string, reports []*CertReport) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("write report file %s: %w", path, errNoReports)
+	}
 	var v any = reports[0]
 	if len(reports) > 1 {
 		v = reports
@@ -2652,8 +2660,5 @@ func WriteJSON(path string, reports []*CertReport) error {
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil { // #nosec G306 -- reports are output files meant to be readable
-		return fmt.Errorf("write report file: %w", err)
-	}
-	return nil
+	return writeFileAtomic(path, data)
 }
