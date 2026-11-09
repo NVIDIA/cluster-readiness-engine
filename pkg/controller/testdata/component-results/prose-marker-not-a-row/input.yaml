@@ -1,0 +1,14 @@
+# A harness's own error path can mention the marker in prose, and MPI relays
+# every line with a rank prefix, so the marker is matched anywhere in a line.
+# Both lines below therefore reach the parser, and neither may fail the Job:
+# the payload does not open a JSON object, so it is not a declared row.
+#
+# Without that check the first line parses as a malformed row, the whole result
+# set is discarded, and a Job that emitted one perfectly good row reports none.
+# The single surviving row is what proves it did not.
+producer: structured-rows
+containerName: node
+log: |
+  [0] ERROR: could not emit NVCRE_ROW for device 3 (NVML returned 999)
+  NVCRE_ROW see the operator guide for the NVCRE_ROW format
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}

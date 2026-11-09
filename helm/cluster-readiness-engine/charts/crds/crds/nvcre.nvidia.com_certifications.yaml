@@ -1719,6 +1719,57 @@ spec:
                   description: CertificationCategoryStatus tracks the status of a
                     single certification category.
                   properties:
+                    componentResults:
+                      description: |-
+                        componentResults mirrors this category's Workflow totals for
+                        per-component result rows. Copied rather than summed, because one
+                        category is one Workflow.
+                      properties:
+                        final:
+                          description: |-
+                            final reports whether the totals are complete.
+
+                            Shards are produced per Job and Jobs finish at different times, so a
+                            total alone cannot distinguish "complete so far" from "missing": a
+                            reader polling mid-run sees a smaller number either way. It becomes true
+                            only once the Workflow itself is terminal, at which point the count can
+                            be checked against what is actually in the cluster.
+                          type: boolean
+                        rowCount:
+                          description: rowCount is the total number of rows those
+                            shards hold.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        selector:
+                          description: selector resolves every shard ConfigMap belonging
+                            to this Workflow.
+                          maxLength: 253
+                          type: string
+                        shardCount:
+                          description: |-
+                            shardCount is the total number of shard ConfigMaps across this
+                            Workflow's Jobs. Recomputed from the orchestration status on every
+                            write rather than incremented, so a reconcile that runs twice over the
+                            same terminal Job cannot double-count.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        truncated:
+                          description: truncated reports whether any Job lost evidence.
+                          type: boolean
+                        truncatedRowCount:
+                          description: truncatedRowCount is how many rows were lost
+                            in total.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                      required:
+                      - final
+                      - rowCount
+                      - selector
+                      - shardCount
+                      type: object
                     domain:
                       description: domain is the category domain.
                       type: string

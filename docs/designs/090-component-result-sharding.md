@@ -181,6 +181,117 @@ A sink would buy unattended egress and long-term durability. Both are real, both
 
 **Size-dispatched streaming encoder.** Rejected: the two encoders do not produce identical bytes, and choosing between them requires the marshal the dispatch was meant to avoid.
 
+## Amendments
+
+These record where the implementation departs from the decisions above, and why. Each was found by building the thing: the figures are measured, not estimated. The encoder is `pkg/shard`, the controller write path is `pkg/controller/component_*.go`; the egress half, `nvcrectl --results-bundle` and its reader, is not yet written.
+
+### The per-row cap is 128 KiB of raw input, not 256 KiB of compressed output
+
+Decision 2 gives one row "256 KiB of compressed output, a third of the shard bound". Two problems. The arithmetic does not close: 768 KiB of roll plus a 256 KiB row is exactly the 1 MiB object budget, leaving nothing for the plaintext `data` block or for output gzip has buffered but not yet emitted when the roll is checked. And a row's compressed contribution inside a shared stream is not well defined, because it depends on everything written before it; measuring it by compressing each row alone doubles the work for a backstop that only has to be conservative in one direction.
+
+The cap is therefore 128 KiB of **raw** encoded bytes. gzip's worst-case expansion is about 0.03% plus a fixed header, so a row under that raw bound cannot exceed it compressed by more than a rounding error. Decision 2's objection to row bounds — the measured 2.8x to 34x ratio spread — is an argument about the *aggregate* roll bound, where a raw figure really is meaningless, and does not apply to a per-row backstop.
+
+### Rolling needs a periodic flush, not just a counting writer
+
+Decision 2 says "a counting writer wraps the gzip stream and the writer starts a new shard when the output crosses 768 KiB". A counting writer alone does not work: flate buffers, and 387 KB of rows compressing to 8.5 KB were measured emitting **nothing** through the counter until `Close`. The roll never fires and the whole set lands in one object too large to write.
+
+The writer therefore flushes the stream every 64 KiB of input, which makes the count accurate at that granularity. The cost is real and accepted: the block boundaries cost about 11% of compressed size on a 1,920-row fixture. No corpus that exists is near the bound, so the ratio buys nothing back — a two hour per-GPU soak is 343 KiB against a 768 KiB roll.
+
+This is also what the shard-size arithmetic rests on. The roll fires at 768 KiB on an accurate count; at most 64 KiB of buffered input and one further 128 KiB row can still land; so the worst shard is 960 KiB, leaving 64 KiB for the `data` block. `NewBuilder` refuses option sets whose arithmetic does not close, so the backstop assertion in the writer is unreachable by construction.
+
+### Rows are sorted in memory under a 16 MiB budget; there is no spool
+
+The Implementation section says "the rows are spooled to a temporary file and sorted there, so the resident set stays proportional to the sort buffer rather than the row count". That is not implementable. The manager runs with `readOnlyRootFilesystem: true` and no volumes at all (`helm/cluster-readiness-engine/templates/deployment.yaml`), so there is no writable path, including `/tmp`, and `os.CreateTemp` fails with `EROFS`.
+
+Rows are sorted in memory under a budget instead, and a producer that exceeds it stops and records a `RowBudgetExceeded` truncation rather than growing without bound.
+
+**The budget is 16 MiB, and it is sized against the process rather than the Job.** It counts only the encoded lines, while a Builder also retains its rows with their own copies of every string: measured retention is 2.0x what the budget counts. And the budget is per-Builder while the limit is shared — `MaxConcurrentReconciles` defaults to 10, so ten Builders can be live against one 1Gi limit. An earlier 64 MiB figure measured **2,222 MiB of peak heap, 217% of the limit**: the guard that exists to contain a runaway producer was itself the OOM.
+
+**This has a consequence worth stating plainly, because it is a limit on this record's own sizing table.** The last row of that table, "1000 nodes, 8 GPU, 1 Hz for 1 min" at 480,000 rows, is the corpus whose 5.32x order gain justifies the normative emission order. It does not fit. A single Builder stores roughly 65,000 of those rows and records the rest as truncated. The producer that would emit it — a per-link NCCL producer — does not exist; today's parser extracts a message size and two bandwidths per line and produces no per-link rows at all, as the table's own surrounding text says. If such a producer is written, this budget is the first thing it meets, and either the spool arrives with a writable volume or the Job is partitioned so no single Builder sees the whole fleet.
+
+### The emission order is the normative key plus a byte comparison
+
+The normative order is `(node, componentID, index, name)`, justified on compression and on making shard bytes deterministic. Determinism is the load-bearing half, because the bundle manifest's per-file sha256 and the rewrite-on-retry path both rest on it, and those four fields do not deliver it. A 30 minute soak at 1 Hz produces 1,800 rows sharing all four, and the sort is not stable.
+
+The implemented order appends the sample ordinal, then breaks any remaining tie with a byte comparison of the two rows' encoded lines. Comparing the stored bytes is exact, allocation-free, total by construction, and stays correct if a field is ever added to the row. Two field-by-field attempts at the same thing both leaked: a numeric value comparison ties `-0.0` with `+0.0` while the encoder renders `-0.00` and `0.00`, and formatting the value to compare it allocated two strings across roughly 920,000 comparisons.
+
+### A superseded attempt's seal is retired with its shards
+
+Decision 3 seals per Job and per attempt but does not say what happens to a superseded attempt's seal. Leaving every attempt's seal on the group makes the list grow with `retryFailedGroups`, which has no maximum, and the Workflow's total then falls at an iteration boundary — a reader cannot distinguish a total that fell from one that was never complete.
+
+A superseded attempt's seal is therefore dropped where `retirePreviousAttempts` deletes that attempt's Job and its shards, so at most two are ever held. This is the only bound the existing control flow supports: retirement already enumerates earlier attempts from durable state and already blocks the next launch until every one is confirmed gone, so retries cannot advance past an unretired seal. Bounding `retryFailedGroups` instead would bound the wrong axis and impose a user-visible spec restriction to fix an internal accounting choice.
+
+This makes retirement load bearing on an invariant the type system does not enforce: `retireComponentSeals` runs where `retirePreviousAttempts` already deletes an earlier attempt's Job. If a superseded seal is ever left behind, the bound is `MaxItems=4` and the Workflow stalls on a refused status write rather than silently miscounting.
+
+### A group's seal carries a truncated-row count, not the per-reason detail
+
+Decision 3 does not distinguish the two places a seal lives, and the distinction turns out to decide whether the status is writable at fleet scale. A Job's seal sits on its own object, one per Job, so eight truncations with explanatory messages cost nothing. A group's seal sits on the Workflow, where a thousand-node fleet puts a thousand of them on **one** object.
+
+Measured on a 1000-group Workflow status, serialised:
+
+| Status | Bytes | Share of a 1 MiB object |
+|---|---|---|
+| Today, no seals | 240,637 | 22.9% |
+| One seal per group | 357,637 | 34.1% |
+| Two seals per group, mid-retry | 455,637 | 43.5% |
+| Two seals plus eight truncations each | 505,637 | 48.2% |
+
+The last row was **25,929,637 bytes, 2473% of the budget**, while the group seal carried a `Truncations` list. One reason per group across a fleet-wide condition added roughly 300 KB, and about three made the status unwritable — a cluster-wide log problem together with a budget overrun and a seal timeout is three, so this was reachable rather than theoretical.
+
+The group seal therefore carries only `truncatedRowCount`. The reasons and their messages live on each Job's own seal and in the truncation ConfigMap, which has no per-object constraint.
+
+For contrast with this record's own objection to a reference list: the Certification mirror carries the per-category totals and not the seals, and eight categories measure **1,846 bytes**, against the 539 KiB that a mirrored reference list was rejected for.
+
+### The truncation ledger is keyed on the component, not on arrival
+
+Decision 2 requires a dropped row to be "counted in `truncation.json` with its component reference". Keeping the first N records in arrival order does not deliver that. The reason that fires at scale is recorded as rows arrive, so the kept records are contiguous in the producer's emission order and all come from the few components straddling the budget boundary. Measured on the 480,000-row corpus: 416 nodes lost rows and an arrival-ordered ledger named **3** of them, 17 components out of 3,328.
+
+The ledger holds one record per component with a count, bounded at 1,000 components, alongside an exact total. Every affected component is named in the same object budget.
+
+### The ConfigMap informer scoping is already done
+
+The Implementation section calls for scoping a cluster-wide ConfigMap informer with a `ByObject` label selector, and warns that the existing node-result ConfigMaps must be labelled first or their cached reads start returning `NotFound`. Both are obsolete. ADR-092 disabled ConfigMap caching outright — `ClientOptions()` sets `DisableFor: [ConfigMap, PersistentVolumeClaim]` — so there is no informer to scope and no ordering hazard. Labels are still added, for `nvcrectl`'s selector walk rather than the controller's.
+
+### An oversized object is rejected as 422, not 413
+
+`ValidateConfigMap` returns a `field.TooLong` error, which the API server surfaces as `StatusReasonInvalid` — HTTP 422. A handler keyed on `IsRequestEntityTooLargeError` would never fire.
+
+### Nothing owed is recorded by an absent field, not by a phase
+
+Decision 3 seals per Job, and the phase enum includes `None` for a Job that declares no component results. Writing that phase is the obvious reading and it is wrong at this repository's scale: every Job in every certification would take an extra status write, and store a field, to record that a feature none of them uses owes them nothing. It also changed 22 integration goldens to say so.
+
+A Job that declares nothing therefore writes nothing. The absent field is the answer, because a Job that owed rows always has a seal. `None` stays in the enum so that a seal found carrying it reads as terminal rather than as an unfinished write, which is what keeps the group wait from hanging on one; the controller never writes it.
+
+The same rule applies one tier up. The Workflow publishes its totals when there is something to say — any shard, any row, or any row dropped — and leaves the field absent otherwise. Keying that on the run being finished instead, which the first implementation did, put a zero-valued block and a live label selector on every Workflow that reached a terminal condition. A reader cannot tell that block from a run that genuinely finished with an empty result, so it is worse than absent: it invites a bundle for a run that never had a producer.
+
+Truncation is in that test deliberately. A run that dropped every row it produced has no shards and no rows, and suppressing it on counts alone would hide exactly the evidence this mechanism exists to surface.
+
+### The group waits for the Job's seal, and waits ahead of the workload delete
+
+Decision 3's finality marker assumes the Workflow's total can be summed once its groups are done. The two controllers are independent, so a group can be finalized on the same status write that made its Job terminal, before the Job tier has produced a row. The group is never revisited, so the total is permanently short of shards that exist and `nvcrectl` refuses the bundle. On the retry path it is worse than short: the attempt's shards are written and labelled, but no seal names them, so retirement cannot delete them and the selector resolves more shards than the total admits.
+
+`completeTerminalGroup` therefore holds the group while a declared seal is non-terminal, bounded by a two-minute grace period measured from the same persisted anchor the pod-drain barrier uses.
+
+**The placement matters more than the wait.** The hold is ahead of `deleteWorkloadForJob`, not after it. That call cascade-deletes the pods whose logs are the only source these rows have, so freeing the GPUs before the Job tier has read them does not make the rows late, it makes them unrecoverable. `captureTimeoutLog` guards the same hazard one tier up for the same reason. A Job that declares no component results is already terminal by this measure and never waits, which is every Job in the repository today.
+
+### Rows come from worker pods through the cache, or from a named replicatedJob live
+
+This record does not say where a producer's output is read from, and ADR-102 makes the choice consequential. The manager's Pod cache holds only pods carrying the job label. Worker pods carry it; MPI launchers do not, and a cached read for a launcher returns no pods **and no error** — the rows would come back empty from a Job that produced them perfectly well.
+
+`Job.spec.componentResults.replicatedJobName` therefore selects the read. Empty means worker pods and the cached read, which is correct and costs no API call for the single-worker-per-node shape ADR-091's GEMM entry uses. Set means `WorkloadPods`, a live read on the JobSet labels every pod in the workload carries. This is the same split the bandwidth controller already makes, because NCCL's output is on the launcher rather than the workers.
+
+### A row is declared by the marker plus a leading brace, and a broken one is counted
+
+The declaration vocabulary is deferred by this record, so the controller needs a minimum: a harness opts a line in by printing `NVCRE_ROW ` followed by a JSON object. Two details are load bearing.
+
+The marker is matched anywhere in the line, because MPI tags every line it relays with a rank prefix and anchoring at column zero would drop every row from a launcher. That means prose can contain the marker too — `could not emit NVCRE_ROW for device 3` is a plausible line from a harness's own error path — so the leading brace is what separates a declared row from a mention of one. Without it, a log message fails the Job's entire result set.
+
+And a line that does open a JSON object and will not parse is **counted, not fatal**. The first implementation returned an error and discarded every row from that pod, which inverts this record's own rule that rows lost to pagination are never collapsed to zero: the decisive case is mundane, since a pod killed mid-write leaves a truncated final line, and that would throw away a thirty-minute soak because its last line was cut short. The rows that parsed are kept, the rejects are counted under `RowUnencodable`, and the first offending line goes into the seal's message so the harness bug is findable.
+
+### The sizing generator is not committed
+
+The Measured sizing section says "the generator for this table is committed with the implementation, under `pkg/controller/shard/testdata/`". The package is `pkg/shard`, chosen so the encoder carries no controller dependency and `nvcrectl` can read what the controller writes, and no generator is committed. The figures above that were re-measured during implementation are cited where they are used; the table's own figures are not re-derivable from this repository.
+
 ## Notes
 
 The customer's ask that results be readable "without knowing how NVCRE's objects relate" cannot be satisfied as literally one Kubernetes object: one NVL72 rack's P2P pairs alone exceed the per-object cap. It is satisfied instead as one command and one typed document, with `nvcrectl` performing the walk.

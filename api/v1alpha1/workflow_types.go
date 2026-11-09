@@ -469,6 +469,12 @@ type GroupIterationResult struct {
 	// completionTime when the group's job finished.
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+
+	// componentSeal is the winning attempt's seal for this iteration, copied
+	// here when the iteration is snapshotted so the Workflow total survives
+	// the group reset that follows.
+	// +optional
+	ComponentSeal *GroupComponentSeal `json:"componentSeal,omitempty"`
 }
 
 // OrchestrationStatus tracks the state of orchestration execution.
@@ -548,6 +554,18 @@ type OrchestrationStatus struct {
 	// Group phases are reset to Pending at the start of each new iteration.
 	// +optional
 	Groups []GroupStatus `json:"groups,omitempty"`
+
+	// retiredComponentResults folds in the seals of groups whose GroupStatus
+	// entries were replaced outright rather than snapshotted.
+	//
+	// Only fault isolation does that: each diagnose round rebuilds the group
+	// list from scratch and never snapshots an iteration, so without this the
+	// rows a round produced would vanish from the Workflow total the moment
+	// the next round's groups were installed. Fault isolation is also the mode
+	// where per-component rows are most worth having, so losing them there is
+	// the worst place to lose them.
+	// +optional
+	RetiredComponentResults *ComponentResultTotals `json:"retiredComponentResults,omitempty"`
 }
 
 // DiagnoseStatus tracks the adaptive fault isolation algorithm's progress.
@@ -705,6 +723,106 @@ type GroupStatus struct {
 	// completionTime when this group's job finished in the current iteration.
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+
+	// componentSeals holds the live attempt's seal, and the superseded
+	// attempt's until it is retired.
+	//
+	// Entries are assigned by attempt, never accumulated, because the function
+	// that observes a terminal group is re-entered: it returns early while
+	// pods drain and again on a stale view, and it is reached afresh after any
+	// failed status write. A running sum would count those passes twice. The
+	// Workflow total is recomputed from these entries instead.
+	//
+	// A superseded attempt's entry is dropped where retirePreviousAttempts
+	// deletes that attempt's Job and its shards, so at most two are ever held
+	// however large retryFailedGroups is. That is what bounds this list, and
+	// it is the only bound the existing control flow supports: retirement
+	// already enumerates attempts from durable state and already blocks the
+	// next launch until every one is confirmed gone, so retries cannot advance
+	// past an unretired seal. Bounding retryFailedGroups instead would bound
+	// the wrong axis — the problem is aggregate size across groups, not the
+	// count within one — and would impose a user-visible spec restriction to
+	// fix an internal accounting choice.
+	//
+	// Retiring the entry with the shards is also what keeps the Workflow total
+	// monotonic. Dropping a seal while its shards survived would make the
+	// total fall at an iteration boundary, and a reader cannot tell a total
+	// that fell from one that was never complete.
+	//
+	// Cleared at the iteration boundary alongside retries, or iteration N+1
+	// would inherit N's seals and count them in both places.
+	// +optional
+	// +listType=map
+	// +listMapKey=attempt
+	// +kubebuilder:validation:MaxItems=4
+	ComponentSeals []GroupComponentSeal `json:"componentSeals,omitempty"`
+}
+
+// GroupComponentSeal is one attempt's seal as the Workflow records it.
+//
+// It carries the Job name, not the shard name stem. The stem is derivable from
+// the Job name and the Workflow UID, which is the state the retirement path
+// already has in hand: retirePreviousAttempts re-derives each earlier
+// attempt's Job name itself. Storing it was 200 bytes per seal of the largest
+// field in the struct, to save a string concatenation.
+type GroupComponentSeal struct {
+	// attempt is the retry index this seal belongs to, matching
+	// GroupStatus.retries at the time the attempt ran.
+	// +kubebuilder:validation:Minimum=0
+	Attempt int32 `json:"attempt"`
+
+	// jobName is the Job that produced these rows. The attempt's shard names
+	// are derived from it together with the Workflow UID.
+	// +kubebuilder:validation:MaxLength=63
+	JobName string `json:"jobName"`
+
+	// shardCount is how many shards the attempt owes.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=9999
+	ShardCount int32 `json:"shardCount"`
+
+	// rowCount is how many rows those shards hold.
+	// +kubebuilder:validation:Minimum=0
+	RowCount int64 `json:"rowCount"`
+
+	// phase is the attempt's terminal seal phase.
+	// +kubebuilder:validation:Required
+	Phase ComponentResultPhase `json:"phase"`
+
+	// truncatedRowCount is how many rows this attempt could not store.
+	//
+	// A count, not the per-reason detail that ComponentResultSeal carries.
+	// The distinction is load bearing, and getting it wrong is reachable: a
+	// Job's seal lives on its own object, one per Job, so eight truncations
+	// with explanatory messages cost nothing there. A group's seal lives on
+	// the Workflow, where a thousand-node fleet puts a thousand of them on ONE
+	// object. Measured: 1000 groups with a seal each is 358 KB of status, 34%
+	// of the budget; the same with eight truncations each is 25.9 MB, 24 times
+	// over it. Even one reason per group across a fleet-wide condition adds
+	// 300 KB, and about three makes the status unwritable.
+	//
+	// So the Workflow keeps the magnitude and the reasons live where there is
+	// room for them: on each Job's own seal, and in the truncation ConfigMap,
+	// which has no per-object constraint at all.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	TruncatedRowCount int64 `json:"truncatedRowCount,omitempty"`
+}
+
+// ComponentResultTotals is a shard and row count pair.
+type ComponentResultTotals struct {
+	// shardCount is a number of shard ConfigMaps.
+	// +kubebuilder:validation:Minimum=0
+	ShardCount int32 `json:"shardCount"`
+
+	// rowCount is a number of rows.
+	// +kubebuilder:validation:Minimum=0
+	RowCount int64 `json:"rowCount"`
+
+	// truncatedRowCount is how many rows were lost.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	TruncatedRowCount int64 `json:"truncatedRowCount,omitempty"`
 }
 
 // NodeResult contains performance metrics for a single node.
@@ -936,6 +1054,53 @@ type WorkflowStatus struct {
 	// Only populated when spec.validation.performance.tracking.perDomain is true.
 	// +optional
 	DomainResults map[string]DomainResult `json:"domainResults,omitempty"`
+
+	// componentResults totals the per-component result rows this Workflow's
+	// Jobs produced, and carries the selector that resolves their shards.
+	// +optional
+	ComponentResults *WorkflowComponentResults `json:"componentResults,omitempty"`
+}
+
+// WorkflowComponentResults is a Workflow's view of its per-component rows.
+//
+// It carries a label selector rather than a list of references. Shard count
+// follows Job count, which follows the catalog entry: a one-node-per-Job entry
+// over a thousand nodes produces a thousand shards, and a reference list that
+// long is tens of kilobytes of status, mirrored again onto every category of
+// the Certification above it. A selector is one string whatever the fleet.
+type WorkflowComponentResults struct {
+	// shardCount is the total number of shard ConfigMaps across this
+	// Workflow's Jobs. Recomputed from the orchestration status on every
+	// write rather than incremented, so a reconcile that runs twice over the
+	// same terminal Job cannot double-count.
+	// +kubebuilder:validation:Minimum=0
+	ShardCount int32 `json:"shardCount"`
+
+	// rowCount is the total number of rows those shards hold.
+	// +kubebuilder:validation:Minimum=0
+	RowCount int64 `json:"rowCount"`
+
+	// selector resolves every shard ConfigMap belonging to this Workflow.
+	// +kubebuilder:validation:MaxLength=253
+	Selector string `json:"selector"`
+
+	// final reports whether the totals are complete.
+	//
+	// Shards are produced per Job and Jobs finish at different times, so a
+	// total alone cannot distinguish "complete so far" from "missing": a
+	// reader polling mid-run sees a smaller number either way. It becomes true
+	// only once the Workflow itself is terminal, at which point the count can
+	// be checked against what is actually in the cluster.
+	Final bool `json:"final"`
+
+	// truncated reports whether any Job lost evidence.
+	// +optional
+	Truncated bool `json:"truncated,omitempty"`
+
+	// truncatedRowCount is how many rows were lost in total.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	TruncatedRowCount int64 `json:"truncatedRowCount,omitempty"`
 }
 
 // +kubebuilder:object:root=true

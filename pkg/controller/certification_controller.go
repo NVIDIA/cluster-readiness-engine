@@ -427,6 +427,13 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 			if workflow.Status.FailedNodesRef != nil {
 				cs.FailedNodesRef = workflow.Status.FailedNodesRef.DeepCopy()
 			}
+			// Mirror the component-result totals, which are copied rather than
+			// summed because one category is one Workflow. The totals only, not
+			// the per-group seals: this object carries one entry per category,
+			// and a thousand-group fleet's seals would be megabytes here.
+			if workflow.Status.ComponentResults != nil {
+				cs.ComponentResults = workflow.Status.ComponentResults.DeepCopy()
+			}
 			if status != "" {
 				cs.Status = status
 			}

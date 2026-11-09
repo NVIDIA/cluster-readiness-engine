@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job is terminal in the fixture, so its Succeeded condition is true on the
+# first read and a wait on the condition alone would snapshot the status before
+# the seal exists. componentResultsSealed holds until the Job tier's own pass
+# has finished accounting.
+waitFor:
+  kind: Job
+  name: cr-job
+  namespace: default
+  condition: Succeeded
+  componentResultsSealed: true
+collect:
+  - kind: Job
+    name: cr-job
+    namespace: default

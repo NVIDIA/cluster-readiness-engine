@@ -112,6 +112,13 @@ func (r *WorkflowReconciler) retirePreviousAttempts(
 		r.retirePreviousMeasurements(ctx, workflow, r.getGroupJobName(workflow, g.Name, orch.CurrentIteration, attempt))
 	}
 
+	// Delete the superseded attempts' shards and drop their seals. This is
+	// what bounds GroupStatus.ComponentSeals: retryFailedGroups has no
+	// maximum, and retirement blocks the next launch until everything is
+	// confirmed gone, so at most two seals are ever held. Deleting the shards
+	// with the seal is also what keeps the Workflow total monotonic.
+	r.retireComponentSeals(ctx, workflow, g)
+
 	depsLeft, err := r.retirePreviousDependencies(ctx, workflow, g, orch)
 	if err != nil {
 		return false, err

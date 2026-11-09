@@ -2368,6 +2368,16 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	log := logf.FromContext(ctx)
 	jobFailed := ts.failed || ts.hwFailed || ts.validationFailed
 
+	// Hold the group until the Job tier has accounted for its per-component
+	// rows. Ahead of the workload delete below on purpose: that call takes the
+	// pods, and the pods' logs are where those rows come from. Bounded by
+	// componentSealGracePeriod, and a no-op for a Job that declares none.
+	if shouldWaitForComponentSeal(ctx, job) {
+		log.V(1).Info("Waiting for the Job's component results to be sealed",
+			"group", g.Name, "job", job.Name)
+		return groupStillRunning, nil
+	}
+
 	if jobFailed {
 		// Delete the workload to free GPUs and stop hanging pods. This happens
 		// before the retry/terminal decision so pods start draining either way.
@@ -2397,6 +2407,11 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 
 	now := metav1.Now()
 	g.CompletionTime = &now
+
+	// Copy this attempt's component-result seal onto the group. Assigned by
+	// attempt rather than accumulated, because this function is re-entered;
+	// the Workflow total is recomputed from these entries (ADR-090).
+	observeComponentSeal(g, job, g.Retries)
 
 	if len(job.Status.FailedNodes) > 0 {
 		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
@@ -2521,6 +2536,9 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
+			// Cleared with Retries, or iteration N+1 inherits N's seals and
+			// they are counted in both Groups and IterationHistory.
+			orch.Groups[i].ComponentSeals = nil
 			resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, &orch.Groups[i])
 		}
 
@@ -2968,6 +2986,12 @@ func (r *WorkflowReconciler) diagnoseSetGroups(
 ) (ctrl.Result, error) {
 	logf.FromContext(ctx).Info(msg, "stage", diag.Stage, "round", diag.Round)
 
+	// Fold the outgoing groups' seals into the retired totals BEFORE the list
+	// is discarded. Fault isolation rebuilds the groups every round and never
+	// snapshots an iteration, so without this a round's rows vanish from the
+	// Workflow total the moment the next round's groups are installed.
+	foldRetiredComponentResults(orch)
+
 	orch.Groups = make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
 		orch.Groups[i] = nvcrev1alpha1.GroupStatus{
@@ -3046,6 +3070,7 @@ func snapshotIteration(orch *nvcrev1alpha1.OrchestrationStatus) nvcrev1alpha1.It
 			JobName:        jobName,
 			StartTime:      g.StartTime.DeepCopy(),
 			CompletionTime: g.CompletionTime.DeepCopy(),
+			ComponentSeal:  liveSeal(g).DeepCopy(),
 		}
 	}
 	return result
@@ -3487,6 +3512,11 @@ func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1al
 	want := orch.DeepCopy()
 	return func(w *nvcrev1alpha1.Workflow) bool {
 		w.Status.Orchestration = want.DeepCopy()
+		// Recompute the component-result totals from the status just applied,
+		// never incrementally. This runs on every orchestration write, so the
+		// total converges across the re-entry, conflict retries and restarts
+		// that an incremental counter would double-count (ADR-090).
+		recomputeComponentResults(&w.Status, string(w.UID), workflowStatusTerminal(&w.Status))
 		return true
 	}
 }
@@ -3793,6 +3823,15 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	}
 
 	log.Info("Handling deletion of Workflow")
+
+	// Delete this Workflow's component-result shards explicitly. The owner
+	// reference cleans them up on a real cluster, but envtest has no garbage
+	// collector, so without this a test cannot assert the cleanup it never
+	// sees. Names come from the durable seals the totals are computed from, so
+	// no list permission on ConfigMaps is needed.
+	if err := r.deleteWorkflowComponentShards(ctx, workflow); err != nil {
+		log.V(1).Info("Could not delete component result shards", "error", err)
+	}
 
 	// Stamp the backing PV of every owned PVC while the PVCs still exist:
 	// Phase 1 deletes the Jobs, and job-scoped PVCs cascade-delete with them

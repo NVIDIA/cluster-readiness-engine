@@ -104,6 +104,12 @@ type CertificationCategoryStatus struct {
 	// list (name, reason, message). Copied from the Workflow.
 	// +optional
 	FailedNodesRef *corev1.TypedLocalObjectReference `json:"failedNodesRef,omitempty"`
+
+	// componentResults mirrors this category's Workflow totals for
+	// per-component result rows. Copied rather than summed, because one
+	// category is one Workflow.
+	// +optional
+	ComponentResults *WorkflowComponentResults `json:"componentResults,omitempty"`
 }
 
 // CategoryResourceList holds CPU and memory quantities for one side
