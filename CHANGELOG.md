@@ -15,6 +15,15 @@ followed them.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-09
+
+### Changed
+
+- The controller image's runtime base moves to `nvcr.io/nvidia/distroless/static:v4.2.0`
+  (from v4.1.6) and its builder to the current `golang:1.27.3-trixie` digest (#592).
+  `nvcrectl` builds against `github.com/spf13/pflag` v1.1.0, up from v1.0.10 (#593).
+  This release carries no other change to the controller, the CRDs or the catalog.
+
 ## [0.10.0] - 2026-11-02
 
 ### Changed
@@ -968,6 +977,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.11.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.11.0
 [0.10.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.10.0
 [0.9.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.9.0
 [0.8.2]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.2
