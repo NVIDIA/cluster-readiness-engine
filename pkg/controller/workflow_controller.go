@@ -782,7 +782,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// already modified spec.Dependencies in memory. Creating dependencies here
 	// ensures immutable resources like TrainingRuntime include override changes.
 	// Dependency refs are accumulated in memory; setWorkflowInProgress below
-	// writes the full status (including refs) in a single update.
+	// writes them with the orchestration status in a single update.
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		// A dependency kind an override added was not part of the check
 		// before discovery, so its create can be the first sign the binding
@@ -848,7 +848,14 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 			"(%d target nodes not exercised)",
 			orch.TotalNodes, orch.NodesPerJob, orch.TotalNodes-orch.NodesPerJob)
 	}
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg); err != nil {
+	// Everything discovery computed lives only on the in-memory object, so it
+	// is re-applied inside the write. A 409 re-fetches the Workflow in place
+	// and would otherwise persist the condition alone; the next reconcile
+	// would re-run discovery, find the condition unchanged, skip the write as
+	// a no-op, and never reach the Jobs.
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg,
+		applyOrchestration(orch),
+		applyDependencyRefs(workflow.Status.DependencyRefs)); err != nil {
 		return ctrl.Result{}, err
 	}
 
