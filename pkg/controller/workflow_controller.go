@@ -197,8 +197,12 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// so platform/GPU overrides won't match yet; discoverAndPartition
 	// applies them authoritatively once detection completes.
 	// The fabric is not resolved yet either, so a when.fabric override waits
-	// for the authoritative call too.
-	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil, "")); err != nil {
+	// for the authoritative call too. After that call the fabric is read back
+	// from status like the platform is: this pass builds the spec every Job is
+	// created from, so passing "" here would leave the Jobs without the
+	// when.fabric changes the dependencies were created with.
+	fabric := string(orch.ResolvedFabric)
+	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil, fabric)); err != nil {
 		message := fmt.Sprintf("Failed to apply overrides: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError", message); statusErr != nil {
 			logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after override failure")
@@ -677,6 +681,10 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 			return ctrl.Result{}, ferr
 		}
 		fabric = fr.Fabric
+		// Recorded for the later reconciles, which re-apply the overrides
+		// without re-resolving: a second resolution could disagree with the
+		// one the dependencies were already created for.
+		orch.ResolvedFabric = nvcrev1alpha1.Fabric(fabric)
 	}
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.

@@ -521,6 +521,16 @@ type OrchestrationStatus struct {
 	// +optional
 	DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
 
+	// resolvedFabric is the network fabric the controller resolved for this
+	// Workflow's when.fabric overrides: detected from the nodes on AWS GB300,
+	// otherwise the platform default (ADR-110). It is recorded so that every
+	// later reconcile applies the same overrides discovery did. It is set
+	// only when an override matches on when.fabric. A Workflow created by a
+	// Certification or WorkloadRun has none left, so the field stays empty
+	// there and the parent's status.resolvedFabric carries the value.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
+
 	// gpuProducts lists the distinct nvidia.com/gpu.product label values of the
 	// nodes that survived discovery, recorded verbatim. detectedGPUArchitecture
 	// is normalized and lossy ("NVIDIA-H100-80GB-HBM3" becomes "h100"), so it

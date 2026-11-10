@@ -1,0 +1,357 @@
+{
+  "ConfigMap/wf-fabric-efa-config": {
+    "kind": "ConfigMap",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "wf-fabric-efa-config",
+      "namespace": "default",
+      "labels": {
+        "nvcre.nvidia.com/workflow": "wf-fabric-efa"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "wf-fabric-efa",
+          "uid": ""
+        }
+      ]
+    },
+    "data": {
+      "fabric": "efa"
+    }
+  },
+  "Job/wf-fabric-efa-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-fabric-efa-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "wf-fabric-efa"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "wf-fabric-efa-1,wf-fabric-efa-2"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "wf-fabric-efa",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "base-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "env": [
+              {
+                "name": "NCCL_DEBUG",
+                "value": "INFO"
+              },
+              {
+                "name": "FI_EFA_USE_DEVICE_RDMA",
+                "value": "1"
+              }
+            ],
+            "numNodes": 2
+          },
+          "runtimePatches": [
+            {
+              "manager": "nvcre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "wf-fabric-efa-1",
+                                                "wf-fabric-efa-2"
+                                              ]
+                                            },
+                                            {
+                                              "key": "fabric-case",
+                                              "operator": "In",
+                                              "values": [
+                                                "workflow-fabric-override-aws-gb300-efa"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-GB300-NVL72"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/wf-fabric-efa-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "wf-fabric-efa-job-workload",
+        "namespace": "default"
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
+    }
+  },
+  "Workflow/wf-fabric-efa": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-fabric-efa",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "base-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  }
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "fabric-case": "workflow-fabric-override-aws-gb300-efa"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "overrides": [
+        {
+          "when": {
+            "fabric": {
+              "equals": "efa"
+            }
+          },
+          "jobTemplatePatch": [
+            {
+              "op": "add",
+              "path": "/spec/workload/trainJob/trainer/env/-",
+              "value": {
+                "name": "FI_EFA_USE_DEVICE_RDMA",
+                "value": "1"
+              }
+            }
+          ],
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "fabric": "efa"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "wf-fabric-efa-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "fabric": {
+              "equals": "roce"
+            }
+          },
+          "jobTemplatePatch": [
+            {
+              "op": "add",
+              "path": "/spec/workload/trainJob/trainer/env/-",
+              "value": {
+                "name": "WRONG_FABRIC_ARM",
+                "value": "roce"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "wf-fabric-efa-config",
+          "namespace": "default",
+          "scope": "workflow"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "gb300",
+        "resolvedFabric": "efa",
+        "gpuProducts": [
+          "NVIDIA-GB300-NVL72"
+        ],
+        "appliedOverrides": [
+          {
+            "index": 0,
+            "when": "fabric=efa",
+            "patches": "jobTemplatePatch, 1 dependencies"
+          }
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "wf-fabric-efa-1",
+              "wf-fabric-efa-2"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-fabric-efa-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

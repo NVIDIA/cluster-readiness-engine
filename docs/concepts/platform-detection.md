@@ -41,7 +41,7 @@ Most targets are built one way, so their fabric follows from the platform and GP
 
 The target nodes in all three steps are the ones the job can run on: a Certification or WorkloadRun leaves out nodes of other GPU architectures and nodes without the GPUs the run requests, so a node that never runs the job cannot fail an explicit value or tip detection.
 
-The EFA device count is read from node allocatable, the smallest across the target nodes, so every node can satisfy it. The resolved fabric is recorded as `resolvedFabric` in the Certification category status or WorkloadRun status, and as the `nvcrectl.nvidia.com/detected-fabric` render annotation, wherever it chose the render. `nvcrectl certification render` and `nvcrectl workloadrun render` take `--fabric` to choose offline. The value set matches the one AICR emits ([AICR ADR-028](https://github.com/NVIDIA/aicr/pull/3506)).
+The EFA device count is read from node allocatable, the smallest across the target nodes, so every node can satisfy it. The resolved fabric is recorded as `resolvedFabric` in the Certification category status or WorkloadRun status, and as the `nvcrectl.nvidia.com/detected-fabric` render annotation, wherever it chose the render. A hand-written Workflow that matches on `when.fabric` records it as `status.orchestration.resolvedFabric`. `nvcrectl certification render` and `nvcrectl workloadrun render` take `--fabric` to choose offline. The value set matches the one AICR emits ([AICR ADR-028](https://github.com/NVIDIA/aicr/pull/3506)).
 
 Catalog overrides match the resolved fabric with `when.fabric`, a string matcher like `when.platform`. Only the AWS GB300 overrides use it, so every other override matches whatever the fabric is.
 

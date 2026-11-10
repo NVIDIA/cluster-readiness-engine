@@ -8287,6 +8287,21 @@ spec:
                       the user asked for, so totalGroups * nodesPerJob is deliberately less than
                       totalNodes: the untested nodes are out of scope, not excluded.
                     type: string
+                  resolvedFabric:
+                    description: |-
+                      resolvedFabric is the network fabric the controller resolved for this
+                      Workflow's when.fabric overrides: detected from the nodes on AWS GB300,
+                      otherwise the platform default (ADR-110). It is recorded so that every
+                      later reconcile applies the same overrides discovery did. It is set
+                      only when an override matches on when.fabric. A Workflow created by a
+                      Certification or WorkloadRun has none left, so the field stays empty
+                      there and the parent's status.resolvedFabric carries the value.
+                    enum:
+                    - efa
+                    - ib
+                    - roce
+                    - tcpxo
+                    type: string
                   totalGroups:
                     description: totalGroups created.
                     type: integer
