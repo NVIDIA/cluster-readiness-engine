@@ -477,8 +477,16 @@ type jobGuard struct {
 }
 
 var jobGuards = []jobGuard{
+	// The GEMM harness image (ADR-091) is published by the same release and
+	// pinned by compute/cutlass-gemm, so each of its attestations being
+	// skipped has to stop the release for the same reason the controller
+	// image's does: a skipped job does not fail its caller, so the release
+	// would go green with an unsigned image that a catalog entry pulls.
 	{"image-attested", "Require every image attestation to have succeeded",
-		[]string{"BUILD", "INDEX", "AMD64", "ARM64"}},
+		[]string{
+			"BUILD", "INDEX", "AMD64", "ARM64",
+			"GEMM_BUILD", "GEMM_INDEX", "GEMM_AMD64", "GEMM_ARM64",
+		}},
 	{"chart-attested", "Require the chart attestation to have succeeded",
 		[]string{"PUBLISH", "ATTEST", "ATTEST_CRDS"}},
 	{"binaries-attested", "Require every binary attestation to have succeeded",

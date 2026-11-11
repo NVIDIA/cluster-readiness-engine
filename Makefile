@@ -14,6 +14,25 @@ IMAGE_TAG ?= $(VERSION)
 # Full image URL
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
+# The CUTLASS GEMM burn-in harness compute/cutlass-gemm runs (ADR-091). A
+# second published image, so every image target below takes the Dockerfile,
+# its context and the buildx scratch names as variables rather than assuming
+# the controller's.
+GEMM_IMAGE_REPOSITORY ?= nvidia/cluster-readiness-engine/cutlass-gemm
+GEMM_IMAGE_TAG ?= $(VERSION)
+GEMM_IMG ?= $(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY):$(GEMM_IMAGE_TAG)
+
+# Which image the docker-* targets act on. Overridden by the gemm-image-*
+# targets; a caller may also set these directly.
+DOCKER_IMG ?= $(IMG)
+DOCKERFILE ?= Dockerfile
+DOCKER_CONTEXT ?= .
+# Scratch names, derived from the Dockerfile so two concurrent builds in one
+# workspace cannot delete each other's builder or temporary file. The previous
+# constants meant the first `make docker-buildx` to exit removed the other's.
+BUILDX_BUILDER ?= nvcre-builder-$(notdir $(DOCKERFILE))
+DOCKERFILE_CROSS ?= $(DOCKERFILE).cross
+
 # Helm chart directory (used by manifests and helm-* targets).
 HELM_CHART_DIR ?= helm/cluster-readiness-engine
 # The CRDs-only chart. make manifests writes the same CRDs to its files/ and to
@@ -321,11 +340,28 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t "${IMG}" .
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -f "$(DOCKERFILE)" -t "$(DOCKER_IMG)" "$(DOCKER_CONTEXT)"
 
 .PHONY: docker-push
 docker-push: check-clean-version ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push "${IMG}"
+	$(CONTAINER_TOOL) push "$(DOCKER_IMG)"
+
+# The GEMM harness image. Its own context directory, because the repository
+# root .dockerignore excludes everything and re-includes only Go sources, so a
+# build rooted there cannot see the harness script.
+.PHONY: gemm-image-build
+gemm-image-build: ## Build the CUTLASS GEMM harness image (ADR-091).
+	$(MAKE) docker-build DOCKER_IMG="$(GEMM_IMG)" \
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_CONTEXT=images/cutlass-gemm
+
+.PHONY: gemm-image-push
+gemm-image-push: ## Push the CUTLASS GEMM harness image.
+	$(MAKE) docker-push DOCKER_IMG="$(GEMM_IMG)"
+
+.PHONY: gemm-image-buildx
+gemm-image-buildx: ## Build and push the GEMM harness image for both platforms.
+	$(MAKE) docker-buildx DOCKER_IMG="$(GEMM_IMG)" \
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_CONTEXT=images/cutlass-gemm
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -347,11 +383,11 @@ BUILDX_PUSH ?= --push
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# Run as one shell, so the trap removes the builder and the temporary
 	# Dockerfile even when the build fails.
-	trap '$(CONTAINER_TOOL) buildx rm nvcre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
-	$(CONTAINER_TOOL) buildx create --name nvcre-builder >/dev/null 2>&1 || true; \
-	$(CONTAINER_TOOL) buildx use nvcre-builder; \
-	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "${IMG}" -f Dockerfile.cross .
+	trap '$(CONTAINER_TOOL) buildx rm $(BUILDX_BUILDER) >/dev/null 2>&1 || true; rm -f $(DOCKERFILE_CROSS)' EXIT; \
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' "$(DOCKERFILE)" > "$(DOCKERFILE_CROSS)"; \
+	$(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER) >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER); \
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "$(DOCKER_IMG)" -f "$(DOCKERFILE_CROSS)" "$(DOCKER_CONTEXT)"
 
 ##@ Deployment
 

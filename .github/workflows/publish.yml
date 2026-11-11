@@ -130,12 +130,98 @@ jobs:
       emit_provenance: false
       allow_untagged: true
 
+
+  # The CUTLASS GEMM harness image (ADR-091), built and signed exactly as the
+  # controller image is.
+  #
+  # Unconditional on main, not path-gated. The pull-request gate in
+  # container-build.yml is where a path filter earns its keep, because that
+  # trigger fires on every Go change; a main merge is rare enough, and a dev
+  # image that silently lags the branch it is named after is worse than the
+  # build minutes. The compile is long, which is why the Dockerfile's
+  # CUTLASS_LIBRARY_KERNELS filter is narrow.
+  gemm-build:
+    name: Build GEMM harness image
+    needs: [tag]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image_tag: ${{ needs.tag.outputs.value }}
+      image_name: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
+      dockerfile: images/cutlass-gemm/Dockerfile
+      build_context: images/cutlass-gemm
+
+  gemm-attest-index:
+    name: Attest GEMM index (signature + provenance)
+    needs: [tag, gemm-build]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build.outputs.image_name }}
+      subject_tag: ${{ needs.tag.outputs.value }}
+      expected_digest: ${{ needs.gemm-build.outputs.index_digest }}
+      allow_untagged: true
+
+  gemm-attest-amd64-sbom:
+    name: Attest GEMM linux/amd64 SBOM
+    needs: [tag, gemm-build]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build.outputs.image_name }}
+      subject_tag: ${{ needs.tag.outputs.value }}
+      platform: linux/amd64
+      expected_digest: ${{ needs.gemm-build.outputs.amd64_digest }}
+      artifact_name: ${{ needs.gemm-build.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-amd64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+      allow_untagged: true
+
+  gemm-attest-arm64-sbom:
+    name: Attest GEMM linux/arm64 SBOM
+    needs: [tag, gemm-build]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build.outputs.image_name }}
+      subject_tag: ${{ needs.tag.outputs.value }}
+      platform: linux/arm64
+      expected_digest: ${{ needs.gemm-build.outputs.arm64_digest }}
+      artifact_name: ${{ needs.gemm-build.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-arm64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+      allow_untagged: true
+
   # A job whose `if` is false is SKIPPED, and a skipped job does not fail its
   # caller. Without this, a broken caller gate inside attest.yml would leave this
   # workflow green while publishing an image that nothing had signed.
   attested:
     name: Confirm the image was signed
-    needs: [build, attest-index, attest-amd64-sbom, attest-arm64-sbom]
+    needs:
+      - build
+      - attest-index
+      - attest-amd64-sbom
+      - attest-arm64-sbom
+      - gemm-build
+      - gemm-attest-index
+      - gemm-attest-amd64-sbom
+      - gemm-attest-arm64-sbom
     # Carries the same ref guard as the jobs it watches. Without it a
     # workflow_dispatch from a non-main ref skips everything upstream -- which is
     # correct, that is what the guard is for -- and then this job still runs on
@@ -155,17 +241,27 @@ jobs:
           INDEX: ${{ needs.attest-index.result }}
           AMD64: ${{ needs.attest-amd64-sbom.result }}
           ARM64: ${{ needs.attest-arm64-sbom.result }}
+          GEMM_BUILD: ${{ needs.gemm-build.result }}
+          GEMM_INDEX: ${{ needs.gemm-attest-index.result }}
+          GEMM_AMD64: ${{ needs.gemm-attest-amd64-sbom.result }}
+          GEMM_ARM64: ${{ needs.gemm-attest-arm64-sbom.result }}
         run: |
           set -euo pipefail
           echo "build=${BUILD} index=${INDEX} amd64=${AMD64} arm64=${ARM64}"
+          echo "gemm-build=${GEMM_BUILD} gemm-index=${GEMM_INDEX} gemm-amd64=${GEMM_AMD64} gemm-arm64=${GEMM_ARM64}"
 
           if [[ "${BUILD}" != "success" ]]; then
             echo "::error::the build did not succeed (${BUILD}); no image was published. Attestation was not attempted."
             exit 1
           fi
+          if [[ "${GEMM_BUILD}" != "success" ]]; then
+            echo "::error::the GEMM harness build did not succeed (${GEMM_BUILD}); compute/cutlass-gemm has no image to pull. Attestation was not attempted."
+            exit 1
+          fi
 
           failed=0
-          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}"; do
+          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}" \
+                      "gemm-index:${GEMM_INDEX}" "gemm-amd64-sbom:${GEMM_AMD64}" "gemm-arm64-sbom:${GEMM_ARM64}"; do
             name="${pair%%:*}"; result="${pair#*:}"
             case "${result}" in
               success) ;;

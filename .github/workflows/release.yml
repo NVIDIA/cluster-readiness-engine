@@ -127,9 +127,86 @@ jobs:
       predicate_type: cyclonedx
       emit_provenance: false
 
+  # The CUTLASS GEMM harness image (ADR-091), built and signed exactly as the
+  # controller image is. compute/cutlass-gemm pins this image, so a release
+  # that published the chart without it would ship a catalog entry whose pods
+  # cannot start.
+  gemm-build-image:
+    name: Build release GEMM harness image
+    needs: [release-tag]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image_tag: ${{ needs.release-tag.outputs.value }}
+      image_name: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
+      dockerfile: images/cutlass-gemm/Dockerfile
+      build_context: images/cutlass-gemm
+
+  gemm-attest-image-index:
+    name: Attest GEMM index (signature + provenance)
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      expected_digest: ${{ needs.gemm-build-image.outputs.index_digest }}
+
+  gemm-attest-image-amd64-sbom:
+    name: Attest GEMM linux/amd64 SBOM
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/amd64
+      expected_digest: ${{ needs.gemm-build-image.outputs.amd64_digest }}
+      artifact_name: ${{ needs.gemm-build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-amd64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
+  gemm-attest-image-arm64-sbom:
+    name: Attest GEMM linux/arm64 SBOM
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/arm64
+      expected_digest: ${{ needs.gemm-build-image.outputs.arm64_digest }}
+      artifact_name: ${{ needs.gemm-build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-arm64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
   image-attested:
     name: Confirm the release image was signed
-    needs: [build-image, attest-image-index, attest-image-amd64-sbom, attest-image-arm64-sbom]
+    needs:
+      - build-image
+      - attest-image-index
+      - attest-image-amd64-sbom
+      - attest-image-arm64-sbom
+      - gemm-build-image
+      - gemm-attest-image-index
+      - gemm-attest-image-amd64-sbom
+      - gemm-attest-image-arm64-sbom
     if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -141,15 +218,25 @@ jobs:
           INDEX: ${{ needs.attest-image-index.result }}
           AMD64: ${{ needs.attest-image-amd64-sbom.result }}
           ARM64: ${{ needs.attest-image-arm64-sbom.result }}
+          GEMM_BUILD: ${{ needs.gemm-build-image.result }}
+          GEMM_INDEX: ${{ needs.gemm-attest-image-index.result }}
+          GEMM_AMD64: ${{ needs.gemm-attest-image-amd64-sbom.result }}
+          GEMM_ARM64: ${{ needs.gemm-attest-image-arm64-sbom.result }}
         run: |
           set -euo pipefail
           echo "build=${BUILD} index=${INDEX} amd64=${AMD64} arm64=${ARM64}"
+          echo "gemm-build=${GEMM_BUILD} gemm-index=${GEMM_INDEX} gemm-amd64=${GEMM_AMD64} gemm-arm64=${GEMM_ARM64}"
           if [[ "${BUILD}" != "success" ]]; then
             echo "::error::the release image build did not succeed (${BUILD}); no image was published."
             exit 1
           fi
+          if [[ "${GEMM_BUILD}" != "success" ]]; then
+            echo "::error::the GEMM harness image build did not succeed (${GEMM_BUILD}); compute/cutlass-gemm would ship pinned to an image that does not exist."
+            exit 1
+          fi
           failed=0
-          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}"; do
+          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}" \
+                      "gemm-index:${GEMM_INDEX}" "gemm-amd64-sbom:${GEMM_AMD64}" "gemm-arm64-sbom:${GEMM_ARM64}"; do
             name="${pair%%:*}"; result="${pair#*:}"
             case "${result}" in
               success) ;;

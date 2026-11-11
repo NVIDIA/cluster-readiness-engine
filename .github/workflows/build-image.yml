@@ -26,6 +26,25 @@ on:
           reaches a shell.
         required: true
         type: string
+      image_name:
+        description: >-
+          Registry path of the image to build, without tag or digest. Defaults
+          to the controller image, so existing callers need no change.
+        required: false
+        default: ghcr.io/nvidia/cluster-readiness-engine/manager
+        type: string
+      dockerfile:
+        description: 'Dockerfile to build, relative to the repository root.'
+        required: false
+        default: Dockerfile
+        type: string
+      build_context:
+        description: >-
+          Build context directory. The GEMM harness has its own, because the
+          repository root .dockerignore re-includes only Go sources.
+        required: false
+        default: '.'
+        type: string
     outputs:
       image_name:
         description: 'Registry path of the image, without tag or digest.'
@@ -41,12 +60,12 @@ on:
         value: ${{ jobs.build.outputs.arm64_digest }}
       sbom_artifact:
         description: 'Name of the uploaded artifact holding the per-platform SBOMs.'
-        value: image-sboms
+        value: ${{ jobs.build.outputs.sbom_artifact }}
 
 permissions: {}
 
 env:
-  IMAGE_NAME: ghcr.io/nvidia/cluster-readiness-engine/manager
+  IMAGE_NAME: ${{ inputs.image_name }}
 
 jobs:
   build:
@@ -65,6 +84,7 @@ jobs:
       index_digest: ${{ steps.push.outputs.digest }}
       amd64_digest: ${{ steps.platforms.outputs.amd64 }}
       arm64_digest: ${{ steps.platforms.outputs.arm64 }}
+      sbom_artifact: ${{ steps.name.outputs.sbom_artifact }}
     steps:
       - name: Resolve image name
         id: name
@@ -72,6 +92,11 @@ jobs:
           set -euo pipefail
           [[ -n "${IMAGE_NAME}" ]] || { echo "::error::IMAGE_NAME is empty"; exit 1; }
           echo "value=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          # Per-image artifact name. Two callers in one workflow run would
+          # otherwise both upload "image-sboms", and upload-artifact v4 fails
+          # on a duplicate name, so the second image's SBOMs would take the
+          # release down rather than merely go missing.
+          echo "sbom_artifact=image-sboms-${IMAGE_NAME##*/}" >> "$GITHUB_OUTPUT"
 
       # Re-validated here even though callers validate: this value reaches a
       # shell in a job holding packages:write, and a reusable workflow must not
@@ -124,6 +149,9 @@ jobs:
           # uppercase 'NVIDIA/...', so the path is hardcoded. Keep in sync with
           # the Makefile, helm values.yaml, and pkg/setup/setup.go.
           IMG: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          DOCKER_IMG: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          DOCKER_CONTEXT: ${{ inputs.build_context }}
           IMAGE_TAG: ${{ inputs.image_tag }}
 
       # An SBOM describes exactly one root filesystem, and this image is a
@@ -264,7 +292,7 @@ jobs:
       - name: Upload SBOMs for attestation
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: image-sboms
+          name: ${{ steps.name.outputs.sbom_artifact }}
           path: sboms/
           retention-days: 7
           if-no-files-found: error
