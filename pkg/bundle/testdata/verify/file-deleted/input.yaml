@@ -1,0 +1,4 @@
+# Rule 2, in the direction people expect: the manifest lists a file that is not
+# there.
+tamper: delete-listed-file
+target: components/cert-a-compute-cutlass-gemm.ndjson

@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Per-GPU GEMM burn-in (ADR-091).
+#
+# One Job per node, one process per node holding every GPU, loaded
+# concurrently for the whole soak. Concurrency is a requirement of the design:
+# a harness that walks the devices one at a time reports eight per-GPU numbers
+# that each look fine, because it never puts the chassis under the power and
+# thermal load that makes a marginal GPU fail.
+#
+# Results are one row per GPU per sample, carried out through ADR-090's
+# component-result path rather than through GoodputMeasurement, whose per-Job
+# scalar is the thing this entry exists to improve on. The verdict is the
+# harness's, and it is DCGM's rule unchanged: each GPU's highest achieved
+# result is compared against target_perf_min_ratio times target_stress, and a
+# GPU under that fails the Job and records the node.
+dependencies:
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    labels:
+      app: cutlass-gemm
+    # Must be the variant name plus "-runtime": every _lib/deps fragment keys
+    # its patches on that name, and a mismatch appends a half-built second
+    # TrainingRuntime instead of failing.
+    name: cutlass-gemm-runtime
+  spec:
+    mlPolicy:
+      numNodes: 1
+      torch:
+        numProcPerNode: 1
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              # The first non-zero exit fails the Job. A burn-in that retried
+              # would re-run the soak on hardware already known to be short of
+              # the floor, and the second run's rows would sit beside the
+              # first's under the same seal.
+              backoffLimit: 0
+              template:
+                spec:
+                  containers:
+                  - image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:v0.1.0
+                    name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                  restartPolicy: Never
+                  tolerations:
+                  - operator: Exists
+jobTemplate:
+  spec:
+    nodeHealthMonitor:
+      cel:
+        expression: node.spec.unschedulable == true
+    # Per-GPU rows come from the worker pod's stdout. No replicatedJobName:
+    # the rows are on the worker, which carries the job label the manager's
+    # Pod cache selects on, so the read needs no live API call (ADR-102).
+    componentResults:
+      producer: structured-rows
+      containerName: node
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: cutlass-gemm-runtime
+        trainer:
+          image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:v0.1.0
+          numNodes: 1
+          numProcPerNode: 1
+          env:
+          # Soak length. The entry's timeoutPerJob in meta.yaml is sized
+          # against this with headroom for scheduling and image pull.
+          - name: NVCRE_GEMM_DURATION_SECONDS
+            value: "1800"
+          # One sample per sweep. 30s is long enough that a sweep is a real
+          # measurement rather than a tuning artifact, and short enough that a
+          # 30 minute soak yields 60 samples per GPU to find a trend in.
+          - name: NVCRE_GEMM_SAMPLE_SECONDS
+            value: "30"
+          # DCGM's two Targeted Stress knobs. The harness fails a GPU whose
+          # highest achieved result is below ratio x target, which is DCGM's
+          # comparison. Both resolve per architecture from meta.yaml; a
+          # spec-level gemmFloorTFLOPS overrides the product outright.
+          - name: NVCRE_GEMM_TARGET_GFLOPS
+            value: "{{ .GemmTargetGFLOPS }}"
+          - name: NVCRE_GEMM_MIN_RATIO_PERCENT
+            value: "{{ .GemmMinRatioPercent }}"
+          - name: NVCRE_GEMM_FLOOR_TFLOPS
+            value: "{{ .GemmFloorTFLOPS }}"
+        {{- if .ImagePullSecrets }}
+        runtimePatches:
+        - manager: nvcre.nvidia.com/catalog
+          trainingRuntimeSpec:
+            template:
+              spec:
+                replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ printf "%q" .Name }}
+                          {{- end }}
+        {{- end }}
+orchestration:
+{{- if gt .MaxConcurrent 0 }}
+  execution:
+    maxConcurrent: {{ .MaxConcurrent }}
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- else }}
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- end }}
+  iterations: 1
+overrides:
+{{ lib "overrides/gb200-topology-key.yaml" . }}

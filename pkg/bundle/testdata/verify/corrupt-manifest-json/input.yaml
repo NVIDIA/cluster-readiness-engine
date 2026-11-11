@@ -1,0 +1,3 @@
+# A manifest that does not parse is a hard error, not a reason to fall back to
+# reading the directory.
+tamper: corrupt-manifest-json

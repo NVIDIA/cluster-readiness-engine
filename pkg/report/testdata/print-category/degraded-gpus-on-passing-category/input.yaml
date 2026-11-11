@@ -1,0 +1,30 @@
+# The case the whole field exists for: the category PASSED and a GPU still
+# decayed below the floor.
+#
+# The verdict is DCGM's, which compares each GPU's best sample (ADR-091), so a
+# GPU that peaks above the floor and falls away through the soak passes. Before
+# this block the report of that run said nothing at all about it, and the
+# evidence lived only in a result bundle nobody had to ask for.
+#
+# The card must therefore print this under a PASSED status AND say plainly that
+# it did not fail the run, or a reader concludes the verdict is broken.
+domain: compute
+variant: cutlass-gemm
+status: Passed
+runtime: 30m0s
+nodesPerJob: 1
+jobs: 3
+degradedComponentCount: 2
+degradedComponents:
+  - node: gpu-node-3
+    componentID: GPU-cafe1111-0000-4000-8000-000000000002
+    index: 2
+    max: "30.00"
+    min: "20.00"
+    belowSamples: 412
+  - node: gpu-node-7
+    componentID: GPU-beef2222-0000-4000-8000-000000000005
+    index: 5
+    max: "29.10"
+    min: "26.40"
+    belowSamples: 9

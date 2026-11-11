@@ -807,10 +807,45 @@ type GroupComponentSeal struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	TruncatedRowCount int64 `json:"truncatedRowCount,omitempty"`
+
+	// degradedComponentCount is how many of the attempt's components had at
+	// least one sample below the floor. Exact.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	DegradedComponentCount int32 `json:"degradedComponentCount,omitempty"`
+
+	// degradedComponents is the worst of them, by lowest value reached.
+	//
+	// Unlike Truncations above, the detail is kept here rather than left on
+	// the Job's seal, and the reason is what a reader needs it for. A
+	// truncation is a fact about the result set, which the row and shard
+	// counts already quantify. A degraded component is a fact about hardware,
+	// and the verdict is DCGM's comparison on the maximum, so a GPU listed
+	// here may well have passed (ADR-091). Nothing else on the Workflow would
+	// say so.
+	//
+	// Capped, with the exact count beside it, so one group is one Job's worth
+	// of GPUs and the Workflow's aggregate stays bounded over a thousand of
+	// them.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	DegradedComponents []DegradedComponent `json:"degradedComponents,omitempty"`
 }
 
-// ComponentResultTotals is a shard and row count pair.
+// ComponentResultTotals is a shard and row count pair, plus the degradation
+// summary aggregated with them. Not serialised on its own; it is the carrier
+// the recompute sums into.
 type ComponentResultTotals struct {
+	// DegradedComponentCount is the exact number of degraded components.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	DegradedComponentCount int32 `json:"degradedComponentCount,omitempty"`
+
+	// DegradedComponents is the capped worst-first selection of them.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	DegradedComponents []DegradedComponent `json:"degradedComponents,omitempty"`
+
 	// shardCount is a number of shard ConfigMaps.
 	// +kubebuilder:validation:Minimum=0
 	ShardCount int32 `json:"shardCount"`
@@ -1083,6 +1118,23 @@ type WorkflowComponentResults struct {
 	// selector resolves every shard ConfigMap belonging to this Workflow.
 	// +kubebuilder:validation:MaxLength=253
 	Selector string `json:"selector"`
+
+	// degradedComponentCount is how many components across this Workflow had
+	// at least one sample below the floor, summed over its groups. Exact.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DegradedComponentCount int32 `json:"degradedComponentCount,omitempty"`
+
+	// degradedComponents is the worst of those across the whole Workflow, by
+	// lowest value reached, so a reader of one category's status sees the
+	// hardware most worth looking at without resolving a single shard.
+	//
+	// Capped at 16. The count above is exact, so a cap cannot hide how many
+	// there were, only which ones are named. The complete set is in the
+	// bundle.
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	DegradedComponents []DegradedComponent `json:"degradedComponents,omitempty"`
 
 	// final reports whether the totals are complete.
 	//

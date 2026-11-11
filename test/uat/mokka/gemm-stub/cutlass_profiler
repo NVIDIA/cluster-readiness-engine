@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mokka stub for cutlass_profiler. Writes the CSV the real profiler writes,
+# carrying a GFLOPs column, so the production harness's awk parser is the thing
+# being exercised.
+#
+# It honours --profiling-duration by sleeping for it, because the harness's
+# sweep cadence and its sample ordinals both depend on a sweep taking real
+# time. A stub that returned instantly would make every soak collapse into the
+# cadence guard rather than testing the loop.
+set -uo pipefail
+# shellcheck disable=SC1091
+. /opt/stub/mode
+
+dev=0 out="" duration_ms=1000
+for a in "$@"; do
+  case "${a}" in
+    --device=*)              dev="${a#*=}" ;;
+    --output=*)              out="${a#*=}" ;;
+    --profiling-duration=*)  duration_ms="${a#*=}" ;;
+  esac
+done
+
+# A sweep counter per device, so "degrade" can report target on the first
+# sweep and less afterwards. That shape is exactly what DCGM's max-based
+# comparison lets through, which is why the mode exists: it exercises the
+# reporting rather than the verdict.
+#
+# The directory is honoured from TMPDIR rather than hardcoded to /tmp, and a
+# failed write is fatal. An unwritable counter made every sweep read as the
+# first, so the degraded device never degraded and the stub reported a healthy
+# node for a run that was asked to inject a fault. A fault injector that
+# silently stops injecting is worse than none: the lane goes green for a case
+# that never ran.
+state="${TMPDIR:-/tmp}/nvcre-gemm-stub.sweep.${dev}"
+sweep=0
+[[ -r "${state}" ]] && sweep="$(cat "${state}")"
+if ! printf '%s\n' "$((sweep + 1))" >"${state}"; then
+  echo "stub: FATAL: cannot write sweep counter ${state}; fault injection would silently not happen" >&2
+  exit 4
+fi
+
+gflops="${STUB_GFLOPS}"
+case "${STUB_MODE}" in
+  slow)
+    # Under the floor on every sweep, so the maximum is under it too and the
+    # verdict fails. This is the mode that exercises a failing burn-in.
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" ]]; then
+      gflops="${STUB_DEGRADED_GFLOPS}"
+    fi
+    ;;
+  degrade)
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" && "${sweep}" -ge 1 ]]; then
+      gflops="${STUB_DEGRADED_GFLOPS}"
+    fi
+    ;;
+  dead)
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" ]]; then
+      echo "stub: simulated device failure on ${dev}" >&2
+      sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
+      exit 3
+    fi
+    ;;
+esac
+
+sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
+printf 'Operation,GFLOPs\nsgemm,%s\n' "${gflops}" >"${out}"
+echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs"

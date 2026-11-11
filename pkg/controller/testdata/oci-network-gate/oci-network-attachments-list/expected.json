@@ -9,6 +9,7 @@
       "communication/nccl-alltoall",
       "communication/nccl-loopback",
       "communication/nccl-loopback-nvswitch",
+      "compute/cutlass-gemm",
       "diagnostics/dcgm-level4",
       "training/nemotron5-56b",
       "training/nemotron5-8b"
@@ -24,6 +25,7 @@
       "communication/nccl-alltoall",
       "communication/nccl-loopback",
       "communication/nccl-loopback-nvswitch",
+      "compute/cutlass-gemm",
       "diagnostics/dcgm-level4",
       "training/nemotron5-56b",
       "training/nemotron5-8b"
@@ -39,6 +41,7 @@
       "communication/nccl-alltoall",
       "communication/nccl-loopback",
       "communication/nccl-loopback-nvswitch",
+      "compute/cutlass-gemm",
       "diagnostics/dcgm-level4",
       "training/nemotron5-56b",
       "training/nemotron5-8b"

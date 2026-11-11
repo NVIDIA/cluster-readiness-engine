@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -60,11 +61,16 @@ func observeComponentSeal(g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job, 
 		RowCount:          seal.RowCount,
 		Phase:             seal.Phase,
 		TruncatedRowCount: truncated,
+		// Carried, not recomputed: the Job derived this from rows the Workflow
+		// never sees, and resolving it here would mean reading every shard.
+		DegradedComponentCount: seal.DegradedComponentCount,
+		DegradedComponents:     seal.DegradedComponents,
 	}
 
 	for i := range g.ComponentSeals {
 		if g.ComponentSeals[i].Attempt == entry.Attempt {
-			if g.ComponentSeals[i] == entry {
+			// DeepEqual, not ==: the seal now carries a slice.
+			if equality.Semantic.DeepEqual(g.ComponentSeals[i], entry) {
 				return false
 			}
 			g.ComponentSeals[i] = entry
@@ -133,19 +139,28 @@ func recomputeComponentResults(
 	// count is the finding rather than the absence of one. A run that dropped
 	// every row it produced has no shards and no rows, and suppressing it
 	// would hide exactly the evidence this mechanism exists to surface.
-	if totals.ShardCount == 0 && totals.RowCount == 0 && totals.TruncatedRowCount == 0 {
+	if totals.ShardCount == 0 && totals.RowCount == 0 &&
+		totals.TruncatedRowCount == 0 && totals.DegradedComponentCount == 0 {
 		return false
 	}
 
 	next := &nvcrev1alpha1.WorkflowComponentResults{
-		ShardCount:        totals.ShardCount,
-		RowCount:          totals.RowCount,
-		Selector:          componentResultsSelector(workflowUID),
-		Final:             final,
-		Truncated:         totals.TruncatedRowCount > 0,
-		TruncatedRowCount: totals.TruncatedRowCount,
+		ShardCount:             totals.ShardCount,
+		RowCount:               totals.RowCount,
+		Selector:               componentResultsSelector(workflowUID),
+		Final:                  final,
+		Truncated:              totals.TruncatedRowCount > 0,
+		TruncatedRowCount:      totals.TruncatedRowCount,
+		DegradedComponentCount: totals.DegradedComponentCount,
+		DegradedComponents:     totals.DegradedComponents,
 	}
-	if existing := status.ComponentResults; existing != nil && *existing == *next {
+	// equality.Semantic, not ==: the struct now carries a slice of degraded
+	// components, so == no longer compiles. The comparison is load bearing
+	// rather than an optimisation, because recompute runs on every pass and a
+	// status write that changes nothing still costs an API call and a
+	// resourceVersion bump that every watcher sees.
+	if existing := status.ComponentResults; existing != nil &&
+		equality.Semantic.DeepEqual(existing, next) {
 		return false
 	}
 	status.ComponentResults = next
@@ -166,6 +181,8 @@ func addSealToTotals(t *nvcrev1alpha1.ComponentResultTotals, s nvcrev1alpha1.Gro
 	t.ShardCount += s.ShardCount
 	t.RowCount += s.RowCount
 	t.TruncatedRowCount += s.TruncatedRowCount
+	t.DegradedComponentCount += s.DegradedComponentCount
+	t.DegradedComponents = mergeDegraded(t.DegradedComponents, s.DegradedComponents)
 }
 
 // foldRetiredComponentResults folds a group list's seals into the retired

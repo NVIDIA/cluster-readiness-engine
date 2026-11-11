@@ -753,7 +753,7 @@ func newWorkloadRunRunCommand() *cobra.Command {
 	var controllerPullSecret string
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var controllerImage string
-	var resultsFile string
+	var resultsFile, resultsBundle string
 	var timeout time.Duration
 	var nameOverride, nodeList, topologyDomain, topologyKey, testScale string
 
@@ -776,6 +776,13 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
+			// Without --wait the command returns before any report exists, so
+			// the flag would exit 0 having written nothing. The same guard for
+			// --results-file is issue #572's; this one covers only the flag
+			// added here, so the two changes do not collide.
+			if !doWait && resultsBundle != "" {
+				return fmt.Errorf("--results-bundle requires --wait")
+			}
 			pullSet := 0
 			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
 				if v != "" {
@@ -788,7 +795,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			return runWorkloadRunExecute(args[0], *configFlags.Namespace,
 				workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
 				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, grantRunAccess, timeout,
-				resultsFile, configFlags,
+				resultsFile, resultsBundle, configFlags,
 				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
 		},
 	}
@@ -813,6 +820,9 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (on timeout, the WorkloadRun is left running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path (requires --wait)")
+	cmd.Flags().StringVar(&resultsBundle, "results-bundle", "",
+		"Write a verifiable result bundle to this directory, including per-component "+
+			"result rows as NDJSON (requires --wait)")
 	cmd.Flags().StringVar(&nameOverride, "name", "",
 		"Override metadata.name")
 	cmd.Flags().StringVar(&nodeList, "node-list", "",
@@ -844,6 +854,7 @@ type wrRunConfig struct {
 	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	timeout                  time.Duration
 	resultsFile              string // --results-file: path to write JSON report
+	resultsBundle            string // --results-bundle: directory to write the verifiable bundle
 	configFlags              *kubeconfig.ConfigFlags
 	nodeList                 string // --node-list: used for numNodes clamping after discovery
 	topologyDomain           string // --topology-domain: used for auto topology key + numNodes
@@ -855,7 +866,7 @@ type wrRunConfig struct {
 func runWorkloadRunExecute(
 	file, namespace, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword, controllerImage, controllerPullSecret string,
 	doWait, doSetup, doCleanup, grantRunAccess bool, timeout time.Duration,
-	resultsFile string, configFlags *kubeconfig.ConfigFlags,
+	resultsFile, resultsBundle string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
 	topologyKey, testScale string,
 ) error {
@@ -891,6 +902,7 @@ func runWorkloadRunExecute(
 		grantRunAccess:           grantRunAccess,
 		timeout:                  timeout,
 		resultsFile:              resultsFile,
+		resultsBundle:            resultsBundle,
 		configFlags:              configFlags,
 		nodeList:                 nodeList,
 		topologyDomain:           topologyDomain,
@@ -1135,6 +1147,11 @@ func finishWorkloadRunWait(
 				_, _ = fmt.Fprintf(out, "Warning: failed to write results: %v\n", err)
 			} else {
 				_, _ = fmt.Fprintf(out, "Results written to %s\n", cfg.resultsFile)
+			}
+		}
+		if cfg.resultsBundle != "" {
+			if err := writeResultsBundle(reportCtx, wc, finalRun, r, cfg.resultsBundle, out); err != nil {
+				return err
 			}
 		}
 		if timedOut && errors.Is(reportCtx.Err(), context.DeadlineExceeded) {
@@ -1527,7 +1544,7 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 // --- report ---
 
 func newWorkloadRunReportCommand() *cobra.Command {
-	var resultsFile, output string
+	var resultsFile, resultsBundle, output string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultNS
@@ -1539,12 +1556,15 @@ func newWorkloadRunReportCommand() *cobra.Command {
 and generates the same report that 'nvcrectl workloadrun run --wait' prints.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWorkloadRunReport(args[0], configFlags, resultsFile, output)
+			return runWorkloadRunReport(args[0], configFlags, resultsFile, resultsBundle, output)
 		},
 	}
 
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path")
+	cmd.Flags().StringVar(&resultsBundle, "results-bundle", "",
+		"Write a verifiable result bundle to this directory, including per-component "+
+			"result rows as NDJSON")
 	cmd.Flags().StringVarP(&output, "output", "o", "text",
 		"Output format: text, json")
 	configFlags.AddFlags(cmd.Flags())
@@ -1554,7 +1574,7 @@ and generates the same report that 'nvcrectl workloadrun run --wait' prints.`,
 
 func runWorkloadRunReport(
 	name string, configFlags *kubeconfig.ConfigFlags,
-	resultsFile, output string,
+	resultsFile, resultsBundle, output string,
 ) error {
 	ctx := context.Background()
 	namespace := *configFlags.Namespace
@@ -1592,6 +1612,11 @@ func runWorkloadRunReport(
 			return fmt.Errorf("write results file: %w", err)
 		}
 		_, _ = fmt.Fprintf(os.Stderr, "Results written to %s\n", resultsFile)
+	}
+	if resultsBundle != "" {
+		if err := writeResultsBundle(ctx, c, &run, r, resultsBundle, os.Stderr); err != nil {
+			return err
+		}
 	}
 
 	succeeded := controller.CondIsTrue(

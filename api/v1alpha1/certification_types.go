@@ -226,6 +226,36 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Minimum=1
 	ExitDurationMins *int32 `json:"exitDurationMins,omitempty"`
 
+	// gemmFloorTFLOPS is the per-GPU throughput, in whole TFLOPS, below which
+	// compute/cutlass-gemm fails a node. The harness compares each GPU's
+	// highest sample against it and exits non-zero when any GPU is under,
+	// which fails the Job and records the node (ADR-091). When unset, the
+	// floor is the catalog entry's per-architecture reference target times its
+	// minimum ratio, which is DCGM's Targeted Stress rule
+	// (target_perf_min_ratio * target_stress) applied to its own per-SKU
+	// table.
+	//
+	// The highest sample, not the lowest, because that is the statistic DCGM
+	// compares. A GPU that peaks above the floor and degrades through the soak
+	// therefore passes, as it does under DCGM; the per-GPU result rows record
+	// every sample, so the decay is reported even though the verdict does not
+	// act on it.
+	//
+	// Whole TFLOPS rather than a fractional quantity, for two reasons. The
+	// value is tokenised into the Workflow name so that two categories
+	// differing only in their floor do not collide (issue #430), and every
+	// token has to stay a DNS-1035 label: a fractional value puts a dot in the
+	// Workflow name, which becomes the Job name and then the pod names. And a
+	// floor is a coarse accept/reject line, so the precision a fraction would
+	// buy has no use.
+	//
+	// This is not a performance threshold key. The threshold registry is a
+	// closed vocabulary of per-Job scalars, and a per-Job average is the thing
+	// a per-GPU burn-in exists to improve on (ADR-091 decision 4).
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	GemmFloorTFLOPS *int32 `json:"gemmFloorTFLOPS,omitempty"`
+
 	// startupStallTimeoutSeconds optionally overrides the startup-stall window
 	// applied to this category's generated Job
 	// (Job.spec.startupStallTimeoutSeconds). It is the budget for the first

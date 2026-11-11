@@ -1,0 +1,1 @@
+manifest.json declares format version 2, this build reads 1

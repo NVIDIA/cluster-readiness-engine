@@ -818,6 +818,7 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
 		MaxSteps:                   derefInt32(opts.MaxSteps),
 		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
+		GemmFloorTFLOPS:            derefInt32(opts.GemmFloorTFLOPS),
 		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
 		GPUArchitecture:            gpuArch,
 		SaveInterval:               derefInt32(opts.SaveInterval),
@@ -1078,6 +1079,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.ExitDurationMins != nil {
 		resolved.ExitDurationMins = override.ExitDurationMins
+	}
+	if override.GemmFloorTFLOPS != nil {
+		resolved.GemmFloorTFLOPS = override.GemmFloorTFLOPS
 	}
 	// A non-nil override wins, including a pointer to zero.
 	resolved.StartupStallTimeoutSeconds = cmp.Or(override.StartupStallTimeoutSeconds, resolved.StartupStallTimeoutSeconds)
@@ -1514,6 +1518,11 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	}
 	if opts.GpusPerNode != nil {
 		parts = append(parts, fmt.Sprintf("g%d", *opts.GpusPerNode))
+	}
+	// "gf", not "g": g is already GpusPerNode above, and two tokens sharing a
+	// prefix would make g8 and gf8 collide on a truncating hash boundary.
+	if opts.GemmFloorTFLOPS != nil {
+		parts = append(parts, fmt.Sprintf("gf%d", *opts.GemmFloorTFLOPS))
 	}
 	// Two categories of one domain and variant differing only in
 	// rdmaDeviceAccess run genuinely different pods: one privileged with

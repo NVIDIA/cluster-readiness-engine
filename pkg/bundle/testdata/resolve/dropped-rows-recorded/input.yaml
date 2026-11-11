@@ -1,0 +1,14 @@
+# Rows the encoder could not represent, written to the truncation sibling the
+# walk reads back alongside the shards.
+#
+# The sealed counts still match what is stored, because a dropped row was never
+# in a shard to begin with. That is the distinction the bundle has to carry: an
+# incomplete result set is reported through truncation.json, not by making the
+# counts disagree, which is reserved for shards that should exist and do not.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    droppedRows: 3
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

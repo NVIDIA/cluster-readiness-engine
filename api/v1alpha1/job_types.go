@@ -479,6 +479,49 @@ type JobStatus struct {
 	ComponentResults *ComponentResultSeal `json:"componentResults,omitempty"`
 }
 
+// DegradedComponent names one component whose results fell below the floor at
+// some point during a run, with what it reached and what it fell to.
+//
+// This exists because the verdict is DCGM's and DCGM's comparison is on the
+// maximum achieved value (ADR-091). A GPU that peaks above the floor and
+// decays through the soak therefore passes, and without this the report of a
+// passing run says nothing about it: the evidence would live only in the
+// result bundle, for whoever thought to ask for one, and in pod logs that do
+// not outlive the pod.
+//
+// Derived from the rows alone. A producer marks a sample below the floor with
+// outcome "below", so the Job tier needs no knowledge of the floor to build
+// this, and a producer that enforces no floor simply yields none.
+type DegradedComponent struct {
+	// node is the Kubernetes node the component is attached to.
+	// +kubebuilder:validation:MaxLength=253
+	Node string `json:"node"`
+
+	// componentID is the component's stable identity, such as a GPU UUID.
+	// +kubebuilder:validation:MaxLength=128
+	ComponentID string `json:"componentID"`
+
+	// index is the component's device index within its node.
+	// +kubebuilder:validation:Minimum=0
+	Index int32 `json:"index"`
+
+	// maxValue is the highest value the component reached, as the producer
+	// rendered it. This is what the verdict compared, which is why a component
+	// listed here can still have passed.
+	// +kubebuilder:validation:MaxLength=32
+	MaxValue string `json:"maxValue,omitempty"`
+
+	// minValue is the lowest value the component reached. The gap between this
+	// and maxValue is the decay the verdict did not act on.
+	// +kubebuilder:validation:MaxLength=32
+	MinValue string `json:"minValue,omitempty"`
+
+	// belowSamples is how many of the component's samples were under the
+	// floor.
+	// +kubebuilder:validation:Minimum=0
+	BelowSamples int64 `json:"belowSamples"`
+}
+
 // ComponentResultPhase is how far a Job attempt got in storing its rows.
 //
 // None, Complete and Partial are terminal; the Workflow waits while a Job sits
@@ -574,6 +617,27 @@ type ComponentResultSeal struct {
 	// +listMapKey=reason
 	// +kubebuilder:validation:MaxItems=8
 	Truncations []ComponentTruncation `json:"truncations,omitempty"`
+
+	// degradedComponentCount is how many of this Job's components had at least
+	// one sample below the floor. Exact, and kept beside the bounded list
+	// below so a reader can tell a truncated list from a short one.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DegradedComponentCount int32 `json:"degradedComponentCount,omitempty"`
+
+	// degradedComponents is the worst of those, by lowest value reached.
+	//
+	// Bounded, and the bound is the point. One Job is one node here, so eight
+	// GPUs is the realistic ceiling and the cap is never reached in practice;
+	// it exists because a Job that partitions many nodes would otherwise put
+	// one entry per GPU on its status, and the Workflow above it aggregates
+	// these across every group. An earlier unbounded per-group field measured
+	// 25.9 MB of Workflow status against a 1 MiB object limit (ADR-090
+	// amendments), which is the mistake this cap avoids repeating. The
+	// complete set is always in the result bundle.
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	DegradedComponents []DegradedComponent `json:"degradedComponents,omitempty"`
 }
 
 // FailureLog captures diagnostic information from a failed workload pod.

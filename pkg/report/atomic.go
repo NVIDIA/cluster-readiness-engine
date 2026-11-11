@@ -39,6 +39,18 @@ const reportFilePerm os.FileMode = 0o644
 // cut. Closing the second gap means opening and syncing the parent directory
 // on every write, and nothing in the certification flow asks for durability
 // across a machine failure.
+// WriteFileAtomic writes data to path so that a reader never observes a
+// partial file. See writeFileAtomic for the guarantee and its limits.
+//
+// Exported for the bundle writer, which needs exactly this for every file it
+// lays down beside the manifest that certifies them by digest: a file that was
+// hashed while complete and is then truncated by a crash would make the
+// manifest disagree with the disk, and the reader would refuse a bundle that
+// was only ever half written.
+func WriteFileAtomic(path string, data []byte) error {
+	return writeFileAtomic(path, data)
+}
+
 func writeFileAtomic(path string, data []byte) (err error) {
 	// Follow a symlink to its target before choosing anything else.
 	//

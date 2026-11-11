@@ -1,0 +1,1 @@
+manifest.json declares 5 files and lists 4

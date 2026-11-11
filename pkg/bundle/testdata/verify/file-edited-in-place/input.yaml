@@ -1,0 +1,9 @@
+# Rule 3, and the only rule that catches this. One digit of one measurement is
+# changed, so the file count is right, the byte count is right, and the row
+# count is right. Only the digest disagrees.
+#
+# This is the case that makes the sha256 load bearing rather than decorative: a
+# bundle passing every other check would be certified as whole on evidence that
+# cannot detect an edited value.
+tamper: edit-file-in-place
+target: components/cert-a-compute-cutlass-gemm.ndjson

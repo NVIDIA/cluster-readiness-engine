@@ -1,6 +1,6 @@
 # ADR-090: Sharded Component Results and the Report Bundle
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -287,6 +287,32 @@ The declaration vocabulary is deferred by this record, so the controller needs a
 The marker is matched anywhere in the line, because MPI tags every line it relays with a rank prefix and anchoring at column zero would drop every row from a launcher. That means prose can contain the marker too — `could not emit NVCRE_ROW for device 3` is a plausible line from a harness's own error path — so the leading brace is what separates a declared row from a mention of one. Without it, a log message fails the Job's entire result set.
 
 And a line that does open a JSON object and will not parse is **counted, not fatal**. The first implementation returned an error and discarded every row from that pod, which inverts this record's own rule that rows lost to pagination are never collapsed to zero: the decisive case is mundane, since a pod killed mid-write leaves a truncated final line, and that would throw away a thirty-minute soak because its last line was cut short. The rows that parsed are kept, the rejects are counted under `RowUnencodable`, and the first offending line goes into the seal's message so the harness bug is findable.
+
+### A component file name carries the run it came from
+
+Decision 4 gives the bundle `components/*.ndjson` without saying what names those files take. The obvious choice, one file per category, breaks on a command this repository already has: `nvcrectl certification report a b` accepts several certifications and writes one bundle, and two certifications that ran the same category both claim `components/compute-cutlass-gemm.ndjson`. One silently replaces the other and the manifest certifies a bundle missing half its evidence.
+
+The name is therefore `<run>-<domain>-<variant>.ndjson`, and the manifest records the run alongside the domain and variant. A WorkloadRun has no catalog category, so its file is `<run>.ndjson` rather than one carrying two empty segments. `ComponentFileNamesUnique` still checks for a collision before anything is written, because a silent overwrite is the one outcome that must not be possible here.
+
+### The shard namespace is resolved per category, not per Certification
+
+`WorkflowStatus.Namespace` is the resolved namespace where a Workflow's Jobs and their shards live, and the controller auto-generates it when the spec leaves it unset. Two categories of one Certification can therefore sit in two namespaces, and a bundle that listed one namespace for all of them would find no shards for the rest.
+
+That failure would not be silent, which is what makes it dangerous: the walk would report a sealed-count mismatch, which is the correct diagnosis for a genuinely missing shard and a misleading one for a bundle looking in the wrong place. So each category's namespace is read from its own Workflow. A Workflow that cannot be read is an error rather than a fallback to the Certification's namespace, for the same reason.
+
+### The bundle carries a row schema, and the writer verifies its own output
+
+Decision 4 lists `schema/` without saying what is in it. It holds a JSON Schema for one NDJSON line. The bundle is meant to be self-describing: a consumer handed a directory can validate its rows without knowing which NVCRE version wrote them, and an archived bundle stays readable after this repository has moved on.
+
+The writer then runs the three reader rules against what it just wrote, before reporting success. Not belt and braces: the rules are normative, so a writer that cannot produce a bundle its own reader accepts has produced something no consumer should trust, and the alternative is that a digest or file-count disagreement surfaces weeks later when whatever caused it is no longer reproducible.
+
+### A manifest path is checked before it is read
+
+The three reader rules say to hash every file the manifest lists. A bundle travels, so that manifest is attacker-controlled input: an entry of `../../etc/passwd` would send the digest read outside the directory the user named, and the comparison would answer whether that file matches a hash the bundle's author chose.
+
+Rule 2 happens to reject such an entry today, because a traversing path cannot appear in a walk of the bundle and the paths-versus-disk comparison runs first. That is an accident of rule ordering rather than a guarantee, so the path is checked where it is first trusted: absolute paths, volume names, unnormalised paths and any `..` segment are refused by name.
+
+`truncation.json` is also always written, including when nothing was lost, and carries its own `formatVersion`. An absent file and an empty one are different claims, and a consumer asking whether evidence is complete must be able to tell "nothing was lost" from "this bundle predates truncation reporting".
 
 ### The sizing generator is not committed
 

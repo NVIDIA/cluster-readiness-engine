@@ -1,0 +1,11 @@
+# The shard count agrees and the row count does not, which is why both are
+# checked. A shard rewritten with fewer rows leaves the count of objects
+# correct and the count of rows short, and a check on objects alone would pass
+# it.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    sealRows: 99
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

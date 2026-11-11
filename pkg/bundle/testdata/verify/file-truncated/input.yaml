@@ -1,0 +1,6 @@
+# A file cut short, as an interrupted copy or a full disk leaves one. Caught by
+# the byte count before the digest is reached, so the message names the size
+# disagreement rather than two hashes: a reader told "digest mismatch" would go
+# looking for tampering, where the honest diagnosis is a short file.
+tamper: truncate-file
+target: results.json

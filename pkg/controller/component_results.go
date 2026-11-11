@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -175,12 +176,19 @@ func (r *JobReconciler) reconcileComponentResults(
 	// A Job whose every shard write then fails still records that it owed
 	// rows, so a short shard set is distinguishable from a complete one. Were
 	// the counts written afterwards, nothing would say the Job owed anything.
+	degradedCount, degraded := degradedComponents(result.rows)
 	sealed := &nvcrev1alpha1.ComponentResultSeal{
 		Phase:       nvcrev1alpha1.ComponentResultsWriting,
 		ShardCount:  int32(len(built.Shards)), //nolint:gosec // bounded by shard.MaxShardsPerJob
 		RowCount:    built.Rows,
 		SealedAt:    &metav1.Time{Time: time.Now()},
 		Truncations: truncations,
+		// Derived from the rows while they are still in hand. Resolving this
+		// later from the shards would only work for a reader that asked for a
+		// bundle, and the point of it is to reach the report of a run that
+		// passed.
+		DegradedComponentCount: degradedCount,
+		DegradedComponents:     degraded,
 	}
 	if err := r.sealComponentResults(ctx, job, sealed); err != nil {
 		return ctrl.Result{}, err
@@ -226,9 +234,7 @@ func (r *JobReconciler) sealComponentResults(
 ) error {
 	return updateStatusWithRetry(ctx, r.Client, job, func(j *nvcrev1alpha1.Job) bool {
 		if j.Status.ComponentResults != nil &&
-			j.Status.ComponentResults.Phase == seal.Phase &&
-			j.Status.ComponentResults.ShardCount == seal.ShardCount &&
-			j.Status.ComponentResults.RowCount == seal.RowCount {
+			equality.Semantic.DeepEqual(j.Status.ComponentResults, seal) {
 			return false
 		}
 		j.Status.ComponentResults = seal.DeepCopy()

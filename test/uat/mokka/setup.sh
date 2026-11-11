@@ -10,7 +10,8 @@
 #
 #   cluster  create the Kind cluster (reused if it already exists)
 #   infra    nvml-mock, NFD, device plugin, GFD, Trainer; DRA driver on gb200/gb300
-#   stub     build and load the nvcre-nccl-stub:{pass,fail,empty,slow} images
+#   stub     build and load the nvcre-nccl-stub:{pass,fail,empty,slow} and
+#            nvcre-gemm-stub:{pass,slow,degrade,dead} images
 #   nvcre    build and load the manager image, install the local chart, build nvcrectl
 #   info     run `nvcrectl cluster info` against the cluster
 #   up       cluster infra stub nvcre info
@@ -57,6 +58,12 @@ ctx="kind-${cluster}"
 gpu_selector="mokka.nvidia.com/type=sgpu"
 cd_image="nvcre-mokka-cd-daemon:${MOKKA_REF}-dra${DRA_VERSION}"
 stub_modes=(pass fail empty slow)
+# GEMM stub modes (ADR-091). "slow" is the failing case: a GPU under the floor
+# on every sweep, so its maximum is under it and DCGM's comparison fails.
+# "degrade" peaks above the floor then decays, which DCGM passes and this
+# entry passes too; it is there to exercise the per-GPU reporting, which is
+# the half DCGM does not provide.
+gemm_stub_modes=(pass slow degrade dead)
 
 k() { kubectl --context "${ctx}" "$@"; }
 h() { helm --kube-context "${ctx}" "$@"; }
@@ -263,6 +270,20 @@ phase_stub() {
     docker build --quiet --build-arg "STUB_MODE=${mode}" -t "nvcre-nccl-stub:${mode}" "${script_dir}/stub" >/dev/null
     images+=("nvcre-nccl-stub:${mode}")
   done
+
+  # The GEMM stub runs the production harness, so it is copied into the build
+  # context here rather than committed. A second checked-in copy would drift
+  # from images/cutlass-gemm/entrypoint.sh without anything noticing, and the
+  # stub's whole value is that the sweep loop, the row emission and the
+  # DCGM-arithmetic verdict it exercises are the real ones.
+  cp "${repo_root}/images/cutlass-gemm/entrypoint.sh" "${script_dir}/gemm-stub/entrypoint.sh"
+  for mode in "${gemm_stub_modes[@]}"; do
+    log "Building nvcre-gemm-stub:${mode}"
+    docker build --quiet --build-arg "STUB_MODE=${mode}" \
+      -t "nvcre-gemm-stub:${mode}" "${script_dir}/gemm-stub" >/dev/null
+    images+=("nvcre-gemm-stub:${mode}")
+  done
+
   kind load docker-image "${images[@]}" --name "${cluster}"
 }
 

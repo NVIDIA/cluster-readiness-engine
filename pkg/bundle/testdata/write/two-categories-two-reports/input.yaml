@@ -1,0 +1,28 @@
+# Two certifications reported together, as `nvcrectl certification report a b`
+# does, both having run the same category.
+#
+# This is why a component file name carries its scope. Without it both
+# categories write components/compute-cutlass-gemm.ndjson and one silently
+# replaces the other, leaving a manifest that certifies a bundle missing half
+# its evidence.
+reports:
+  - name: cert-a
+    status: PASSED
+  - name: cert-b
+    status: FAILED
+components:
+  - scope: cert-a
+    domain: compute
+    variant: cutlass-gemm
+    shardCount: 1
+    final: true
+    rows:
+      - '{"node":"node-a","componentID":"GPU-0001","index":0,"name":"achievedTFLOPS","value":1460.00,"unit":"TFLOPS"}'
+  - scope: cert-b
+    domain: compute
+    variant: cutlass-gemm
+    shardCount: 2
+    final: true
+    rows:
+      - '{"node":"node-b","componentID":"GPU-0002","index":0,"name":"achievedTFLOPS","value":1201.50,"unit":"TFLOPS"}'
+      - '{"node":"node-b","componentID":"GPU-0003","index":1,"name":"achievedTFLOPS","value":1198.25,"unit":"TFLOPS"}'

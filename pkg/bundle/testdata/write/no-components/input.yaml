@@ -1,0 +1,7 @@
+# Every certification in the repository today: nothing declared component
+# results, so there are no component files and no component entries in the
+# manifest. The bundle is still a bundle, and still verifies, because
+# results.json, truncation.json, the schema and the manifest are always there.
+reports:
+  - name: gpu-cluster-cert
+    status: PASSED

@@ -1,0 +1,13 @@
+# A shard that failed to write. The seal says two, one is there.
+#
+# This is the case the whole check exists for: without it the bundle would be
+# written from one shard and its manifest would certify the result as whole, so
+# a consumer would read a clean bill of health off half the evidence. The
+# refusal has to stop the write, not warn.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    sealShards: 2
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'
