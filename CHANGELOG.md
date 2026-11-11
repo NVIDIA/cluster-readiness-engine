@@ -15,6 +15,13 @@ followed them.
 
 ## [Unreleased]
 
+### Changed
+
+- `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
+  it was asked for, as `workloadrun report` already did. It used to print a
+  warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
+  without `--wait`, which used to exit 0 having written nothing (#564).
+
 ## [0.10.0] - 2026-11-02
 
 ### Changed
