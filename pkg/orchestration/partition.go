@@ -177,11 +177,9 @@ func partitionTopology(input PartitionInput) ([]Group, error) {
 		pools[d.name] = names
 	}
 
-	// Compute the minimum number of domains needed to fill a group.
-	// ceil(nodesPerJob / largestDomainSize) — prevents spreading a job across
-	// more racks than necessary.
-	maxDomainSize := len(domains[0].nodes) // domains sorted desc by size
-	maxDomainsPerGroup := (npj + maxDomainSize - 1) / maxDomainSize
+	// Cap each group at the minimum number of domains needed to fill one.
+	// This prevents spreading a job across more racks than necessary.
+	maxDomainsPerGroup := minDomainsToFill(domains, npj)
 
 	// Greedy allocation: for each group, pick domains with the most unassigned nodes.
 	var groups []Group
@@ -303,6 +301,25 @@ func partitionTopology(input PartitionInput) ([]Group, error) {
 	}
 
 	return groups, nil
+}
+
+// minDomainsToFill returns the smallest number of the largest domains that
+// together hold npj nodes, or the number of domains when all of them hold
+// fewer. It equals ceil(npj / largestDomainSize) when the domains are the same
+// size. With uneven domains that formula can name fewer domains than any group
+// can be filled from, so no group would ever form.
+// Assumes domains is sorted by size descending.
+func minDomainsToFill(domains []domainEntry, npj int) int {
+	count := 0
+	capacity := 0
+	for _, d := range domains {
+		count++
+		capacity += len(d.nodes)
+		if capacity >= npj {
+			break
+		}
+	}
+	return count
 }
 
 // buildOverflowGroups creates overflow groups for untested nodes, each constrained
