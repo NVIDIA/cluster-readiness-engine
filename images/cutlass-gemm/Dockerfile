@@ -12,11 +12,25 @@
 # of several gigabytes and the profiler is one executable.
 
 # ---------------------------------------------------------------------------
-# Pins. A bump touches all four.
+# Pins. Neither of the first two is free to move down.
+#
+# CUDA 13.0.2, because B300 needs CUDA 13.0 or newer and native sm_103 code
+# (docs/operations/faq.md, and the AWS P6-B300 requirements it cites). 13.0.2
+# specifically because that is the CUDA version this catalog's own AWS B300
+# NCCL image already pins, so the harness and the collective entries agree on
+# a toolkit for the same hardware.
+#
+# CUTLASS v4.2.0, because that is the first release carrying sm103. An earlier
+# pin here was v3.9.2, which knows sm100 and sm120 but not sm103: the build
+# would have produced an image with no kernels for B300 or GB300, the two
+# architectures whose floors this entry enforces, and the gap would have shown
+# up as a workload failure on real hardware rather than as a build error.
+# v4.2.0 covers every architecture in CUTLASS_ARCHS below; a bump may raise it
+# but must not lower it past 4.2.0.
 # ---------------------------------------------------------------------------
-ARG CUDA_VERSION=12.8.1
+ARG CUDA_VERSION=13.0.2
 ARG UBUNTU_VERSION=24.04
-ARG CUTLASS_REF=v3.9.2
+ARG CUTLASS_REF=v4.2.0
 
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
 ARG CUTLASS_REF

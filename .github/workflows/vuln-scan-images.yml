@@ -36,6 +36,8 @@ permissions:
 
 env:
   IMAGE: ghcr.io/nvidia/cluster-readiness-engine/manager
+  # The CUTLASS GEMM harness image (ADR-091), scanned alongside the controller.
+  GEMM_IMAGE: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
   CRANE_VERSION: v0.20.6
   CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
 
@@ -174,17 +176,43 @@ jobs:
           # leaves the suite green). It is here to fail loudly if a later edit
           # reintroduces a non-terminal path -- which is exactly what the
           # original `continue` was.
+          # Which image participates in which target, declared here rather than
+          # discovered from the registry. The count below is taken from this
+          # list before any registry call, so the expectation cannot be shaped
+          # by what the registry happened to answer.
+          #
+          # The GEMM harness has a main target and no release target, and that
+          # asymmetry is deliberate rather than an oversight. release_tag
+          # resolves to the newest stable release, and every release published
+          # before the harness existed has no harness image and never will. The
+          # resolve loop is terminal on a missing index, correctly, so listing a
+          # release target for it would mean a guaranteed red weekly scan until
+          # the next release ships. The alternative, making a missing index
+          # non-terminal, would weaken the guarantee for the controller image
+          # too, and this step exists because a scan that silently covers half
+          # of what it claims is worse than one that covers less loudly.
+          #
+          # Add "release:${release_tag}:${GEMM_IMAGE}:gemm" below in the first
+          # release that contains the harness image.
+          scan_set=()
+          scan_set+=("release:${release_tag}:${IMAGE}:manager")
+          scan_set+=("main:main-${main_sha}:${IMAGE}:manager")
+          scan_set+=("main:main-${main_sha}:${GEMM_IMAGE}:gemm")
+
           expected=0
           targets='[]'
-          for pair in "release:${release_tag}" "main:main-${main_sha}"; do
-            name="${pair%%:*}"; tag="${pair#*:}"
+          for entry in "${scan_set[@]}"; do
+            kind="${entry%%:*}"; rest="${entry#*:}"
+            tag="${rest%%:*}"; rest="${rest#*:}"
+            image="${rest%:*}"; short="${rest##*:}"
+            name="${short}-${kind}"
             expected=$((expected + 2))
 
             # Terminal, not skippable. Every sibling check in this loop exits 1;
             # this one used to warn and continue, which let the release target --
             # the primary subject -- vanish from a green run.
-            if ! index="$(crane_digest "${IMAGE}:${tag}")"; then
-              echo "::error::${IMAGE}:${tag} does not resolve; refusing to scan a subset"
+            if ! index="$(crane_digest "${image}:${tag}")"; then
+              echo "::error::${image}:${tag} does not resolve; refusing to scan a subset"
               exit 1
             fi
 
@@ -194,7 +222,7 @@ jobs:
               # platform allows a republish between calls to pair an amd64
               # manifest from one index with an arm64 from another, and makes
               # the index-equality check below compare against a stale value.
-              digest="$(crane_digest --platform "linux/${arch}" "${IMAGE}@${index}" || true)"
+              digest="$(crane_digest --platform "linux/${arch}" "${image}@${index}" || true)"
               if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
                 echo "::error::${name}: linux/${arch} digest is missing or malformed: '${digest}'"
                 exit 1
@@ -217,8 +245,9 @@ jobs:
 
             for arch in amd64 arm64; do
               case "${arch}" in amd64) d="${amd64}" ;; arm64) d="${arm64}" ;; esac
-              targets="$(jq -c --arg n "${name}" --arg t "${tag}" --arg a "${arch}" --arg d "${d}" \
-                '. + [{name: ($n + "-" + $a), tag: $t, arch: $a, digest: $d}]' <<<"${targets}")"
+              targets="$(jq -c --arg n "${name}" --arg t "${tag}" --arg a "${arch}" \
+                --arg d "${d}" --arg i "${image}" \
+                '. + [{name: ($n + "-" + $a), tag: $t, arch: $a, digest: $d, image: $i}]' <<<"${targets}")"
             done
             echo "${name} (${tag}) -> amd64 ${amd64} / arm64 ${arm64}"
           done
@@ -260,7 +289,7 @@ jobs:
         id: scan
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
-          image: ${{ env.IMAGE }}@${{ matrix.target.digest }}
+          image: ${{ matrix.target.image }}@${{ matrix.target.digest }}
           # The single home for suppressions and their impact analysis. Forwarded
           # to grype as `--vex`. Drop this input and every statement silently
           # stops applying -- the scan simply reports more, which reads as a bad

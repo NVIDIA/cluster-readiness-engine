@@ -99,21 +99,26 @@ gemmTargetGFLOPS:
   # B300, device id 3182.
   b300: 36825
 
+  # GB300 spans three DCGM rows: NVL Bianca 48750 (31c2), NVL Galaxy 48375
+  # (31C220E5) and MaxQ 46631 (31a1). The lowest is used, so a MaxQ node is not
+  # failed by a target set from a Bianca one.
+  #
+  # Readable because the lookup keys on the raw architecture. ConfigArch
+  # collapses gb300 into gb200 for parallelism, where the two share a GPU count
+  # and so a tp/pp/ep shape; applying that collapse here would have made this
+  # key dead while looking armed, and would have forced GB300's target onto
+  # GB200, where it is far too high.
+  gb300: 46631
+
   # RTX PRO 6000 Blackwell Max-Q, device id 2bb4, the only row in DCGM's table
   # carrying an explicit RTX PRO 6000 comment. Max-Q is the lowest-power
   # variant of that family, so a server part would be faster and this target
   # stays conservative for it.
   rtxpro6000: 39306
 
-  # Grace-Blackwell is deliberately absent, and it is the one gap worth
-  # stating at length.
+  # GB200 is deliberately absent, and it is the one gap left.
   #
-  # First, the key. ConfigArch collapses gb300 to gb200 before any meta lookup
-  # (pkg/catalog/catalog.go), so GB200 and GB300 share ONE key here and a
-  # "gb300:" entry would be dead: never read, while looking armed. Both
-  # architectures therefore stand or fall on a single "gb200" value.
-  #
-  # Second, the number. DCGM's table has no row named GB200. Its multi-node
+  # DCGM's table has no row named GB200. Its multi-node
   # diagnostic module maps device id 2941 to "GB200 NVL" in a comment, and
   # 2941's row in the target table is named "B200 DevId 10DE" with a target of
   # 15225 -- less than half the 33843 used for b200 above, on what should be
@@ -121,13 +126,11 @@ gemmTargetGFLOPS:
   # between two source files rather than one explicit label, and the value
   # disagrees with its own siblings.
   #
-  # GB300's own rows are credible and much higher (46631 to 48750), but because
-  # of the key collapse above, using one of them would apply it to GB200 as
-  # well, where it is probably far too high.
+  # So there is no figure for GB200 that is both sourced and credible. A GB200
+  # fleet gets per-GPU rows without a performance verdict until someone
+  # measures one and sets spec.gemmFloorTFLOPS from it. Entering 15225 would
+  # arm the gate at under half the right level, which reads as armed and
+  # catches nothing; borrowing GB300's 46631 would fail healthy GB200 nodes.
+  # Saying so is better than either.
   #
-  # So there is no value that is both sourced and safe for the key the lookup
-  # actually uses. A Grace-Blackwell fleet gets per-GPU rows without a
-  # performance verdict until someone measures one, and sets
-  # spec.gemmFloorTFLOPS from that measurement. Arming the gate at half the
-  # right level reads as armed and catches nothing; arming it at GB300's level
-  # would fail healthy GB200 nodes. Saying so is better than either.
+  # GB300 is no longer caught up in this: see its own entry above.

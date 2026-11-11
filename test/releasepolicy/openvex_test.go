@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,15 @@ import (
 // analysis behind them.
 const openVEXDoc = "../../.openvex.json"
 
-// imageProductPURL is the product every statement must target.
+// imageProductPURLs are the products a statement may target, one per scanned
+// image.
+//
+// A set rather than one value, because the scan covers two images (ADR-091).
+// A statement is checked against the set; a finding in the harness image
+// carries pkg:oci/cutlass-gemm and a statement naming it is legitimate, which
+// a single-value check would have rejected with a message about the controller
+// image. That failure would land on whoever first suppressed a harness CVE,
+// which is the worst moment to meet a confusing assertion.
 //
 // Grype derives the OCI product PURL from the registry repository BASENAME, not
 // the full path and not org.opencontainers.image.title. Verified against the
@@ -33,7 +42,13 @@ const openVEXDoc = "../../.openvex.json"
 // A statement naming any other product is not an error anywhere: grype accepts
 // the document, applies nothing, and the finding keeps being reported. That
 // silence is the entire reason this constant is asserted rather than trusted.
-const imageProductPURL = "pkg:oci/manager"
+var imageProductPURLs = []string{"pkg:oci/manager", "pkg:oci/cutlass-gemm"}
+
+// purlList renders the accepted set for an error message.
+func purlList() string { return strings.Join(imageProductPURLs, " or ") }
+
+// acceptedPURL reports whether p is one of the scanned images' products.
+func acceptedPURL(p string) bool { return slices.Contains(imageProductPURLs, p) }
 
 // maxStatementAge is how long a statement may go without being re-affirmed.
 //
@@ -172,7 +187,7 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 		targeted := false
 		unscoped := false
 		for _, p := range s.Products {
-			if p.Identifiers.PURL != imageProductPURL && p.ID != imageProductPURL {
+			if !acceptedPURL(p.Identifiers.PURL) && !acceptedPURL(p.ID) {
 				continue
 			}
 			targeted = true
@@ -183,14 +198,14 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 		if !targeted {
 			report("%s does not target %s, so grype will apply nothing and the "+
 				"finding keeps being reported with no warning anywhere",
-				label, imageProductPURL)
+				label, purlList())
 		} else if unscoped {
 			report("%s has a %s product entry with no subcomponents, so it suppresses "+
 				"%s across the whole image rather than in the package that was analysed. "+
 				"An advisory can match more than one package -- the impact statement "+
 				"would describe one and silence all of them. Name the affected package "+
 				"as a subcomponent on every product entry.",
-				label, imageProductPURL, name)
+				label, purlList(), name)
 		}
 
 		if !vexStatuses[s.Status] {
@@ -279,11 +294,16 @@ func TestOpenVEXStatementsAreTriageable(t *testing.T) {
 // TestOpenVEXProductMatchesTheScannedImage binds the constant above to the image
 // the workflow actually scans.
 //
-// imageProductPURL is derived from the basename of `env.IMAGE`, but nothing
-// otherwise relates the two. Rename the published repository -- for 1.0, for a
-// namespace move, or because a second controller image replaces this one -- and
-// grype derives a different product PURL, so every statement matches nothing and
-// all suppressions stop applying at once.
+// Each entry in imageProductPURLs is derived from the basename of a scanned
+// image, but nothing otherwise relates them. Rename a published repository --
+// for 1.0, for a namespace move, or because a second image replaces one of
+// these -- and grype derives a different product PURL, so every statement
+// matches nothing and all suppressions stop applying at once.
+//
+// Both scanned images are checked, and the set must not carry an entry for an
+// image nothing scans: a stale PURL would be accepted by the statement guard
+// while matching no finding, which is the same silence this test exists to
+// break.
 //
 // The guard would invert rather than fire: TestOpenVEXStatementsAreTriageable
 // would keep passing while enforcing the stale value, and would then REJECT a
@@ -300,18 +320,33 @@ func TestOpenVEXProductMatchesTheScannedImage(t *testing.T) {
 		t.Fatalf("parse %s: %v", vulnScanWorkflow, err)
 	}
 
-	image := doc.Env["IMAGE"]
-	if image == "" {
-		t.Fatalf("%s declares no env.IMAGE; this test can no longer confirm that %s "+
-			"matches what is scanned", vulnScanWorkflow, imageProductPURL)
+	// Every env var naming a scanned image, so a third image added to the
+	// workflow without a PURL here fails rather than silently losing its
+	// suppressions.
+	keys := []string{"IMAGE", "GEMM_IMAGE"}
+	scanned := make([]string, 0, len(keys))
+	for _, key := range keys {
+		image := doc.Env[key]
+		if image == "" {
+			t.Fatalf("%s declares no env.%s; this test can no longer confirm that %s "+
+				"matches what is scanned", vulnScanWorkflow, key, purlList())
+		}
+		scanned = append(scanned, "pkg:oci/"+path.Base(image))
 	}
 
-	// Grype derives the OCI product PURL from the registry repository basename.
-	want := "pkg:oci/" + path.Base(image)
-	if imageProductPURL != want {
-		t.Errorf("the scan targets %s, for which grype derives %q, but statements are "+
-			"required to name %q. Every statement in %s currently matches nothing.",
-			image, want, imageProductPURL, openVEXDoc)
+	for _, want := range scanned {
+		if !acceptedPURL(want) {
+			t.Errorf("the scan targets a product grype derives as %q, but statements may "+
+				"only name %s. A finding in that image could not be suppressed in %s.",
+				want, purlList(), openVEXDoc)
+		}
+	}
+	for _, have := range imageProductPURLs {
+		if !slices.Contains(scanned, have) {
+			t.Errorf("statements may name %q, but no image the scan targets derives it. "+
+				"A statement naming it would be accepted here and match nothing.",
+				have)
+		}
 	}
 }
 

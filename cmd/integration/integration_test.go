@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -489,6 +490,23 @@ func startManager(
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
+		// Strictly shorter than the harness's own wait for the manager to
+		// stop, which is the point.
+		//
+		// controller-runtime defaults this to 30s and the wait below is also
+		// 30s, so the two raced: under full-suite load a drain that would have
+		// finished was reported by the harness as "manager did not stop within
+		// 30s" at the same instant the manager was still inside its own grace
+		// period. The case that hit it reconciles a GoodputMeasurement on a 1s
+		// sampleInterval, so its queue is never empty at teardown.
+		//
+		// Short, not long. A test manager has nothing to drain that matters,
+		// and a generous grace would hide a reconcile that genuinely ignores
+		// context cancellation, which is a real bug worth failing on. At 10s
+		// against a 30s wait, a hung runnable now surfaces as the manager's own
+		// timeout error, which names the runnable, instead of the harness's
+		// generic one, which names nothing.
+		GracefulShutdownTimeout: ptr.To(10 * time.Second),
 		Metrics: metricsserver.Options{
 			BindAddress: "0", // Disable metrics server — tests read from the global registry directly.
 		},

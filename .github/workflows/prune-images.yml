@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Weekly pruning of stale untagged image versions from the manager package on
-# GHCR.
+# Weekly pruning of stale untagged image versions from this project's
+# container packages on GHCR.
 #
 # publish.yml builds a main-<sha> development image on every push to main, and
 # multi-platform builds leave per-platform manifests behind as untagged
@@ -49,26 +49,75 @@ on:
 
 permissions: {}
 
-env:
-  IMAGE: ghcr.io/nvidia/cluster-readiness-engine/manager
-  # The slash in the package name must be URL-encoded on the API path.
-  VERSIONS_API: /orgs/nvidia/packages/container/cluster-readiness-engine%2Fmanager/versions
+permissions: {}
 
 jobs:
+  # One job per package, not one job over a list.
+  #
+  # Every step below writes flat files into the workspace -- tags.txt,
+  # keep-digests.txt, untagged.txt, tags-now.txt -- and six steps read each
+  # other's. Folding a second package into one job would have them share those
+  # files, so one package's keep set could decide another's deletions. A matrix
+  # gives each package its own runner and its own workspace, so the blast
+  # radius of a mistake here stays inside one package. For a workflow whose
+  # whole job is deleting things, that is worth a second runner.
+  #
+  # fail-fast is off because the packages are independent: a registry hiccup
+  # pruning one must not cancel the other, and a prune that does not run has
+  # deleted nothing.
   prune:
-    name: Prune untagged versions
+    name: Prune untagged versions (${{ matrix.package }})
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [manager, cutlass-gemm]
+    env:
+      IMAGE: ghcr.io/nvidia/cluster-readiness-engine/${{ matrix.package }}
+      # The slash in the package name must be URL-encoded on the API path.
+      VERSIONS_API: /orgs/nvidia/packages/container/cluster-readiness-engine%2F${{ matrix.package }}/versions
+      # The registry token scope wants the un-encoded path.
+      TOKEN_SCOPE: nvidia/cluster-readiness-engine/${{ matrix.package }}
     steps:
+      # A package that does not exist yet has nothing to prune, and saying so
+      # is an accurate empty result rather than a gap.
+      #
+      # This is the opposite call from vuln-scan-images.yml, where a missing
+      # image is terminal, and the difference is what the absence means there:
+      # a scan that cannot find an image it claims to cover is silently
+      # covering less than it says. A prune that finds no package deletes
+      # nothing, which is exactly correct. The guard is scoped to a 404 so a
+      # 5xx or an auth failure still fails the run rather than reading as
+      # "nothing to do".
+      - name: Skip when the package does not exist
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          if gh api "${VERSIONS_API}?per_page=1" >/dev/null 2>&1; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          status="$(gh api "${VERSIONS_API}?per_page=1" 2>&1 | grep -o 'HTTP [0-9]\{3\}' | head -1 || true)"
+          if [[ "${status}" == "HTTP 404" ]]; then
+            echo "no ${IMAGE} package on GHCR yet; nothing to prune"
+            echo "value=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::could not read ${VERSIONS_API} (${status:-unknown}); refusing to treat this as an empty package"
+          exit 1
       # Everything a tag references must survive the prune. Resolving a tag
       # through the registry (not the package API) is what ties an untagged
       # per-platform manifest back to the index that needs it. A tag that
       # fails to resolve aborts the run: pruning with an incomplete keep set
       # is exactly the failure mode this workflow is designed to prevent.
       - name: Build the keep set from tagged manifests
+        if: steps.exists.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -92,6 +141,7 @@ jobs:
       # leave a tag pullable but strip its supply-chain metadata. The subjects
       # are every tagged manifest digest and every index child collected above.
       - name: Add OCI referrers to the keep set
+        if: steps.exists.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -100,14 +150,14 @@ jobs:
             --jq '.[] | select((.metadata.container.tags | length) > 0) | .name' \
             | sort -u > tagged-digests.txt
           sort -u tagged-digests.txt keep-digests.txt > referrer-subjects.txt
-          token="$(curl -fsSL 'https://ghcr.io/token?scope=repository:nvidia/cluster-readiness-engine/manager:pull' | jq -r .token)"
+          token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${TOKEN_SCOPE}:pull" | jq -r .token)"
           while IFS= read -r digest; do
             # 404 means no referrers for this subject; anything else that
             # fails aborts the run rather than pruning with a partial view.
             resp="$(curl -fsSL \
               -H "Authorization: Bearer ${token}" \
               -H 'Accept: application/vnd.oci.image.index.v1+json' \
-              "https://ghcr.io/v2/nvidia/cluster-readiness-engine/manager/referrers/${digest}" \
+              "https://ghcr.io/v2/${TOKEN_SCOPE}/referrers/${digest}" \
               || true)"
             [[ -n "${resp}" ]] || continue
             printf '%s' "${resp}" \
@@ -120,6 +170,7 @@ jobs:
       # and a real run leaves a record of what was on the block before the
       # delete step decided.
       - name: List untagged versions
+        if: steps.exists.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -133,6 +184,7 @@ jobs:
       # inputs.dry_run is unset on the schedule, so a scheduled run deletes;
       # a manual run deletes only when dry_run is explicitly set to false.
       - name: Delete stale untagged versions outside the keep set
+        if: steps.exists.outputs.value == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry_run == true }}
@@ -179,6 +231,7 @@ jobs:
       # smoke test on top. Runs on dry runs too, so the checks themselves
       # stay exercised.
       - name: Confirm every kept digest still resolves
+        if: steps.exists.outputs.value == 'true'
         run: |
           set -euo pipefail
           while IFS= read -r digest; do
@@ -187,6 +240,7 @@ jobs:
           done < keep-digests.txt
 
       - name: Confirm every release image still pulls
+        if: steps.exists.outputs.value == 'true'
         run: |
           set -euo pipefail
           while IFS= read -r tag; do

@@ -617,7 +617,14 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	//
 	// An operator's gemmFloorTFLOPS is left exactly as given: it is an
 	// absolute override of the product, not an input to it.
-	td.GemmTargetGFLOPS = meta.getGemmTarget(configArch)
+	// The RAW architecture, not configArch. ConfigArch collapses gb300 into
+	// gb200, which is right for parallelism, where the two share a GPU count
+	// and therefore a tp/pp/ep shape, and wrong here: GB300 is materially
+	// faster than GB200, DCGM's table gives them different targets, and under
+	// the collapse a "gb300" key would be dead while looking armed. The lookup
+	// below is the only consumer that needs them distinguished, so the
+	// collapse stays where it belongs rather than being widened.
+	td.GemmTargetGFLOPS = meta.getGemmTarget(config.GPUArchitecture)
 	td.GemmMinRatioPercent = meta.GemmMinRatioPercent
 	if td.ExitDurationMins == 0 {
 		td.ExitDurationMins = DefaultExitDurationMins

@@ -1,12 +1,35 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# Two waits, in causal order, because the golden asserts BOTH objects and they
+# settle at different times.
+#
+# waitFor pins the Workflow, which is what most of the golden is about. The
+# Certification's own condition reason lags it: the Certification controller
+# flips InProgress/WorkflowCreated to InProgress/WorkflowRunning only on a
+# later reconcile, once it has observed the Workflow running. Waiting on the
+# Workflow alone captured the Certification mid-flight, so the case failed
+# intermittently under full-suite load with reason=WorkflowCreated where the
+# golden wants WorkflowRunning.
+#
+# A step with a waitFor and no patches is just a second wait, so this needs no
+# new harness field. Neither object's wait is sufficient alone: the Workflow
+# can be InProgress under an earlier reason while the Certification has already
+# flipped, and the Certification can still be WorkflowCreated after the
+# Workflow reaches JobRunning.
 waitFor:
   kind: Workflow
   name: gcp-nc-h1-communication-n-be79a
   namespace: default
   condition: InProgress
   reason: JobRunning
+steps:
+  - waitFor:
+      kind: Certification
+      name: gcp-nc-h1
+      namespace: default
+      condition: InProgress
+      reason: WorkflowRunning
 collect:
   - kind: Certification
     name: gcp-nc-h1
