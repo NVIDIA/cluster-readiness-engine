@@ -100,12 +100,22 @@ jobs:
               status=1
               continue
             fi
+            # Only the pinned signing identity, not every version-shaped string
+            # in the file. These samples also name a tested cosign version and
+            # a tested policy-controller version in their comments, so matching
+            # bare vN.N.N finds three values and fails a correct release.
+            #
+            # The tag pattern is deliberately looser than vMAJOR.MINOR.PATCH:
+            # this repository releases prereleases such as v0.2.0-rc.2, and the
+            # identity carries the whole tag.
+            #
             # `|| true` because grep exits 1 on no match, and under `set -e`
             # with pipefail that would abort the step instead of reporting the
             # unpinned file below.
-            found=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' "${f}" | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
+            found=$(grep -oE 'attest\.yml@refs/tags/v[0-9A-Za-z.-]+' "${f}" \
+              | sed 's#.*refs/tags/##' | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
             if [[ -z "${found}" ]]; then
-              echo "::error::${f} pins no version; it must pin the release it documents"
+              echo "::error::${f} pins no release identity; it must pin attest.yml@refs/tags/<TAG>"
               status=1
             elif [[ "${found}" != "${TAG}" ]]; then
               echo "::error::${f} pins '${found}' but this release is ${TAG}; bump it on main before tagging"
@@ -116,7 +126,14 @@ jobs:
           # The catalog derives its harness image tag from the binary's own
           # version, so a literal here is a regression back to a pin that
           # nothing keeps in step with the release.
-          literals=$(grep -rnE 'image: .*/(cutlass-gemm|manager):v[0-9]+\.[0-9]+\.[0-9]+' \
+          # The directory is named explicitly, so confirm it is there. grep -r
+          # on a missing path exits 2, `|| true` would swallow that, and the
+          # job would report green having checked nothing.
+          if [[ ! -d pkg/catalog/entries ]]; then
+            echo "::error::pkg/catalog/entries is missing; update this guard if the catalog moved"
+            status=1
+          fi
+          literals=$(grep -rnE 'image: .*/(cutlass-gemm|manager):v[0-9][0-9A-Za-z.-]*' \
             pkg/catalog/entries/ || true)
           if [[ -n "${literals}" ]]; then
             echo "::error::a catalog entry pins a literal image version; derive it from the build version instead"

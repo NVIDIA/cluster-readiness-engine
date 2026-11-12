@@ -40,6 +40,9 @@ const (
 	// prevRelease stands in for "the release before the one being cut", which
 	// is the value a forgotten bump leaves behind.
 	prevRelease = "v0.11.0"
+	// prereleaseTag is the shape release.yml accepts beyond a plain
+	// vMAJOR.MINOR.PATCH, and that this repository has released.
+	prereleaseTag = "v0.2.0-rc.3"
 )
 
 // pinTree lays out the files the guard reads, under dir.
@@ -63,9 +66,17 @@ func (p pinTree) write(t *testing.T, dir string) {
 		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			t.Fatalf("mkdir for %s: %v", rel, err)
 		}
-		body := "spec:\n  subject: ghcr.io/nvidia/cluster-readiness-engine/manager\n"
+		// Shaped like the real samples, decoys included. Both of them name a
+		// tested cosign version and a tested policy-controller version in
+		// their comments, and the first version of this guard matched every
+		// version-shaped string in the file, so it found three values and
+		// would have failed a correctly prepared release. A fixture clean
+		// enough to pass that guard was the reason the test did not catch it.
+		body := "# Tested with cosign v3.1.3 and policy-controller >= v0.15.0.\n" +
+			"spec:\n  subject: ghcr.io/nvidia/cluster-readiness-engine/manager\n"
 		if version != "" {
-			body += "  tag: " + version + "\n"
+			body += "  identity: \"https://github.com/NVIDIA/cluster-readiness-engine" +
+				"/.github/workflows/attest.yml@refs/tags/" + version + "\"\n"
 		}
 		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
 			t.Fatalf("write %s: %v", rel, err)
@@ -96,49 +107,73 @@ func TestVerifyPinsAcceptsAndRejects(t *testing.T) {
 
 	cases := map[string]struct {
 		tree pinTree
+		// releaseTag overrides the tag being cut. Empty uses tag above.
+		releaseTag string
 		// wantErr is a substring of the refusal. Empty means the guard must
 		// accept.
 		wantErr string
 	}{
 		// The state a correctly prepared release is in.
 		"every pin matches the tag": {
-			pinTree{kyverno: tag, policyController: tag, catalogImage: derivedImage},
-			"",
+			tree: pinTree{kyverno: tag, policyController: tag, catalogImage: derivedImage},
+		},
+		// This repository releases prereleases, and release.yml accepts the
+		// shape, so the guard has to compare the whole tag. Matching only
+		// vMAJOR.MINOR.PATCH reads v0.2.0 out of a correctly pinned
+		// v0.2.0-rc.3 and refuses a release that is in order.
+		"a prerelease with matching pins": {
+			tree: pinTree{
+				kyverno:          prereleaseTag,
+				policyController: prereleaseTag,
+				catalogImage:     derivedImage,
+			},
+			releaseTag: prereleaseTag,
+		},
+		// And a prerelease whose pins were not bumped must still be caught,
+		// so the looser tag pattern cannot be mistaken for a looser check.
+		"a prerelease with stale pins": {
+			tree: pinTree{
+				kyverno:          prevRelease,
+				policyController: prereleaseTag,
+				catalogImage:     derivedImage,
+			},
+			releaseTag: prereleaseTag,
+			wantErr:    kyvernoPin + " pins '" + prevRelease + "'",
 		},
 		// The exact mistake the guard exists for: the bump was forgotten, so
 		// the samples tell a user to verify the previous release's signature
 		// against what they just installed.
 		"a sample still pins the previous release": {
-			pinTree{kyverno: prevRelease, policyController: tag, catalogImage: derivedImage},
-			kyvernoPin + " pins '" + prevRelease + "' but this release is " + tag,
+			tree:    pinTree{kyverno: prevRelease, policyController: tag, catalogImage: derivedImage},
+			wantErr: kyvernoPin + " pins '" + prevRelease + "' but this release is " + tag,
 		},
 		// Both stale is the likelier shape of that mistake, since the two are
 		// bumped together, and must name both rather than stopping at the
 		// first.
 		"both samples pin the previous release": {
-			pinTree{kyverno: prevRelease, policyController: prevRelease, catalogImage: derivedImage},
-			policyControllerPin + " pins '" + prevRelease + "'",
+			tree:    pinTree{kyverno: prevRelease, policyController: prevRelease, catalogImage: derivedImage},
+			wantErr: policyControllerPin + " pins '" + prevRelease + "'",
 		},
 		// A sample with the pin deleted rather than stale. Treated as a
 		// failure, not as "nothing to compare": an unpinned sample verifies
 		// against whatever is newest, which is what pinning prevents.
 		"a sample pins no version at all": {
-			pinTree{kyverno: "", policyController: tag, catalogImage: derivedImage},
-			kyvernoPin + " pins no version",
+			tree:    pinTree{kyverno: "", policyController: tag, catalogImage: derivedImage},
+			wantErr: kyvernoPin + " pins no release identity",
 		},
 		// If a file is renamed, the guard must fail rather than silently
 		// checking nothing. A guard that passes because its subject vanished
 		// is worse than no guard.
 		"a sample file is missing": {
-			pinTree{kyverno: stateAbsent, policyController: tag, catalogImage: derivedImage},
-			kyvernoPin + " is missing",
+			tree:    pinTree{kyverno: stateAbsent, policyController: tag, catalogImage: derivedImage},
+			wantErr: kyvernoPin + " is missing",
 		},
 		// The catalog tag is derived from the build version precisely so no
 		// one has to bump it. A literal put back is a regression to a pin
 		// nothing keeps in step with the release.
 		"a catalog entry reintroduces a literal version": {
-			pinTree{kyverno: tag, policyController: tag, catalogImage: literalImage},
-			"pins a literal image version",
+			tree:    pinTree{kyverno: tag, policyController: tag, catalogImage: literalImage},
+			wantErr: "pins a literal image version",
 		},
 	}
 
@@ -147,13 +182,17 @@ func TestVerifyPinsAcceptsAndRejects(t *testing.T) {
 			dir := t.TempDir()
 			tc.tree.write(t, dir)
 
-			out, failed := runShell(t, dir, script, "TAG="+tag)
+			want := tc.releaseTag
+			if want == "" {
+				want = tag
+			}
+			out, failed := runShell(t, dir, script, "TAG="+want)
 
 			if tc.wantErr == "" {
 				if failed {
-					t.Fatalf("guard refused a correctly pinned release; output:\n%s", out)
+					t.Fatalf("guard refused a correctly pinned release (%s); output:\n%s", want, out)
 				}
-				if !strings.Contains(out, "every pinned version matches "+tag) {
+				if !strings.Contains(out, "every pinned version matches "+want) {
 					t.Errorf("guard accepted without confirming the tag it checked; output:\n%s", out)
 				}
 				return

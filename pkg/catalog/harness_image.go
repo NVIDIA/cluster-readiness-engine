@@ -17,10 +17,20 @@ import (
 // spec.image, and so does anyone testing a harness change.
 const DevHarnessImageTag = "dev"
 
-// releaseVersion matches a released version exactly: a leading v, three
-// numeric components, nothing else. git describe appends to this form rather
-// than replacing it, which is what makes the prefix below safe to take.
-var releaseVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+// releaseVersion matches a tag this repository can release from, which is the
+// same shape release.yml's own guard accepts: three numeric components and an
+// optional prerelease suffix. The suffix has to be allowed, because the
+// repository has released v0.2.0-rc.2 and its siblings, and on such a release
+// the harness image is tagged with the prerelease too. Matching only
+// vMAJOR.MINOR.PATCH would resolve v0.2.0-rc.3 to v0.2.0 and name an image
+// that release never built.
+var releaseVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`)
+
+// describeSuffix matches what `git describe` appends when HEAD is past the tag:
+// the commit count and the abbreviated sha. This is the only part that can be
+// stripped to recover a tag, and it has to be stripped rather than cut at the
+// first "-" because a prerelease tag contains a "-" of its own.
+var describeSuffix = regexp.MustCompile(`-[0-9]+-g[0-9a-f]+$`)
 
 // buildVersion is the running binary's version, as -ldflags set it.
 //
@@ -53,25 +63,28 @@ func BuildVersion() string { return buildVersion }
 // Three cases, because `git describe --tags --always --dirty` produces three
 // shapes:
 //
-//   - "v1.2.3", a release build. Used as given.
-//   - "v1.2.3-15-gabc1234" or "v1.2.3-dirty", a build after a tag. The tag
-//     prefix is taken, so a developer gets the newest harness that actually
+//   - "v1.2.3", or "v1.2.3-rc.1", a release build. Used as given, including
+//     the prerelease suffix, because that is how the image was tagged.
+//   - "v1.2.3-15-gabc1234", "v1.2.3-rc.1-15-gabc1234" or either with "-dirty",
+//     a build after a tag. The describe suffix is removed and the tag
+//     underneath is used, so a developer gets the newest harness that actually
 //     exists rather than a tag nobody published.
 //   - "dev", "abc1234" or empty, a build with no tag in sight. There is
 //     nothing to derive, so it renders DevHarnessImageTag.
+//
+// The stripping is deliberately narrow. Cutting at the first "-" would be
+// wrong for every prerelease: it turns v1.2.3-rc.1 into v1.2.3, which is a
+// different release and quite possibly one that never existed.
 func HarnessImageTag(buildVersion string) string {
 	v := strings.TrimSpace(buildVersion)
 	if v == "" {
 		return DevHarnessImageTag
 	}
+	// Remove what git describe added, in the order it adds it, leaving the tag.
+	v = strings.TrimSuffix(v, "-dirty")
+	v = describeSuffix.ReplaceAllString(v, "")
 	if releaseVersion.MatchString(v) {
 		return v
-	}
-	// A describe string carries its tag ahead of the first "-". Taking the
-	// prefix is only correct when that prefix is itself a release version;
-	// "abc1234-dirty" has no tag in it and must not yield "abc1234".
-	if prefix, _, found := strings.Cut(v, "-"); found && releaseVersion.MatchString(prefix) {
-		return prefix
 	}
 	return DevHarnessImageTag
 }

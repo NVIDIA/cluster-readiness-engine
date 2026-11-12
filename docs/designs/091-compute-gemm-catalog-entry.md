@@ -202,6 +202,8 @@ Package state rather than a `BuildConfig` field, which is the one deliberate com
 
 A build that is not a release has no release to point at. `git describe` output such as `v0.11.0-15-gabc1234` resolves to `v0.11.0`, the newest harness that actually exists, and a version with no tag in it at all renders `dev`, which names no published image on purpose. The lanes that run this entry without a release already set `spec.image`, so none of them depends on the derived value.
 
+Recovering the tag means removing exactly what `git describe` appended, which is `-dirty` and `-<commits>-g<sha>`, and nothing else. The first implementation cut at the first `-` instead, and that is wrong for every prerelease: this repository has released `v0.2.0-rc.2` and its siblings, `release.yml` accepts the shape, and on such a release the harness image carries the prerelease in its tag too. Cutting at the `-` turned `v0.2.0-rc.3` into `v0.2.0`, a different release and quite possibly one that never existed, which is the same `ImagePullBackOff` the derive exists to prevent. `verify-pins` had the same blind spot from the other direction: matching a bare `vMAJOR.MINOR.PATCH` anywhere in the policy samples found three values, because both samples also name a tested cosign version and a tested policy-controller version in their comments, so it would have failed a correctly prepared release. It now compares the pinned `attest.yml@refs/tags/<TAG>` identity alone.
+
 `verify-pins` in `release.yml` closes the loop from the other side: it fails the release if a sample pin disagrees with the tag, and if a catalog entry ever carries a literal version again.
 
 

@@ -1,0 +1,4 @@
+# A local build past a release candidate. Only the describe suffix comes off;
+# the prerelease stays, because cutting at the first "-" is what turned
+# v0.2.0-rc.3 into v0.2.0.
+buildVersion: v0.2.0-rc.3-5-gabc1234
