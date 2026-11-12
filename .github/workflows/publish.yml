@@ -131,6 +131,73 @@ jobs:
       allow_untagged: true
 
 
+  # Whether the CUTLASS GEMM harness image needs rebuilding on this push.
+  #
+  # Six architectures across two platforms is tens of minutes of kernel
+  # compilation, and most merges to main touch no CUTLASS source at all. The
+  # controller image is cheap enough to rebuild unconditionally; this one is
+  # not, so it is built when its own sources change.
+  #
+  # Fails open, like the gate in container-build.yml: every path that cannot
+  # answer the question answers "build it". The consequence of a wrong skip
+  # here is a published harness image older than the branch it is named after,
+  # so the gate errs towards rebuilding.
+  gemm-changed:
+    runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    outputs:
+      gemm: ${{ steps.changes.outputs.gemm }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check for GEMM harness changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git fetch --no-tags origin main; then
+            echo "could not fetch main; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(git merge-base FETCH_HEAD HEAD~1 || true)"
+          if [ -z "${base}" ]; then
+            echo "no merge base for the previous commit; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "comparing against ${base}"
+
+          if ! changed="$(git diff --name-only "${base}" HEAD)"; then
+            echo "could not diff against ${base}; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Captured and matched with a here-string, not piped into grep: grep -q
+          # exits at its first match and SIGPIPEs a still-writing git diff, which
+          # under pipefail reports 141 and reads as "nothing changed".
+          #
+          # Anchored at the repository root, and it includes the Makefile because
+          # the image's build recipe lives there.
+          if grep -qE '^(images/cutlass-gemm/|Makefile$|\.github/workflows/(publish|build-image)\.yml$)' <<<"${changed}"; then
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gemm=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # The CUTLASS GEMM harness image (ADR-091), built and signed exactly as the
   # controller image is.
   #
@@ -142,7 +209,22 @@ jobs:
   # CUTLASS_LIBRARY_KERNELS filter is narrow.
   gemm-build:
     name: Build GEMM harness image
-    needs: [tag]
+    needs: [tag, gemm-changed]
+    # The ref guard is spelled out rather than inherited from `tag`, even
+    # though a skipped need already skips this job. publish.yml has
+    # workflow_dispatch, and this job's path reaches attest.yml: a dispatch at
+    # a v* ref without the guard mints the RELEASE signing identity from the
+    # main-branch workflow. test/releasepolicy enforces that the guard sits on
+    # the path rather than relying on skip propagation, because an `if:` is
+    # easy to get wrong and the cost of getting it wrong is a forged identity.
+    #
+    # The repository guard is repeated for its own reason: a skipped
+    # gemm-changed yields an empty output, and an empty string is not 'false'.
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine'
+      && github.ref == 'refs/heads/main'
+      && needs.gemm-changed.outputs.gemm == 'true'
+
     permissions:
       contents: read
       packages: write
@@ -156,6 +238,18 @@ jobs:
   gemm-attest-index:
     name: Attest GEMM index (signature + provenance)
     needs: [tag, gemm-build]
+    # Exactly the allowlisted main-branch guard, and nothing else.
+    #
+    # test/releasepolicy pins the WHOLE if: expression of every job that
+    # reaches attest.yml against an allowlist, so that a widened guard which
+    # still contains the right needles cannot pass. An extra clause here fails
+    # that check even when it only narrows the job further.
+    #
+    # Nothing is lost by dropping the build-succeeded clause: this job needs
+    # gemm-build, and Actions skips a job whose need was skipped or failed, so
+    # a harness image that was not built is never attested. The `attested` gate
+    # then checks that the skip was the one the path gate asked for.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -171,6 +265,18 @@ jobs:
   gemm-attest-amd64-sbom:
     name: Attest GEMM linux/amd64 SBOM
     needs: [tag, gemm-build]
+    # Exactly the allowlisted main-branch guard, and nothing else.
+    #
+    # test/releasepolicy pins the WHOLE if: expression of every job that
+    # reaches attest.yml against an allowlist, so that a widened guard which
+    # still contains the right needles cannot pass. An extra clause here fails
+    # that check even when it only narrows the job further.
+    #
+    # Nothing is lost by dropping the build-succeeded clause: this job needs
+    # gemm-build, and Actions skips a job whose need was skipped or failed, so
+    # a harness image that was not built is never attested. The `attested` gate
+    # then checks that the skip was the one the path gate asked for.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -191,6 +297,18 @@ jobs:
   gemm-attest-arm64-sbom:
     name: Attest GEMM linux/arm64 SBOM
     needs: [tag, gemm-build]
+    # Exactly the allowlisted main-branch guard, and nothing else.
+    #
+    # test/releasepolicy pins the WHOLE if: expression of every job that
+    # reaches attest.yml against an allowlist, so that a widened guard which
+    # still contains the right needles cannot pass. An extra clause here fails
+    # that check even when it only narrows the job further.
+    #
+    # Nothing is lost by dropping the build-succeeded clause: this job needs
+    # gemm-build, and Actions skips a job whose need was skipped or failed, so
+    # a harness image that was not built is never attested. The `attested` gate
+    # then checks that the skip was the one the path gate asked for.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -214,6 +332,7 @@ jobs:
   attested:
     name: Confirm the image was signed
     needs:
+      - gemm-changed
       - build
       - attest-index
       - attest-amd64-sbom
@@ -241,6 +360,7 @@ jobs:
           INDEX: ${{ needs.attest-index.result }}
           AMD64: ${{ needs.attest-amd64-sbom.result }}
           ARM64: ${{ needs.attest-arm64-sbom.result }}
+          GEMM_WANTED: ${{ needs.gemm-changed.outputs.gemm }}
           GEMM_BUILD: ${{ needs.gemm-build.result }}
           GEMM_INDEX: ${{ needs.gemm-attest-index.result }}
           GEMM_AMD64: ${{ needs.gemm-attest-amd64-sbom.result }}
@@ -254,14 +374,50 @@ jobs:
             echo "::error::the build did not succeed (${BUILD}); no image was published. Attestation was not attempted."
             exit 1
           fi
-          if [[ "${GEMM_BUILD}" != "success" ]]; then
-            echo "::error::the GEMM harness build did not succeed (${GEMM_BUILD}); compute/cutlass-gemm has no image to pull. Attestation was not attempted."
-            exit 1
-          fi
+          # The GEMM harness image is built only when its own sources changed,
+          # so "skipped" here can be correct. It is correct ONLY when the gate
+          # said so, and that distinction is the whole point: accepting any
+          # skip would reopen exactly the hole this job exists to close, where
+          # a broken guard silently publishes an unsigned image.
+          #
+          # Fails CLOSED on an unreadable gate, unlike the gate itself, which
+          # fails open. Different jobs, opposite correct directions: the gate
+          # cannot tell whether a rebuild is needed so it rebuilds; this job
+          # cannot tell whether an image was signed so it refuses.
+          gemm_checks=()
+          case "${GEMM_WANTED}" in
+            true)
+              if [[ "${GEMM_BUILD}" != "success" ]]; then
+                echo "::error::the GEMM harness sources changed but its build did not succeed (${GEMM_BUILD}); compute/cutlass-gemm would be left pointing at a stale image."
+                exit 1
+              fi
+              gemm_checks=("gemm-index:${GEMM_INDEX}" "gemm-amd64-sbom:${GEMM_AMD64}" "gemm-arm64-sbom:${GEMM_ARM64}")
+              ;;
+            false)
+              # Nothing changed, so nothing should have run. A result that is
+              # neither skipped nor empty means a job ran that the gate said
+              # was unnecessary, which means the gate and the jobs disagree.
+              for pair in "build:${GEMM_BUILD}" "index:${GEMM_INDEX}" "amd64-sbom:${GEMM_AMD64}" "arm64-sbom:${GEMM_ARM64}"; do
+                name="${pair%%:*}"; result="${pair#*:}"
+                case "${result}" in
+                  skipped|"") ;;
+                  *)
+                    echo "::error::the gate reported no GEMM harness change, but gemm-${name} ran with result '${result}'. The gate and the jobs disagree; treat the published image as unverified."
+                    exit 1
+                    ;;
+                esac
+              done
+              echo "GEMM harness sources unchanged; its image was not rebuilt and nothing needed signing"
+              ;;
+            *)
+              echo "::error::could not read whether the GEMM harness changed (gate output '${GEMM_WANTED}'); refusing to certify this publish either way."
+              exit 1
+              ;;
+          esac
 
           failed=0
           for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}" \
-                      "gemm-index:${GEMM_INDEX}" "gemm-amd64-sbom:${GEMM_AMD64}" "gemm-arm64-sbom:${GEMM_ARM64}"; do
+                      "${gemm_checks[@]+"${gemm_checks[@]}"}"; do
             name="${pair%%:*}"; result="${pair#*:}"
             case "${result}" in
               success) ;;

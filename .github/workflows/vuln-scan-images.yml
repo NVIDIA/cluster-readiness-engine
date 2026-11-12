@@ -155,17 +155,42 @@ jobs:
           # HEAD skips this target most of the time. A scan that silently covers
           # half of what it claims is worse than one that covers less loudly, so
           # walk back until an image is found and fail if none is.
-          main_sha=""
-          while read -r sha; do
-            if ! crane_missing "${IMAGE}:main-${sha}"; then
-              main_sha="${sha}"; break
-            fi
-          done < <(gh api "repos/${GITHUB_REPOSITORY}/commits?sha=main&per_page=15" --jq '.[].sha[0:7]')
+          # Resolved PER IMAGE, because the two are not published on the same
+          # commits. The controller image is built on every push to main; the
+          # GEMM harness is built only when its own sources change, so the
+          # newest sha carrying a controller image usually carries no harness
+          # image at all. Using one sha for both made the harness target fail
+          # to resolve on almost every run, and a missing index is terminal
+          # here by design.
+          #
+          # The window is wider for the harness for the same reason: it can go
+          # many commits without a rebuild, and that is correct rather than a
+          # fault, so not finding one inside the window is a warning rather
+          # than an error. The controller image keeps its hard failure, because
+          # for it a gap really does mean publish.yml is broken.
+          newest_main_tag() {
+            local image="$1" limit="$2" sha found=""
+            while read -r sha; do
+              if ! crane_missing "${image}:main-${sha}"; then
+                found="${sha}"; break
+              fi
+            done < <(gh api "repos/${GITHUB_REPOSITORY}/commits?sha=main&per_page=${limit}" --jq '.[].sha[0:7]')
+            printf '%s' "${found}"
+          }
+
+          main_sha="$(newest_main_tag "${IMAGE}" 15)"
           if [[ -z "${main_sha}" ]]; then
             echo "::error::no main-<sha> image found in the last 15 commits on main; publish.yml may be failing"
             exit 1
           fi
           echo "newest published main image: main-${main_sha}"
+
+          gemm_main_sha="$(newest_main_tag "${GEMM_IMAGE}" 100)"
+          if [[ -z "${gemm_main_sha}" ]]; then
+            echo "::warning::no ${GEMM_IMAGE}:main-<sha> found in the last 100 commits on main; it is built only when its own sources change, so it will not be scanned this run"
+          else
+            echo "newest published GEMM harness image: main-${gemm_main_sha}"
+          fi
 
           # Counted before the registry is consulted, so the expectation cannot
           # be shaped by what the registry happened to answer.
@@ -197,7 +222,14 @@ jobs:
           scan_set=()
           scan_set+=("release:${release_tag}:${IMAGE}:manager")
           scan_set+=("main:main-${main_sha}:${IMAGE}:manager")
-          scan_set+=("main:main-${main_sha}:${GEMM_IMAGE}:gemm")
+          # Only when one exists. This is the one entry whose presence depends
+          # on the registry, and it is sound because the dependence is on
+          # whether the image was ever published rather than on whether a
+          # particular tag resolves: the loop below is still terminal for every
+          # target that IS listed, so a listed target cannot silently vanish.
+          if [[ -n "${gemm_main_sha}" ]]; then
+            scan_set+=("main:main-${gemm_main_sha}:${GEMM_IMAGE}:gemm")
+          fi
 
           expected=0
           targets='[]'
