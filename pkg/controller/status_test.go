@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -103,6 +104,79 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 			stored := &nvcrev1alpha1.Workflow{}
 			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: testNS}, stored))
 			require.True(t, CondIsTrue(stored.Status.Conditions, nvcrev1alpha1.WorkflowInProgress))
+		})
+	}
+}
+
+// TestUpdateStatusWithRetryReportsCancelledWrite pins that a write refused for a
+// cancelled or expired context is reported, never taken as success.
+// retry.RetryOnConflict maps any error wrapping context.Canceled or
+// context.DeadlineExceeded to the previous conflict, which is nil when the
+// first attempt is the one refused. client-go refuses a request on a cancelled
+// context before sending it, so a reconcile still running at manager shutdown
+// hits exactly that case. The Event a caller emits on success would then
+// describe a transition that was never stored.
+func TestUpdateStatusWithRetryReportsCancelledWrite(t *testing.T) {
+	tests := []struct {
+		name      string
+		conflicts int
+		cause     error
+	}{
+		{name: "cancelled on the first attempt", conflicts: 0, cause: context.Canceled},
+		{name: "deadline exceeded on the first attempt", conflicts: 0, cause: context.DeadlineExceeded},
+		{name: "cancelled after a conflict", conflicts: 1, cause: context.Canceled},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			cert := &nvcrev1alpha1.Certification{
+				Name: testCertName, Namespace: testNS,
+			}
+
+			remaining := tt.conflicts
+			c := fake.NewClientBuilder().
+				WithScheme(newWorkflowScheme(t)).
+				WithObjects(cert).
+				WithStatusSubresource(&nvcrev1alpha1.Certification{}).
+				WithInterceptorFuncs(interceptor.Funcs{
+					SubResourceUpdate: func(
+						_ context.Context, _ client.Client, _ string,
+						obj client.Object, _ ...client.SubResourceUpdateOption,
+					) error {
+						if remaining > 0 {
+							remaining--
+							return apierrors.NewConflict(
+								schema.GroupResource{Group: nvcrev1alpha1.GroupVersion.Group, Resource: "certifications"},
+								obj.GetName(), errors.New("simulated stale write"))
+						}
+						// What client-go returns when the rate limiter refuses
+						// a request whose context is already done.
+						return fmt.Errorf("client rate limiter Wait returned an error: %w", tt.cause)
+					},
+				}).
+				Build()
+
+			obj := &nvcrev1alpha1.Certification{}
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: testCertName, Namespace: testNS}, obj))
+
+			changed, transition, err := setExclusiveStatusCondition(ctx, c, obj,
+				func(cert *nvcrev1alpha1.Certification) *[]metav1.Condition { return &cert.Status.Conditions },
+				[]string{
+					nvcrev1alpha1.CertificationInProgress,
+					nvcrev1alpha1.CertificationSucceeded,
+					nvcrev1alpha1.CertificationFailed,
+				},
+				nvcrev1alpha1.CertificationInProgress, ReasonWorkflowCreated, "created")
+
+			require.ErrorIs(t, err, tt.cause)
+			require.False(t, changed, "a refused write must not be reported as a change")
+			require.Nil(t, transition, "a refused write must not yield a transition to emit an Event for")
+
+			stored := &nvcrev1alpha1.Certification{}
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: testCertName, Namespace: testNS}, stored))
+			require.Empty(t, stored.Status.Conditions)
 		})
 	}
 }
