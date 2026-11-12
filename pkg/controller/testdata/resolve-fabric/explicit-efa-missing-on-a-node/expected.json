@@ -1,0 +1,8 @@
+{
+  "fabric": "efa",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"efa\" is set, but 2 of 2 target nodes advertise no vpc.amazonaws.com/efa allocatable: gb300-a, gb300-b"
+}

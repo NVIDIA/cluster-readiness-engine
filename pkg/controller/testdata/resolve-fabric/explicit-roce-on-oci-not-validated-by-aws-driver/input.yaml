@@ -1,0 +1,7 @@
+# OCI RoCE is wired through nvidia.com/mlnxnics, not the AWS DRA driver, so the
+# AWS RoCE check does not run there.
+field: roce
+platform: oci
+gpuArchitecture: gb300
+nodes:
+  - name: oci-a

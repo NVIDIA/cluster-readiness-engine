@@ -42,6 +42,12 @@ type orchestrationConflictOutput struct {
 	Diagnose            *orchestrationDiagnoseOut `json:"diagnose,omitempty"`
 	TrueCondition       string                    `json:"trueCondition"`
 	Reason              string                    `json:"reason"`
+	// The fields below are what discovery records. They are omitted when
+	// empty so the cases that start after discovery keep their goldens.
+	TotalNodes       int      `json:"totalNodes,omitempty"`
+	DetectedPlatform string   `json:"detectedPlatform,omitempty"`
+	ResolvedFabric   string   `json:"resolvedFabric,omitempty"`
+	DependencyRefs   []string `json:"dependencyRefs,omitempty"`
 }
 
 type orchestrationGroupOut struct {
@@ -133,6 +139,14 @@ func persistedOrchestrationOutput(c client.Client, writes int) (string, error) {
 		if orch.Diagnose != nil {
 			out.Diagnose = &orchestrationDiagnoseOut{Stage: orch.Diagnose.Stage, Round: orch.Diagnose.Round}
 		}
+	}
+	if orch := got.Status.Orchestration; orch != nil {
+		out.TotalNodes = orch.TotalNodes
+		out.DetectedPlatform = orch.DetectedPlatform
+		out.ResolvedFabric = string(orch.ResolvedFabric)
+	}
+	for _, ref := range got.Status.DependencyRefs {
+		out.DependencyRefs = append(out.DependencyRefs, ref.Kind+"/"+ref.Name)
 	}
 	for _, cond := range got.Status.Conditions {
 		if cond.Status == metav1.ConditionTrue {

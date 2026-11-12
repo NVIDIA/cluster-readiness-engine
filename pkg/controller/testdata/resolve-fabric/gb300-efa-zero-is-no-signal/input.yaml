@@ -1,0 +1,10 @@
+# A quantity of zero carries no EFA signal.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      vpc.amazonaws.com/efa: "0"
+  - name: gb300-b
+    allocatable:
+      vpc.amazonaws.com/efa: "0"

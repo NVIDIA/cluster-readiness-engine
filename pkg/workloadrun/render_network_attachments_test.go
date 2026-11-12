@@ -53,7 +53,7 @@ func TestWorkloadRunRenderNetworkAttachments(t *testing.T) {
 			return err
 		}
 		emitted, err := captureStdout(t, func() error {
-			return runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
+			return runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch, "")
 		})
 		if err != nil {
 			return err

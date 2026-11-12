@@ -1,0 +1,7 @@
+# The same overrides for torch at fabric efa, where no sshd exists: SYS_CHROOT
+# must not appear on any container.
+source: overrides
+frameworkType: torch
+fabric: efa
+nodesPerJob: 2
+gpusPerNode: 8

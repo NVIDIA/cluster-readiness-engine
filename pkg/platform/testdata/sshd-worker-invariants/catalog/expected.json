@@ -1,5 +1,5 @@
 {
-  "containersScanned": 404,
+  "containersScanned": 424,
   "sshdWorkers": 6,
   "containers": [
     {
@@ -22,7 +22,7 @@
       }
     },
     {
-      "source": "communication/nccl-all-gather@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-all-gather@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -61,7 +61,7 @@
       }
     },
     {
-      "source": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -100,7 +100,7 @@
       }
     },
     {
-      "source": "communication/nccl-all-reduce@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-all-reduce@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -139,7 +139,7 @@
       }
     },
     {
-      "source": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -178,7 +178,7 @@
       }
     },
     {
-      "source": "communication/nccl-alltoall@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-alltoall@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -217,7 +217,7 @@
       }
     },
     {
-      "source": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "source": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"roce\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -238,6 +238,16 @@
     },
     {
       "source": "communication/nccl-loopback-nvswitch@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
+      "fragment": true,
       "replicatedJob": "node",
       "container": "node",
       "runsSSHD": false,
@@ -267,6 +277,16 @@
       ]
     },
     {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
       "source": "communication/nccl-loopback-nvswitch@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
       "fragment": true,
       "replicatedJob": "node",
@@ -288,6 +308,16 @@
       ]
     },
     {
+      "source": "communication/nccl-loopback@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
       "source": "communication/nccl-loopback@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
       "fragment": true,
       "replicatedJob": "node",
@@ -301,6 +331,16 @@
     },
     {
       "source": "communication/nccl-loopback@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
+      "fragment": true,
       "replicatedJob": "node",
       "container": "node",
       "runsSSHD": false,
@@ -362,6 +402,16 @@
       ]
     },
     {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
       "source": "training/nemotron5-56b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
       "fragment": true,
       "replicatedJob": "node",
@@ -412,6 +462,16 @@
     },
     {
       "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -481,6 +541,16 @@
     },
     {
       "source": "training/nemotron5-8b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",
@@ -570,6 +640,16 @@
     },
     {
       "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"},\"fabric\":{\"equals\":\"efa\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",

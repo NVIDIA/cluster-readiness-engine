@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --fabric efa without --platform: the output is a template whose platform
+# overrides stay conditional, but the user's when.fabric matchers are settled
+# against the explicit fabric, as the WorkloadRun controller settles them. The
+# efa arm is kept with its matcher cleared and the roce arm is dropped, so the
+# Workflow controller cannot re-decide the fabric from its nodes (ADR-110).
+fabric: efa

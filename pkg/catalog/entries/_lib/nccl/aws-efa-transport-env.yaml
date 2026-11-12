@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # AWS EFA transport selection, shared by the WorkloadRun platform overrides
-# (pkg/platform/overrides/workloadrun.yaml) across H100, GB200, and B300. The
-# values are identical across these architectures.
+# (pkg/platform/overrides/workloadrun.yaml) across H100, GB200, B300 and GB300
+# on an EFA fabric, and by the AWS GB300 EFA catalog arms (aws-gb300-efa-env.yaml
+# and the loopback entries; ADR-110). The values are identical across these
+# architectures.
 #
 # NCCL_DEBUG, NCCL_MNNVL_ENABLE and NCCL_SOCKET_IFNAME stay with the callers:
 # the WorkloadRun controller injects the first two as -x flags on the launcher

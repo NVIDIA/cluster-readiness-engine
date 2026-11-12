@@ -1,0 +1,10 @@
+# A notIn matcher is settled like any other.
+fabric: ib
+overrides:
+  - when:
+      fabric:
+        notIn: [efa, roce]
+    jobTemplate:
+      metadata:
+        labels:
+          marker: echo-not-efa-or-roce

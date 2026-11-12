@@ -1,0 +1,8 @@
+{
+  "fabric": "roce",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"roce\" is set, but the ResourceSlice list that checks it for RoCE devices was refused (resourceslices.resource.k8s.io is forbidden: RBAC: access denied); grant get and list on resourceslices.resource.k8s.io"
+}

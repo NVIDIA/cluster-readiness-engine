@@ -47,9 +47,19 @@
     topology:
       topologyKey: kubernetes.azure.com/ppg
 
+# --- AWS + GB300 fabric selection (ADR-110) ---
+# AWS GB300 is rendered for RoCE or for EFA. These overrides are stored on the
+# Workflow verbatim and re-evaluated there without the WorkloadRun's
+# spec.fabric, so the fabric is not a when.fabric matcher here: the WorkloadRun
+# resolves it (spec.fabric, detection, or the RoCE default) and this template
+# renders one set of blocks, as it renders NicResourceName. .Fabric is set only
+# where the fabric chose the render, so every other target renders exactly as
+# before.
+{{- if ne .Fabric "efa" }}
+
 # --- AWS + GB300 (NCCL plugin cleanup) ---
 # The pytorch image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl.
-# AWS GB300 is a RoCE fabric with no EFA providers, so the plugin finds nothing
+# On a RoCE fabric AWS GB300 has no EFA providers, so the plugin finds nothing
 # eligible and crashes. Scoped to gb300 on purpose: H100 and GB200 on AWS are
 # EFA fabrics, and EFA is reachable only through libfabric via this plugin
 # (NCCL's built-in net_ib does not drive EFA). Stripping it there silently drops
@@ -108,6 +118,7 @@
 {{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . | indent 4 }}
 {{ lib "nccl/mpi-disable-ucc-hcoll-args.yaml" . | indent 4 }}
 {{ lib "nccl/aws-gb300-roce-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
 {{- end }}
 
 # --- AWS + GB200 (EFA) ---
@@ -182,6 +193,8 @@
 {{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
 {{- end }}
 
+{{- if ne .Fabric "efa" }}
+
 # --- AWS + GB300 (RoCE) ---
 # Always use the torch variant (claim name "compute-domain") to match
 # the generic gb200/gb300 override above. The comm variant would
@@ -196,6 +209,77 @@
       equals: gb300
   dependencies:
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+{{- end }}
+{{- if eq .Fabric "efa" }}
+
+# --- AWS + GB300 (EFA) ---
+# Rendered when the WorkloadRun resolved fabric efa: a stock-EKS GB300 cluster,
+# where the EFA device plugin advertises vpc.amazonaws.com/efa and no RoCE DRA
+# driver runs. The pytorch image's aws-ofi-nccl plugin is the transport, so
+# there is no plugin cleanup and no RoCE transport pin. Mirrors the AWS + GB200
+# EFA blocks: the capability list is a full restatement of BuildMPIRuntime's,
+# for the reason given there, and the EFA count is read from node allocatable.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      securityContext:
+                        capabilities:
+                          add:
+                          - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
+                      resources:
+                        limits:
+                          vpc.amazonaws.com/efa: {{ .EFAPerNode }}
+                        requests:
+                          vpc.amazonaws.com/efa: {{ .EFAPerNode }}
+
+# --- AWS + GB300 (EFA transport selection) ---
+# Delivered the two ways the AWS + GB200 EFA transport is: mpirun -x for MPI,
+# trainer.env for torch.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  mpiArgs:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+{{- end }}
+{{- end }}
 
 # --- AWS + H100 (EFA 32 devices) ---
 # IPC_LOCK, and the same wholesale-restatement caveat, as for GB200 above.

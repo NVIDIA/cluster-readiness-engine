@@ -1,0 +1,7 @@
+{
+  "fabric": "roce",
+  "source": "default",
+  "efaPerNode": 1,
+  "surface": true,
+  "message": "fabric detection could not list ResourceSlices (resourceslices.resource.k8s.io is forbidden: RBAC: access denied), so RoCE devices cannot be seen; rendering the default fabric \"roce\". Set spec.fabric to choose one."
+}

@@ -1,0 +1,8 @@
+# AWS H100 is not a detection target: the default (efa) applies, nothing is
+# listed, and the fabric is not surfaced, so its renders stay unchanged.
+platform: aws
+gpuArchitecture: h100
+nodes:
+  - name: h100-a
+    allocatable:
+      vpc.amazonaws.com/efa: "32"
