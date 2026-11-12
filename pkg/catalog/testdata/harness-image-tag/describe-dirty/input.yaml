@@ -1,2 +1,3 @@
-# Same, with uncommitted changes. Still resolves to the tag it is past.
+# Same, with uncommitted changes. A modified tree is further still from the
+# release it is past, so it certainly does not name that release's image.
 buildVersion: v0.11.0-dirty

@@ -63,26 +63,34 @@ func BuildVersion() string { return buildVersion }
 // Three cases, because `git describe --tags --always --dirty` produces three
 // shapes:
 //
+// Only an exact release tag yields an image tag:
+//
 //   - "v1.2.3", or "v1.2.3-rc.1", a release build. Used as given, including
 //     the prerelease suffix, because that is how the image was tagged.
-//   - "v1.2.3-15-gabc1234", "v1.2.3-rc.1-15-gabc1234" or either with "-dirty",
-//     a build after a tag. The describe suffix is removed and the tag
-//     underneath is used, so a developer gets the newest harness that actually
-//     exists rather than a tag nobody published.
-//   - "dev", "abc1234" or empty, a build with no tag in sight. There is
-//     nothing to derive, so it renders DevHarnessImageTag.
+//   - "v1.2.3-15-gabc1234", or either form with "-dirty", a build somewhere
+//     after a tag. DevHarnessImageTag.
+//   - "dev", "abc1234" or empty. DevHarnessImageTag.
 //
-// The stripping is deliberately narrow. Cutting at the first "-" would be
-// wrong for every prerelease: it turns v1.2.3-rc.1 into v1.2.3, which is a
-// different release and quite possibly one that never existed.
+// A build past a tag renders "dev" rather than the tag it is past, and that is
+// the whole point of the distinction. Resolving v0.11.0-7-gabc1234 to v0.11.0
+// would hand a build of THIS tree the harness image from a release that was
+// built from a different one, which is exactly the silent cross-release pull
+// DevHarnessImageTag exists to avoid; the moment a release shipped, every main
+// build would start pulling its harness against main's entry and the mismatch
+// would not show up as an error anywhere. publish.yml offers no alternative to
+// point at either: it tags the harness "main-<sha>" and the build is gated on
+// the harness sources having changed, so that tag exists only for some commits
+// and nothing can resolve it in general.
 func HarnessImageTag(buildVersion string) string {
 	v := strings.TrimSpace(buildVersion)
 	if v == "" {
 		return DevHarnessImageTag
 	}
-	// Remove what git describe added, in the order it adds it, leaving the tag.
-	v = strings.TrimSuffix(v, "-dirty")
-	v = describeSuffix.ReplaceAllString(v, "")
+	// What git describe appends when HEAD is not exactly on a tag. Checked
+	// rather than stripped, because the thing it marks is "not a release".
+	if strings.HasSuffix(v, "-dirty") || describeSuffix.MatchString(v) {
+		return DevHarnessImageTag
+	}
 	if releaseVersion.MatchString(v) {
 		return v
 	}
