@@ -47,7 +47,7 @@ dependencies:
               template:
                 spec:
                   containers:
-                  - image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:v0.1.0
+                  - image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:{{ .HarnessImageTag }}
                     name: node
                     resources:
                       limits:
@@ -74,7 +74,7 @@ jobTemplate:
           kind: TrainingRuntime
           name: cutlass-gemm-runtime
         trainer:
-          image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:v0.1.0
+          image: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:{{ .HarnessImageTag }}
           numNodes: 1
           numProcPerNode: 1
           env:

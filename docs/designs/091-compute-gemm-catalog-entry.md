@@ -164,13 +164,17 @@ The first implementation defaulted to FP16, which is the natural choice for a GE
 
 Setting it replaces the target-times-ratio product outright rather than scaling it: someone who states a number in TFLOPS means that number.
 
-### Grace-Blackwell gets rows and no verdict
+### GB200 gets rows and no verdict, GB300 is armed
 
-Two reasons, and the first is a trap worth naming. `ConfigArch` collapses `gb300` to `gb200` before any `meta.yaml` lookup, so the two architectures share **one** key and a `gb300:` entry is dead: never read, while looking armed.
+This amendment replaces an earlier one that said the whole Grace-Blackwell family goes without a verdict. That was written against a constraint the implementation then removed, and it is narrower than it looked: GB300 is armed from its own DCGM rows, and GB200 alone is the gap.
 
-The second is the number. DCGM's table has no row named GB200. Its multi-node diagnostic module maps device id `2941` to "GB200 NVL" in a comment, and `2941`'s row in the target table is named "B200 DevId 10DE" with a target of 15225, less than half the 33843 this entry uses for B200 on what should be comparable silicon. Identifying `2941` as GB200 takes a cross-reference between two source files rather than one explicit label, and the value disagrees with its own siblings. GB300's own rows are credible and much higher, but the key collapse means using one would apply it to GB200 as well.
+The trap is still worth naming. `ConfigArch` collapses `gb300` to `gb200`, so any `meta.yaml` lookup that goes through it sees one key for both architectures and a `gb300:` entry would be dead: never read, while looking armed. That collapse is right where it came from, parallelism, because the two share a GPU count and therefore a `tp/pp/ep` shape. It is wrong for a performance target, because GB300 is materially faster and DCGM gives them different numbers.
 
-So there is no value that is both sourced and safe for the key the lookup uses. A Grace-Blackwell fleet gets per-GPU rows without a performance verdict until someone measures one and sets `gemmFloorTFLOPS` from it. Arming the gate at half the right level reads as armed and catches nothing; arming it at GB300's level would fail healthy GB200 nodes.
+So the target lookup is the one consumer that keys on the **raw** architecture instead (`loader.go`, `getGemmTarget(config.GPUArchitecture)`). The collapse stays where it belongs rather than being widened to a place it would silently disarm a gate. `gb300` is therefore live, set from the lowest of DCGM's three GB300 rows (MaxQ at 46631) so a MaxQ node is not failed by a target taken from a Bianca one.
+
+What remains is the number for GB200, and that is a sourcing problem rather than a keying one. DCGM's table has no row named GB200. Its multi-node diagnostic module maps device id `2941` to "GB200 NVL" in a comment, and `2941`'s row in the target table is named "B200 DevId 10DE" with a target of 15225, less than half the 33843 this entry uses for B200 on what should be comparable silicon. Identifying `2941` as GB200 takes a cross-reference between two source files rather than one explicit label, and the value disagrees with its own siblings.
+
+So there is no figure for GB200 that is both sourced and credible. A GB200 fleet gets per-GPU rows without a performance verdict until someone measures one and sets `gemmFloorTFLOPS` from it. Arming the gate at half the right level reads as armed and catches nothing.
 
 ### Decision 5 is superseded by this entry shipping
 
@@ -185,6 +189,20 @@ A scratch directory that cannot be created made every path absolute, every sweep
 A profiler that exits immediately, which is what a missing binary or an unsupported architecture looks like, made the sweep loop spin at full speed and emit a row per GPU per iteration. Rows feed ADR-090's bounded row budget, so a spinning harness does not merely fill the log, it truncates the result set it exists to produce. The sweep cadence is now held even when the profiler returns early, which bounds the row count at duration/sample per GPU by construction.
 
 And the Mokka stub's own fault injection failed silently when its sweep counter was unwritable, so the degraded device never degraded and the lane reported a healthy node for a run asked to inject a fault. A fault injector that quietly stops injecting is worse than none, because the lane goes green for a case that never ran.
+
+### The harness image tag is derived from the build version, not pinned
+
+The entry has to name the harness image, and the first implementation wrote the version in: two literal `cutlass-gemm:vX.Y.Z` strings, with RELEASE.md told to bump them before tagging.
+
+That is a step with nothing behind it. `release.yml` builds the binary and the harness image from the same tag, so the correct value is always the release being cut, and there is no reason a human should have to restate it. Getting it wrong is also uniquely quiet: the tag is only wrong once the release exists, nothing in the repository fails, and the first symptom is `ImagePullBackOff` on a cluster that has already installed the release. The repository had the same exposure on the two admission-policy sample pins, where nothing read a pinned version back either.
+
+So the tag is derived. `catalog.SetBuildVersion` records the running binary's version once from each `main`, `HarnessImageTag` reduces it to a tag, and the entry renders `{{ .HarnessImageTag }}`. A release build renders its own version, which is exactly the image that shipped beside it.
+
+Package state rather than a `BuildConfig` field, which is the one deliberate compromise. A field would be explicit, but it would have to be set at every construction site and would fall back to `dev` wherever someone forgot, reintroducing the silent-wrong-tag failure in a new place; it would also have to thread through `renderCertification` and its eighteen test callers. The build version describes the process rather than the render, so it is read-only after `main` sets it.
+
+A build that is not a release has no release to point at. `git describe` output such as `v0.11.0-15-gabc1234` resolves to `v0.11.0`, the newest harness that actually exists, and a version with no tag in it at all renders `dev`, which names no published image on purpose. The lanes that run this entry without a release already set `spec.image`, so none of them depends on the derived value.
+
+`verify-pins` in `release.yml` closes the loop from the other side: it fails the release if a sample pin disagrees with the tag, and if a catalog entry ever carries a literal version again.
 
 
 ## References

@@ -1,0 +1,2 @@
+# Same, with uncommitted changes. Still resolves to the tag it is past.
+buildVersion: v0.11.0-dirty

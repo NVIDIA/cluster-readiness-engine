@@ -1,0 +1,4 @@
+# The ldflags default when nothing set a version. There is no release to
+# derive, so it renders a tag that names no published image on purpose: the
+# lanes that run this entry without a release set spec.image anyway.
+buildVersion: dev

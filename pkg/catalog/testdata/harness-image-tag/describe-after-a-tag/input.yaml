@@ -1,0 +1,5 @@
+# A local build some commits past a tag, which is what the Makefile default
+# `git describe --tags --always --dirty` yields. The tag prefix is taken, so a
+# developer pulls the newest harness that actually exists rather than a tag
+# nobody published.
+buildVersion: v0.11.0-15-gfd0d5bc3

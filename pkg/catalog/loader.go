@@ -227,6 +227,12 @@ type TemplateData struct {
 	// Templates use: {{ .GemmFloorTFLOPS }}
 	GemmFloorTFLOPS int32
 
+	// HarnessImageTag is the tag of a harness image this repository publishes
+	// for itself, derived from the rendering binary's own version so that no
+	// entry carries a literal version to bump.
+	// Templates use: {{ .HarnessImageTag }}
+	HarnessImageTag string
+
 	// GemmTargetGFLOPS is the per-architecture reference target, DCGM's
 	// target_stress. Zero means the entry declares none for this
 	// architecture, which leaves the harness reporting without a verdict.
@@ -626,6 +632,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	// collapse stays where it belongs rather than being widened.
 	td.GemmTargetGFLOPS = meta.getGemmTarget(config.GPUArchitecture)
 	td.GemmMinRatioPercent = meta.GemmMinRatioPercent
+	td.HarnessImageTag = HarnessImageTag(buildVersion)
 	if td.ExitDurationMins == 0 {
 		td.ExitDurationMins = DefaultExitDurationMins
 	}
