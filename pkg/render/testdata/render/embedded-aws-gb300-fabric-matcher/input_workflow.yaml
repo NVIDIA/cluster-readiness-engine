@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An override matches on when.fabric, so the fabric chose the render. Offline
+# there is no cluster to detect it from, so the AWS GB300 default, roce, picks
+# the roce arm and is recorded in the detected-fabric annotation (ADR-110).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-workflow
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            numNodes: 2
+            numProcPerNode: 4
+            image: nvcr.io/nvidia/pytorch:24.12-py3
+            command: ["/bin/bash", "-c"]
+            args: ["torchrun --nnodes 2"]
+  orchestration:
+    execution: {}
+  overrides:
+    - when:
+        fabric: { equals: "roce" }
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: roce-config
+          data:
+            fabric: roce
+    - when:
+        fabric: { equals: "efa" }
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: efa-config
+          data:
+            fabric: efa

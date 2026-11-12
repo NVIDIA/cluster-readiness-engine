@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No override matches on when.fabric, so the Workflow controller resolves no
+# fabric for this Workflow and the render records no detected-fabric
+# annotation, even on AWS GB300, where the default would be roce (ADR-110).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-workflow
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            numNodes: 2
+            numProcPerNode: 4
+            image: nvcr.io/nvidia/pytorch:24.12-py3
+            command: ["/bin/bash", "-c"]
+            args: ["torchrun --nnodes 2"]
+  orchestration:
+    execution: {}
+  overrides:
+    - when:
+        gpuArchitecture: { equals: "gb300" }
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gb300-config
+          data:
+            arch: gb300

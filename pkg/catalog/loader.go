@@ -158,6 +158,14 @@ type TemplateData struct {
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
 	NicResourceName string
 
+	// Fabric is the resolved network fabric (ADR-110). Templates use: {{ .Fabric }}
+	Fabric string
+
+	// EFAPerNode is the vpc.amazonaws.com/efa device count per worker on AWS
+	// GB300 EFA, read from node allocatable; at least 1.
+	// Templates use: {{ .EFAPerNode }}
+	EFAPerNode int32
+
 	// RDMADeviceAccess selects how workload containers reach the host's RDMA
 	// devices. "hostPath" mounts /dev/infiniband and runs the workload
 	// container privileged; "devicePlugin" and empty render nothing extra.
@@ -576,6 +584,8 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		GpusPerNode:                config.GpusPerNode,
 		MlnxPerNode:                config.MlnxPerNode,
 		NicResourceName:            config.NicResourceName,
+		Fabric:                     config.Fabric,
+		EFAPerNode:                 max(config.EFAPerNode, 1),
 		RDMADeviceAccess:           config.RDMADeviceAccess,
 		HasNetworkAttachments:      len(config.NetworkAttachments) > 0,
 		OCISecondaryNetwork:        config.OCISecondaryNetwork,

@@ -2248,6 +2248,11 @@ func (in *WhenSpec) DeepCopyInto(out *WhenSpec) {
 		*out = new(TopologyMatchSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Fabric != nil {
+		in, out := &in.Fabric, &out.Fabric
+		*out = new(StringMatchSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Config != nil {
 		in, out := &in.Config, &out.Config
 		*out = new(apiextensionsv1.JSON)

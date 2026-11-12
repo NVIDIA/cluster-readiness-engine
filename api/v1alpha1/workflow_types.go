@@ -297,6 +297,13 @@ type WhenSpec struct {
 	// +optional
 	Topology *TopologyMatchSpec `json:"topology,omitempty"`
 
+	// fabric matches against the resolved network fabric (efa, ib, roce,
+	// tcpxo): the parent's spec.fabric when set, otherwise the detected
+	// fabric or the platform default (ADR-110). A Certification or
+	// WorkloadRun resolves these matchers before it creates the Workflow.
+	// +optional
+	Fabric *StringMatchSpec `json:"fabric,omitempty"`
+
 	// config matches against values in validation.performance.config.
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -519,6 +526,16 @@ type OrchestrationStatus struct {
 	// Examples: "h100", "gb200", "a100", "l40s", "unknown"
 	// +optional
 	DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
+
+	// resolvedFabric is the network fabric the controller resolved for this
+	// Workflow's when.fabric overrides: detected from the nodes on AWS GB300,
+	// otherwise the platform default (ADR-110). It is recorded so that every
+	// later reconcile applies the same overrides discovery did. It is set
+	// only when an override matches on when.fabric. A Workflow created by a
+	// Certification or WorkloadRun has none left, so the field stays empty
+	// there and the parent's status.resolvedFabric carries the value.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
 
 	// gpuProducts lists the distinct nvidia.com/gpu.product label values of the
 	// nodes that survived discovery, recorded verbatim. detectedGPUArchitecture

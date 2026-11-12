@@ -17,6 +17,21 @@ followed them.
 
 ### Added
 
+- AWS GB300 renders for EFA as well as RoCE, so a stock-EKS GB300 cluster, which has
+  the EFA device plugin and no RoCE DRA driver, gets pods that schedule. Certification
+  and WorkloadRun take `spec.fabric` (`efa`, `ib`, `roce` or `tcpxo`). When it is set,
+  the value is validated against the target nodes, and a mismatch fails the run with
+  `FabricValidationFailed` instead of switching to another fabric. When it is unset on
+  AWS GB300, the controller detects EFA from `vpc.amazonaws.com/efa` allocatable and
+  RoCE from the `dra.networking.k8s.aws` DRA driver's ResourceSlices; conflicting or
+  partial signals keep the RoCE default with a `FabricDetection` event. Every other
+  target renders as before. Overrides can match on `when.fabric`, the resolved fabric
+  is recorded as `resolvedFabric` in status, and `nvcrectl certification render` and
+  `nvcrectl workloadrun render` take `--fabric`
+  ([ADR-110](docs/designs/110-fabric-selection.md), #576).
+
+### Added
+
 - Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
   A workload can now report a measurement per GPU, or per any component it names,
   rather than one figure per node or per job. A node-level average passes when seven

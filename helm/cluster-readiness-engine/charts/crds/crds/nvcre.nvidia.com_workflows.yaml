@@ -61,6 +61,27 @@ spec:
                             Available variables: gpuArchitecture, platform, workloadKind, topology, config
                             Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                           type: string
+                        fabric:
+                          description: |-
+                            fabric matches against the resolved network fabric (efa, ib, roce,
+                            tcpxo): the parent's spec.fabric when set, otherwise the detected
+                            fabric or the platform default (ADR-110). A Certification or
+                            WorkloadRun resolves these matchers before it creates the Workflow.
+                          properties:
+                            equals:
+                              description: equals checks for exact match.
+                              type: string
+                            in:
+                              description: in checks if value is in the list.
+                              items:
+                                type: string
+                              type: array
+                            notIn:
+                              description: notIn checks if value is not in the list.
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         gpuArchitecture:
                           description: gpuArchitecture matches against detected GPU
                             architecture.
@@ -7221,6 +7242,28 @@ spec:
                                   Available variables: gpuArchitecture, platform, workloadKind, topology, config
                                   Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                                 type: string
+                              fabric:
+                                description: |-
+                                  fabric matches against the resolved network fabric (efa, ib, roce,
+                                  tcpxo): the parent's spec.fabric when set, otherwise the detected
+                                  fabric or the platform default (ADR-110). A Certification or
+                                  WorkloadRun resolves these matchers before it creates the Workflow.
+                                properties:
+                                  equals:
+                                    description: equals checks for exact match.
+                                    type: string
+                                  in:
+                                    description: in checks if value is in the list.
+                                    items:
+                                      type: string
+                                    type: array
+                                  notIn:
+                                    description: notIn checks if value is not in the
+                                      list.
+                                    items:
+                                      type: string
+                                    type: array
+                                type: object
                               gpuArchitecture:
                                 description: gpuArchitecture matches against detected
                                   GPU architecture.
@@ -7488,6 +7531,27 @@ spec:
                             Available variables: gpuArchitecture, platform, workloadKind, topology, config
                             Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                           type: string
+                        fabric:
+                          description: |-
+                            fabric matches against the resolved network fabric (efa, ib, roce,
+                            tcpxo): the parent's spec.fabric when set, otherwise the detected
+                            fabric or the platform default (ADR-110). A Certification or
+                            WorkloadRun resolves these matchers before it creates the Workflow.
+                          properties:
+                            equals:
+                              description: equals checks for exact match.
+                              type: string
+                            in:
+                              description: in checks if value is in the list.
+                              items:
+                                type: string
+                              type: array
+                            notIn:
+                              description: notIn checks if value is not in the list.
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         gpuArchitecture:
                           description: gpuArchitecture matches against detected GPU
                             architecture.
@@ -8720,6 +8784,21 @@ spec:
                       "Unpinned"). Under Unpinned, totalGroups is 1 and nodesPerJob is the size
                       the user asked for, so totalGroups * nodesPerJob is deliberately less than
                       totalNodes: the untested nodes are out of scope, not excluded.
+                    type: string
+                  resolvedFabric:
+                    description: |-
+                      resolvedFabric is the network fabric the controller resolved for this
+                      Workflow's when.fabric overrides: detected from the nodes on AWS GB300,
+                      otherwise the platform default (ADR-110). It is recorded so that every
+                      later reconcile applies the same overrides discovery did. It is set
+                      only when an override matches on when.fabric. A Workflow created by a
+                      Certification or WorkloadRun has none left, so the field stays empty
+                      there and the parent's status.resolvedFabric carries the value.
+                    enum:
+                    - efa
+                    - ib
+                    - roce
+                    - tcpxo
                     type: string
                   retiredComponentResults:
                     description: |-

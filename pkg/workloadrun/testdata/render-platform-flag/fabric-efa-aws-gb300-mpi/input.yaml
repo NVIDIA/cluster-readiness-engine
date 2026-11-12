@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --fabric efa on AWS GB300 renders the EFA platform blocks: EFA devices and the
+# FI_* transport through mpirun -x, no RoCE claim (ADR-110).
+platform: aws
+fabric: efa

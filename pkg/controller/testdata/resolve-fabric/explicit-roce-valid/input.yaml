@@ -1,0 +1,31 @@
+field: roce
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+resourceSlices:
+  - nodeName: gb300-a
+    driver: dra.networking.k8s.aws
+    pool: gb300-a
+    generation: 1
+    devices:
+      - name: rocep201s0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: roce
+          dra.vpc.amazonaws.com/networkDevName: ens176
+  - nodeName: gb300-b
+    driver: dra.networking.k8s.aws
+    pool: gb300-b
+    generation: 1
+    devices:
+      - name: rocep201s0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: roce
+          dra.vpc.amazonaws.com/networkDevName: ens176

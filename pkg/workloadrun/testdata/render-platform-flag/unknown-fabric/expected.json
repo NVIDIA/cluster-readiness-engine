@@ -1,0 +1,3 @@
+{
+  "error": "invalid --fabric \"bogus\": must be one of efa, ib, roce, tcpxo"
+}

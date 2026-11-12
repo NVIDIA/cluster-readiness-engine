@@ -57,6 +57,7 @@
             "name": "aws-nc-g3-communication-n-a39c5",
             "namespace": "default"
           },
+          "resolvedFabric": "roce",
           "status": "InProgress"
         }
       ]

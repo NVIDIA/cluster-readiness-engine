@@ -56,6 +56,17 @@ type BuildConfig struct {
 	// comes from MlnxPerNode.
 	NicResourceName string
 
+	// Fabric is the resolved network fabric (efa, ib, roce, tcpxo, or "" where
+	// NVCRE renders no RDMA fabric of its own), which when.fabric overrides
+	// match against (ADR-110). The controller and the CLI resolve it; Build
+	// itself only passes it to the templates.
+	Fabric string
+
+	// EFAPerNode is the vpc.amazonaws.com/efa device count each worker
+	// requests on an EFA fabric whose count varies by layout (AWS GB300), read
+	// from node allocatable. 0 renders the default of 1.
+	EFAPerNode int32
+
 	// RDMADeviceAccess selects how workload containers reach the host's RDMA
 	// devices: "hostPath" mounts /dev/infiniband and runs the workload
 	// container privileged, "devicePlugin" and empty both leave the templates

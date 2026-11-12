@@ -1,0 +1,4 @@
+{
+  "error": "fabric \"ib\" is not rendered for platform \"aws\" and GPU architecture \"gb300\"; NVCRE renders roce or efa there",
+  "detectedPlatform": ""
+}
