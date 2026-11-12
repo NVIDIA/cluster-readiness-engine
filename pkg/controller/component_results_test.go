@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,8 +80,21 @@ func TestReconcileComponentResults(t *testing.T) {
 			// ShardWriteFails makes every shard ConfigMap write fail, so a case
 			// can pin that the pass stays retryable instead of sealing a
 			// terminal phase over a shard set that was never written.
-			ShardWriteFails bool   `yaml:"shardWriteFails"`
-			Log             string `yaml:"log"`
+			ShardWriteFails bool `yaml:"shardWriteFails"`
+			// PriorSealShards puts an existing Writing seal on the Job,
+			// carrying this many shards, as a re-drive would find. A Job whose
+			// shard writes kept failing is left in Writing; the workload is
+			// then deleted and the next pass finds no logs, so the branch that
+			// seals a read failure has to preserve the count the group already
+			// copied rather than overwrite it with zero.
+			PriorSealShards int32 `yaml:"priorSealShards"`
+			// TerminalAge backdates the Job's terminal condition. A read that
+			// fails is retried until componentSealGracePeriod has passed since
+			// the Job went terminal, so a case that wants the sealing path has
+			// to look older than that. Parsed as a Go duration; empty means
+			// the Job just finished.
+			TerminalAge string `yaml:"terminalAge"`
+			Log         string `yaml:"log"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -99,11 +113,19 @@ func TestReconcileComponentResults(t *testing.T) {
 		workflow.UID = types.UID(workflowUID)
 
 		job := &nvcrev1alpha1.Job{Name: jobName, Namespace: ns}
+		terminalAt := metav1.Now()
+		if input.TerminalAge != "" {
+			age, err := time.ParseDuration(input.TerminalAge)
+			if err != nil {
+				return fmt.Errorf("parse terminalAge %q: %w", input.TerminalAge, err)
+			}
+			terminalAt = metav1.NewTime(time.Now().Add(-age))
+		}
 		job.Status.Conditions = []metav1.Condition{{
 			Type:               nvcrev1alpha1.JobSucceeded,
 			Status:             metav1.ConditionTrue,
 			Reason:             "WorkloadSucceeded",
-			LastTransitionTime: metav1.Now(),
+			LastTransitionTime: terminalAt,
 		}}
 		if !input.NoWorkflow {
 			job.OwnerReferences = []metav1.OwnerReference{{
@@ -159,7 +181,33 @@ func TestReconcileComponentResults(t *testing.T) {
 			return err
 		}
 
+		if input.PriorSealShards > 0 {
+			job.Status.ComponentResults = &nvcrev1alpha1.ComponentResultSeal{
+				Phase:      nvcrev1alpha1.ComponentResultsWriting,
+				ShardCount: input.PriorSealShards,
+				RowCount:   int64(input.PriorSealShards) * 10,
+				SealedAt:   &metav1.Time{Time: terminalAt.Time},
+			}
+		}
+
 		objs := []client.Object{job.DeepCopy(), worker, launcher}
+		// Seed the shards that seal claims. On a real cluster they are there:
+		// the seal was written before the first shard, and the writes that
+		// followed are what succeeded before the workload went away. A fixture
+		// that omitted them would record the invariant against a state that
+		// cannot occur.
+		for i := range int(input.PriorSealShards) {
+			cm := &corev1.ConfigMap{}
+			cm.Name = shardName(shardNameStem(workflowUID, jobName), i)
+			cm.Namespace = ns
+			cm.Labels = map[string]string{
+				labelShardWorkflowUID:          workflowUID,
+				labelShardJob:                  jobName,
+				labelShardKind:                 shardKindRows,
+				"app.kubernetes.io/managed-by": managedByValue,
+			}
+			objs = append(objs, cm)
+		}
 		if !input.NoWorkflow {
 			objs = append(objs, workflow.DeepCopy())
 		}

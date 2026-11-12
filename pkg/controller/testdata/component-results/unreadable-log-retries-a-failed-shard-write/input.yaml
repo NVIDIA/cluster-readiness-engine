@@ -5,6 +5,9 @@
 # Partial before the write would make the requeue a no-op and lose the
 # truncation record permanently on the first transient failure. The normal path
 # seals Writing first for the same reason, and this branch has to match it.
+# Backdated past componentSealGracePeriod, so the read is no longer
+# retried and this exercises the sealing path rather than the retry.
+terminalAge: 5m
 producer: structured-rows
 containerName: node
 truncated: true

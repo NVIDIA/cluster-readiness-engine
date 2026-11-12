@@ -6,6 +6,9 @@
 # are no rows to go with it, so without the record the category resolves to an
 # empty result with no stated reason, which reads as a run that produced
 # nothing rather than one whose evidence could not be read.
+# Backdated past componentSealGracePeriod, so the read is no longer
+# retried and this exercises the sealing path rather than the retry.
+terminalAge: 5m
 producer: structured-rows
 containerName: node
 truncated: true

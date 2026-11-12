@@ -148,23 +148,53 @@ func (r *JobReconciler) reconcileComponentResults(
 
 	result, produceErr := r.produceComponentRows(ctx, job)
 	if produceErr != nil && result.rows == nil {
-		// Nothing was read at all. Record why and seal Partial, rather than
-		// requeueing forever on a log that will not become readable.
-		log.Error(produceErr, "Could not produce component result rows")
 		message := truncateMessage(produceErr.Error())
-		owed := &nvcrev1alpha1.ComponentResultSeal{
-			// Writing, not Partial, and the order matters as much here as on
-			// the normal path below. Partial is terminal, so the short-circuit
-			// at the top of this function returns before doing anything once
-			// it is set: sealing it first would make the requeue below a
-			// no-op and lose the truncation shard on the first failed write.
-			Phase: nvcrev1alpha1.ComponentResultsWriting,
-			Truncations: []nvcrev1alpha1.ComponentTruncation{{
-				Reason:  result.reason,
-				Count:   0,
-				Message: message,
-			}},
+
+		// Retry first, inside the same window the group gives this Job. A pod
+		// log read fails transiently for ordinary reasons: the API server is
+		// briefly unavailable, or the pod is terminating and its logs are not
+		// servable for a moment. Sealing on the first error made every one of
+		// those permanent, recorded the run as having produced nothing, and
+		// did so at the one moment a retry was most likely to succeed.
+		//
+		// Bounded by componentSealGracePeriod from the Job going terminal,
+		// which is exactly how long completeTerminalGroup waits for this seal,
+		// so the retry cannot outlive the thing waiting on it. A Job with no
+		// terminal timestamp to measure from is sealed rather than retried: an
+		// unbounded retry here would hold the group open indefinitely.
+		if start := drainStart(job); start != nil &&
+			time.Since(start.Time) <= componentSealGracePeriod {
+			log.Error(produceErr, "Could not produce component result rows; will retry",
+				"within", componentSealGracePeriod)
+			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 		}
+
+		log.Error(produceErr, "Could not produce component result rows; sealing partial")
+
+		// Merge into whatever is already sealed rather than replacing it.
+		// A Job can reach this branch on a re-drive, after its pods are gone:
+		// a shard write that kept failing leaves the seal in Writing, the
+		// workload is deleted, and the next pass finds no logs. Constructing a
+		// fresh seal then overwrote a real ShardCount with 0 while the shards
+		// it counted stayed on the cluster, and the group had already copied
+		// the original count, so the selector walk resolved more shards than
+		// the total admitted and the category's bundle was refused for good.
+		owed := &nvcrev1alpha1.ComponentResultSeal{}
+		if prev := job.Status.ComponentResults; prev != nil &&
+			prev.Phase != nvcrev1alpha1.ComponentResultsNone {
+			owed = prev.DeepCopy()
+		}
+		// Writing, not Partial, and the order matters as much here as on
+		// the normal path below. Partial is terminal, so the short-circuit
+		// at the top of this function returns before doing anything once
+		// it is set: sealing it first would make the requeue below a
+		// no-op and lose the truncation shard on the first failed write.
+		owed.Phase = nvcrev1alpha1.ComponentResultsWriting
+		owed.Truncations = mergeTruncation(owed.Truncations, nvcrev1alpha1.ComponentTruncation{
+			Reason:  result.reason,
+			Count:   0,
+			Message: message,
+		})
 		if err := r.sealComponentResults(ctx, job, owed); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -175,15 +205,18 @@ func (r *JobReconciler) reconcileComponentResults(
 		// the category resolves to no rows and no stated reason, which reads
 		// as a run that produced nothing rather than one that could not be
 		// read.
+		// The whole merged set, not only the record just added, so a re-drive
+		// rewrites a truncation shard that still names the earlier loss.
+		dropped := make([]shard.Dropped, 0, len(owed.Truncations))
+		for _, t := range owed.Truncations {
+			dropped = append(dropped, shard.Dropped{
+				Reason: t.Reason, Count: t.Count, Message: t.Message,
+			})
+		}
 		stem := shardNameStem(string(workflow.UID), job.Name)
 		if err := r.writeComponentShards(ctx, workflow, job, stem, shard.Result{
-			Dropped: []shard.Dropped{{
-				Reason: result.reason, Count: 0, Message: message,
-			}},
+			Dropped: dropped,
 		}); err != nil {
-			if errors.As(err, new(*accessDeniedWriteError)) {
-				return ctrl.Result{}, err
-			}
 			log.Error(err, "Failed to write the truncation record; will retry")
 			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 		}
@@ -233,9 +266,6 @@ func (r *JobReconciler) reconcileComponentResults(
 	if err := r.writeComponentShards(ctx, workflow, job, stem, built); err != nil {
 		// Requeue the write, not the verdict. The Job stays terminal and the
 		// seal stays, so the shortfall is visible while this retries.
-		if errors.As(err, new(*accessDeniedWriteError)) {
-			return ctrl.Result{}, err
-		}
 		log.Error(err, "Failed to write component result shards; will retry")
 		return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 	}
@@ -364,8 +394,27 @@ func (r *JobReconciler) writeShardConfigMap(
 		return nil
 	})
 	if err != nil {
-		if apierrors.IsForbidden(err) && r.AccessReviewer != nil {
-			return fmt.Errorf("write shard %s: %w", cm.Name, err)
+		// A Forbidden write is the one failure here that no amount of retrying
+		// resolves on its own, and it is also the one an operator can fix. It
+		// used to be indistinguishable from any other error: both branches of
+		// this condition returned the same value, so the two errors.As checks
+		// on *accessDeniedWriteError in reconcileComponentResults never
+		// matched and a missing run-role binding retried every 10s forever
+		// with nothing anywhere naming access as the cause.
+		//
+		// An event rather than a wrapped error, because the write is retried
+		// deliberately: it is idempotent, and the group's grace period already
+		// bounds how long the Workflow waits for the seal. So the retry
+		// continues and the operator is told why it is not progressing. The
+		// Job tier cannot run reviewNamespaceAccess, which is a Workflow-tier
+		// method over a Workflow's namespaces, so this names the grant instead
+		// of claiming a review it did not perform.
+		if apierrors.IsForbidden(err) {
+			r.eventf(job, corev1.EventTypeWarning, ReasonComponentShardWriteRejected,
+				"Writing component result shard %s was forbidden: %v. The controller needs "+
+					"create, get, patch, update and delete on configmaps in %s, which "+
+					"nvcre-run-role grants; the write is being retried.",
+				cm.Name, err, cm.Namespace)
 		}
 		return fmt.Errorf("write shard %s: %w", cm.Name, err)
 	}
@@ -579,11 +628,25 @@ func componentTruncations(
 		addBoth(shard.ReasonRowBudgetExceeded, short, "ledger bounded; count is exact")
 	}
 
+	// Any read error, not only a pagination one. Gating this on produced.partial
+	// meant a read that failed for any other reason, a transient API error
+	// against one pod out of eight, went unrecorded: the rows from the other
+	// seven were stored and the Job sealed Complete with a short count, so the
+	// bundle certified an incomplete set as whole. That is the one outcome
+	// ADR-090's integrity rule is written to prevent, and it was the quiet one.
+	//
+	// The reason comes from the producer, which already distinguishes a log
+	// that could not be paged from one that could not be read at all.
+	//
 	// Count 0 on purpose: a page that could not be fetched gives no way to
 	// know how many rows were on it, and inventing one would misstate the
 	// magnitude. The record is the finding.
-	if produced.partial && readErr != nil {
-		addBoth(reasonLogUnpageable, 0, readErr.Error())
+	if readErr != nil {
+		reason := produced.reason
+		if reason == "" {
+			reason = reasonProducerUnavailable
+		}
+		addBoth(reason, 0, readErr.Error())
 	}
 	// Lines that declared a row and could not be read. RowUnencodable rather
 	// than a reason of its own: the enum's meaning is a row that could not be
@@ -609,6 +672,33 @@ const (
 	reasonLogUnpageable       = "LogUnpageable"
 	reasonProducerUnavailable = "ProducerUnavailable"
 )
+
+// mergeTruncation adds one record to a set already on a seal, folding it into
+// a matching reason rather than appending a duplicate.
+//
+// Needed because the list is a listType=map keyed on reason, so two entries
+// with the same reason are rejected by the API server, and because a Job can
+// be re-driven onto the same branch and must not lose the earlier record.
+func mergeTruncation(
+	existing []nvcrev1alpha1.ComponentTruncation, add nvcrev1alpha1.ComponentTruncation,
+) []nvcrev1alpha1.ComponentTruncation {
+	out := slices.Clone(existing)
+	for i := range out {
+		if out[i].Reason != add.Reason {
+			continue
+		}
+		out[i].Count += add.Count
+		// Keep the first message: it names the earliest cause, and on a
+		// re-drive the later one is usually a consequence of it.
+		if out[i].Message == "" {
+			out[i].Message = add.Message
+		}
+		return out
+	}
+	out = append(out, add)
+	sortTruncations(out)
+	return out
+}
 
 // sortTruncations orders records by reason, so a status write is stable across
 // reconciles. An unstable order would make every reconcile look like a change
