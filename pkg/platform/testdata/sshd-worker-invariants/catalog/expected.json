@@ -361,6 +361,20 @@
       ]
     },
     {
+      "source": "compute/cutlass-gemm@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "compute/cutlass-gemm@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
       "source": "diagnostics/dcgm-level4@NVIDIA-GB300",
       "replicatedJob": "node",
       "container": "node",
