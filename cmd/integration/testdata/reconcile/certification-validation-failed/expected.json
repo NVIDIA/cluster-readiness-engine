@@ -1,0 +1,101 @@
+{
+  "Certification/test-cert-validation-fail": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-cert-validation-fail",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true",
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        },
+        {
+          "domain": "communication",
+          "variant": "nccl-all-gather"
+        },
+        {
+          "domain": "communication",
+          "variant": "nccl-alltoall"
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "ThresholdViolation",
+          "message": "Performance thresholds not met in categories: communication/nccl-all-reduce, communication/nccl-all-gather"
+        },
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowFailed",
+          "message": "One or more certification categories failed"
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "workflowRef": {
+            "name": "test-cert-validation-fail-allreduce-wf",
+            "namespace": "default"
+          },
+          "status": "Failed"
+        },
+        {
+          "domain": "communication",
+          "variant": "nccl-all-gather",
+          "workflowRef": {
+            "name": "test-cert-validation-fail-allgather-wf",
+            "namespace": "default"
+          },
+          "status": "Failed"
+        },
+        {
+          "domain": "communication",
+          "variant": "nccl-alltoall",
+          "workflowRef": {
+            "name": "test-cert-validation-fail-alltoall-wf",
+            "namespace": "default"
+          },
+          "status": "Failed"
+        }
+      ]
+    }
+  }
+}

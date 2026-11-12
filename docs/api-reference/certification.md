@@ -160,7 +160,7 @@ The entire `spec` is **immutable** after the Certification is created (a `self =
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | InProgress, Succeeded, Failed (mutually exclusive) |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (reason `ThresholdViolation`) — set when a category's Workflow violated a performance threshold; its message names every such category. `Failed` keeps reason `WorkflowFailed`, so `ValidationFailed` is what tells a threshold miss apart from an execution failure |
 | `categoryStatuses` | []CertificationCategoryStatus | Per-category status including `domain`, `variant`, `status`, `workflowRef`, `succeededNodesRef`, `failedNodesRef`, and `resolvedFabric` (the fabric the category was rendered for, recorded only when `spec.fabric` is set or the target is AWS GB300; see `fabric`) |
 
 Each `categoryStatuses` entry includes a `failedNodesRef` — a `TypedLocalObjectReference` pointing to a ConfigMap that stores the failed-node list (name, reason, message) for that category. To read the failed nodes:
