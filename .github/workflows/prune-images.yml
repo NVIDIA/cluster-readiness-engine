@@ -49,8 +49,6 @@ on:
 
 permissions: {}
 
-permissions: {}
-
 jobs:
   # One job per package, not one job over a list.
   #
