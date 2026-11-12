@@ -28,6 +28,18 @@ const maxDegradedComponents = 16
 // producer that enforces no floor, with no special cases either way.
 const outcomeBelow = "below"
 
+// outcomeError is the marker a producer sets when a sample could not be taken
+// at all: the kernel would not run, the device returned an error, the tool
+// exited non-zero.
+//
+// Counted as degradation alongside "below", because for a burn-in it is the
+// stronger signal of the two. A GPU that returns a low number is slow; a GPU
+// that intermittently cannot run the kernel is faulty. Keying the summary on
+// "below" alone meant a component that errored on 59 of 60 sweeps and
+// completed one sample above the floor was reported as healthy and named
+// nowhere, which is the opposite of what this summary is for.
+const outcomeError = "error"
+
 // degradedKey identifies one component within a result set.
 type degradedKey struct {
 	node        string
@@ -51,6 +63,7 @@ func degradedComponents(rows []shard.Row) (int32, []nvcrev1alpha1.DegradedCompon
 		index      int32
 		minV, maxV float64
 		below      int64
+		errored    int64
 		seen       bool
 	}
 	byComponent := map[degradedKey]*agg{}
@@ -69,23 +82,27 @@ func degradedComponents(rows []shard.Row) (int32, []nvcrev1alpha1.DegradedCompon
 			a.maxV = row.Value
 		}
 		a.seen = true
-		if row.Outcome == outcomeBelow {
+		switch row.Outcome {
+		case outcomeBelow:
 			a.below++
+		case outcomeError:
+			a.errored++
 		}
 	}
 
 	out := make([]nvcrev1alpha1.DegradedComponent, 0, len(byComponent))
 	for _, a := range byComponent {
-		if a.below == 0 {
+		if a.below == 0 && a.errored == 0 {
 			continue
 		}
 		out = append(out, nvcrev1alpha1.DegradedComponent{
-			Node:         a.node,
-			ComponentID:  a.id,
-			Index:        a.index,
-			MaxValue:     strconv.FormatFloat(a.maxV, 'f', 2, 64),
-			MinValue:     strconv.FormatFloat(a.minV, 'f', 2, 64),
-			BelowSamples: a.below,
+			Node:           a.node,
+			ComponentID:    a.id,
+			Index:          a.index,
+			MaxValue:       strconv.FormatFloat(a.maxV, 'f', 2, 64),
+			MinValue:       strconv.FormatFloat(a.minV, 'f', 2, 64),
+			BelowSamples:   a.below,
+			ErroredSamples: a.errored,
 		})
 	}
 

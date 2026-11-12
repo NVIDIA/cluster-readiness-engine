@@ -520,6 +520,19 @@ type DegradedComponent struct {
 	// floor.
 	// +kubebuilder:validation:Minimum=0
 	BelowSamples int64 `json:"belowSamples"`
+
+	// erroredSamples is how many of the component's samples could not be taken
+	// at all: the kernel would not run, the device returned an error, the tool
+	// exited non-zero.
+	//
+	// Separate from belowSamples because it is a different finding and, for a
+	// burn-in, the stronger one. A component returning a low number is slow; a
+	// component that intermittently cannot run the work is faulty. Summing
+	// them into one count would let an operator read a device fault as a
+	// performance shortfall.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ErroredSamples int64 `json:"erroredSamples,omitempty"`
 }
 
 // ComponentResultPhase is how far a Job attempt got in storing its rows.

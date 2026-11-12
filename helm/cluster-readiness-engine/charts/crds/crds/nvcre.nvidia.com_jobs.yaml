@@ -6554,6 +6554,20 @@ spec:
                             such as a GPU UUID.
                           maxLength: 128
                           type: string
+                        erroredSamples:
+                          description: |-
+                            erroredSamples is how many of the component's samples could not be taken
+                            at all: the kernel would not run, the device returned an error, the tool
+                            exited non-zero.
+
+                            Separate from belowSamples because it is a different finding and, for a
+                            burn-in, the stronger one. A component returning a low number is slow; a
+                            component that intermittently cannot run the work is faulty. Summing
+                            them into one count would let an operator read a device fault as a
+                            performance shortfall.
+                          format: int64
+                          minimum: 0
+                          type: integer
                         index:
                           description: index is the component's device index within
                             its node.

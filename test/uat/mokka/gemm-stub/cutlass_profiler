@@ -14,14 +14,35 @@ set -uo pipefail
 # shellcheck disable=SC1091
 . /opt/stub/mode
 
-dev=0 out="" duration_ms=1000
+dev="" out="" duration_ms=1000 operation="gemm"
 for a in "$@"; do
   case "${a}" in
-    --device=*)              dev="${a#*=}" ;;
+    # --devices, plural, is the real option name. The singular --device is
+    # rejected rather than tolerated: this stub previously accepted it, which
+    # is why the UAT lane passed while the production harness silently
+    # profiled device 0 for every worker. A stub that accepts an interface the
+    # real binary does not have validates nothing.
+    --devices=*)             dev="${a#*=}" ;;
+    --device=*)
+      echo "stub: unknown option '${a}'. CUTLASS reads --devices (a list); there is no --device." >&2
+      exit 64
+      ;;
+    --operation=*)           operation="${a#*=}" ;;
     --output=*)              out="${a#*=}" ;;
     --profiling-duration=*)  duration_ms="${a#*=}" ;;
   esac
 done
+
+if [[ -z "${dev}" ]]; then
+  echo "stub: no --devices given; the harness must name the device it is measuring" >&2
+  exit 64
+fi
+# One entry only. The harness runs one process per device so that every GPU is
+# loaded at once; a list here would mean it had started walking them instead.
+if [[ "${dev}" == *,* ]]; then
+  echo "stub: --devices=${dev} names more than one device; the harness runs one per process" >&2
+  exit 64
+fi
 
 # A sweep counter per device, so "degrade" can report target on the first
 # sweep and less afterwards. That shape is exactly what DCGM's max-based
@@ -66,5 +87,13 @@ case "${STUB_MODE}" in
 esac
 
 sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
-printf 'Operation,GFLOPs\nsgemm,%s\n' "${gflops}" >"${out}"
-echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs"
+
+# The real profiler does NOT write the path given to --output. It strips a
+# trailing ".csv" and appends ".<operation>.csv", so --output=X.csv lands at
+# X.gemm.csv. This stub wrote the literal path, so the harness read a file that
+# only existed because the stub created it, and the lane passed while every
+# real sweep found nothing and reported outcome=error. Reproduced here, derived
+# the same way, so the harness's own path derivation is what gets exercised.
+csv="${out%.csv}.${operation}.csv"
+printf 'Operation,GFLOPs\n%s,%s\n' "${operation}" "${gflops}" >"${csv}"
+echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs (wrote ${csv})"

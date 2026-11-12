@@ -77,6 +77,19 @@ set -uo pipefail
 : "${NVCRE_GEMM_MIN_RATIO_PERCENT:=0}"      # DCGM target_perf_min_ratio, as percent
 : "${NVCRE_GEMM_FLOOR_TFLOPS:=0}"           # absolute override of the product
 : "${NVCRE_GEMM_OPERATION:=gemm}"          # cutlass_profiler --operation
+# How many of a GPU's sweeps may fail outright before the GPU is failed.
+#
+# Errored sweeps used to count for nothing unless EVERY sweep failed, so a GPU
+# that could not run the kernel on 59 of 60 sweeps and completed one sample
+# above the floor passed, and the controller's degraded summary keyed on
+# "below" only so it was named nowhere either. For a burn-in that is the wrong
+# way round: a GPU returning a low number is slow, a GPU that intermittently
+# cannot run the work is faulty.
+#
+# Ten percent rather than zero: a single transient failure in a long soak is
+# not a device fault, and failing on the first one would make the burn-in
+# flaky. Set to 0 to fail a GPU on any errored sweep at all.
+: "${NVCRE_GEMM_MAX_ERROR_PERCENT:=10}"
 : "${NVCRE_GEMM_M:=8192}"
 : "${NVCRE_GEMM_N:=8192}"
 : "${NVCRE_GEMM_K:=8192}"
@@ -111,6 +124,19 @@ fi
 # the bus. The index is carried too: ADR-090 defines it as the device index
 # within the node, which is what makes a row addressable to a slot.
 # ---------------------------------------------------------------------------
+
+# This script pairs position N in nvidia-smi's output with --devices=N on the
+# profiler, so the two have to enumerate in the same order. nvidia-smi reports
+# in PCI bus order; CUDA defaults to CUDA_DEVICE_ORDER=FASTEST_FIRST, which
+# sorts by capability and can disagree. On a node where it does, a row carries
+# the UUID of a different card than the one that was measured, and a burn-in
+# that names the wrong GPU is worse than one that names none: it sends an
+# operator to replace healthy hardware and leaves the faulty card in service.
+#
+# Set before any nvidia-smi or profiler call. This is the whole fix; there is
+# no cross-check available, because the profiler does not report the UUID of
+# the device it ran on.
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 mapfile -t GPU_UUIDS < <(nvidia-smi --query-gpu=uuid --format=csv,noheader 2>/dev/null)
 if [[ ${#GPU_UUIDS[@]} -eq 0 ]]; then
@@ -151,13 +177,21 @@ trap 'rm -rf "${WORK}"' EXIT
 # ---------------------------------------------------------------------------
 run_device() {
   local dev="$1" out="$2"
+  # --devices, plural, with one entry. The option is a LIST and there is no
+  # singular --device: CUTLASS v4.2.0 reads it as
+  # get_cmd_line_arguments("devices", ...) in tools/profiler/src/options.cu.
+  # Passing --device=N is silently ignored, so every worker profiled device 0
+  # while its rows carried a different GPU's UUID. On an eight-GPU node that
+  # reports one card's throughput eight times under eight identities, which is
+  # the exact opposite of what a per-GPU burn-in is for.
+  #
   # --profiling-iterations=0 with --profiling-duration makes the profiler run
   # for a wall-clock window instead of a fixed iteration count, which is what
   # keeps every device under load for the whole sweep regardless of how fast
   # any one of them is.
   "${CUTLASS_PROFILER}" \
     --operation="${NVCRE_GEMM_OPERATION}" \
-    --device="${dev}" \
+    --devices="${dev}" \
     --m="${NVCRE_GEMM_M}" --n="${NVCRE_GEMM_N}" --k="${NVCRE_GEMM_K}" \
     --A="${NVCRE_GEMM_DTYPE}":column --B="${NVCRE_GEMM_DTYPE}":column \
     --profiling-iterations=0 \
@@ -166,6 +200,18 @@ run_device() {
     --output="${out}.csv" \
     >"${out}.log" 2>&1
   local rc=$?
+
+  # The profiler does not write the path given to --output. It strips a
+  # trailing ".csv" and appends ".<operation>.csv", so --output=X.csv lands at
+  # X.gemm.csv (performance_report.cpp builds op_file_name_ that way). Reading
+  # X.csv found nothing on every real sweep, so every GPU reported
+  # outcome=error with zero throughput and the Job failed claiming no GPU
+  # sustained the floor: a harness bug presenting as a whole node of dead GPUs.
+  #
+  # Derived rather than hardcoded, so a future --operation keeps working, and
+  # the plain path is still accepted as a fallback in case that rule changes.
+  local csv="${out}.${NVCRE_GEMM_OPERATION}.csv"
+  [[ -s "${csv}" ]] || csv="${out}.csv"
 
   # The profiler's CSV carries a GFLOPs column. Take the best row: within one
   # sweep the profiler may try several kernels, and the achievable throughput
@@ -178,7 +224,7 @@ run_device() {
   # reported outcome=error with a value of zero, so a healthy GPU looked dead.
   # awk takes its program as an argument and the image needs no python.
   local gflops=""
-  if [[ -s "${out}.csv" ]]; then
+  if [[ -s "${csv}" ]]; then
     gflops="$(awk -F, '
       NR == 1 {
         for (i = 1; i <= NF; i++) {
@@ -189,7 +235,7 @@ run_device() {
       }
       col && ($col + 0) > best { best = $col + 0 }
       END { printf "%.3f", best + 0 }
-    ' "${out}.csv")"
+    ' "${csv}")"
   fi
   printf '%s %s\n' "${rc}" "${gflops:-0}" >"${out}.result"
 }
@@ -302,6 +348,7 @@ log "Soak complete: ${sample} sample(s) per GPU over $(( SECONDS - START ))s"
 failed=0
 no_result=0
 below_floor=0
+erroring=0
 printf '\n'
 log "Per-GPU results (verdict on the maximum, as DCGM compares it):"
 for ((d = 0; d < GPU_COUNT; d++)); do
@@ -310,6 +357,12 @@ for ((d = 0; d < GPU_COUNT; d++)); do
     failed=1
     no_result=$(( no_result + 1 ))
     continue
+  fi
+  # Errored sweeps are part of the verdict, not just of the no-result case.
+  total_sweeps=$(( SAMPLES[d] + FAILED_SWEEPS[d] ))
+  error_pct=0
+  if (( total_sweeps > 0 )); then
+    error_pct=$(( FAILED_SWEEPS[d] * 100 / total_sweeps ))
   fi
   max_t="$(awk -v g="${MAX_GFLOPS[d]}" 'BEGIN { printf "%.2f", g / 1000.0 }')"
   min_t="$(awk -v g="${MIN_GFLOPS[d]}" 'BEGIN { printf "%.2f", g / 1000.0 }')"
@@ -320,9 +373,14 @@ for ((d = 0; d < GPU_COUNT; d++)); do
     verdict="BELOW FLOOR"
     failed=1
     below_floor=$(( below_floor + 1 ))
+  elif (( FAILED_SWEEPS[d] > 0 )) && (( error_pct > NVCRE_GEMM_MAX_ERROR_PERCENT )); then
+    verdict="ERRORING"
+    failed=1
+    erroring=$(( erroring + 1 ))
   fi
   log "  GPU ${d} ${GPU_UUIDS[d]}: max ${max_t} TFLOPS (the verdict), min ${min_t} TFLOPS," \
-      "mean ${avg_t} TFLOPS over ${SAMPLES[d]} sample(s): ${verdict}"
+      "mean ${avg_t} TFLOPS over ${SAMPLES[d]} sample(s)," \
+      "${FAILED_SWEEPS[d]} failed sweep(s) (${error_pct}%): ${verdict}"
   # Said out loud, because the verdict does not say it. A GPU whose maximum
   # clears the floor and whose minimum does not is the case DCGM's comparison
   # passes, and it is the case an operator most wants to know about.
@@ -344,6 +402,10 @@ if [[ ${failed} -ne 0 ]]; then
   fi
   if (( below_floor > 0 )); then
     log "FAILED: ${below_floor} GPU(s) never reached ${FLOOR_GFLOPS} GFLOPS (${FLOOR_SOURCE})."
+  fi
+  if (( erroring > 0 )); then
+    log "FAILED: ${erroring} GPU(s) failed more than ${NVCRE_GEMM_MAX_ERROR_PERCENT}% of their sweeps;" \
+        "a GPU that cannot run the kernel is a device or driver fault, not a performance shortfall."
   fi
   log "Named above; per-GPU rows carry every sample."
   exit 1
