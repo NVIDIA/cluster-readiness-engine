@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The other side of that rule. A Complete seal with nothing in it is a Job
+# that declared component results and legitimately produced none, so absent
+# is the answer. Publishing a zero block with a live selector here would
+# invite a bundle for a run that never had rows.
+phase: Succeeded
+groups:
+  - name: group-0
+    retries: 0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 0
+        rowCount: 0
+        phase: Complete

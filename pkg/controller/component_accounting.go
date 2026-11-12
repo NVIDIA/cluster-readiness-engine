@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -109,10 +108,16 @@ func recomputeComponentResults(
 		totals = *retired
 	}
 
+	// Whether any attempt sealed Partial. A Partial seal whose every count is
+	// zero still carries a finding: the producer ran and its evidence could not
+	// be read in full. Tracked separately because no count can represent it.
+	partial := false
+
 	for _, it := range orch.IterationHistory {
 		for _, g := range it.Groups {
 			if g.ComponentSeal != nil {
 				addSealToTotals(&totals, *g.ComponentSeal)
+				partial = partial || g.ComponentSeal.Phase == nvcrev1alpha1.ComponentResultsPartial
 			}
 		}
 	}
@@ -121,6 +126,7 @@ func recomputeComponentResults(
 		// until retirement drops it, and counting both would double its rows.
 		if seal := liveSeal(g); seal != nil {
 			addSealToTotals(&totals, *seal)
+			partial = partial || seal.Phase == nvcrev1alpha1.ComponentResultsPartial
 		}
 	}
 
@@ -139,8 +145,16 @@ func recomputeComponentResults(
 	// count is the finding rather than the absence of one. A run that dropped
 	// every row it produced has no shards and no rows, and suppressing it
 	// would hide exactly the evidence this mechanism exists to surface.
+	// A Partial seal counts as something to say even when every number is
+	// zero, and that is the whole reason it is tracked. The reasons that carry
+	// a zero count are exactly the ones a count cannot describe: a log page
+	// that could not be fetched, a producer that never came up. Suppressing
+	// those publishes nothing for the category, nvcrectl's walk finds no
+	// componentResults block, and a run that failed to deliver its evidence
+	// goes missing from the bundle instead of reporting that it failed. That is
+	// the opposite of the integrity rule the block exists to serve.
 	if totals.ShardCount == 0 && totals.RowCount == 0 &&
-		totals.TruncatedRowCount == 0 && totals.DegradedComponentCount == 0 {
+		totals.TruncatedRowCount == 0 && totals.DegradedComponentCount == 0 && !partial {
 		return false
 	}
 
@@ -231,10 +245,16 @@ func foldRetiredComponentResults(orch *nvcrev1alpha1.OrchestrationStatus) {
 // fall at an iteration boundary, and a reader cannot tell a total that fell
 // from one that was never complete.
 //
-// Best effort on the delete, like retirePreviousMeasurements: a leaked shard
-// is outside the attempt the selector walk will accept, because nvcrectl
-// filters on the sealed attempt's Job name. A failed delete must not hold up
-// the next launch.
+// The seal is kept when its delete fails, and that is not the best-effort
+// handling retirePreviousMeasurements gets. A leaked measurement is inert; a
+// leaked shard is not. nvcrectl resolves shards by namespace and label
+// selector alone (pkg/bundle/resolve.go), with no Job-name filter, so a
+// superseded shard that outlives its seal is still walked and still counted,
+// the resolved count exceeds what the total admits, and ShardMismatchError
+// refuses the whole category permanently for a run whose evidence is intact.
+// Holding the seal keeps the total honest about what is still on the cluster
+// and lets the next pass retry the delete. It does not hold up the next
+// launch, which gates on the superseded Job being gone, not on its seal.
 func (r *WorkflowReconciler) retireComponentSeals(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus,
 ) {
@@ -250,12 +270,31 @@ func (r *WorkflowReconciler) retireComponentSeals(
 			continue
 		}
 		stem := shardNameStem(string(workflow.UID), seal.JobName)
-		if err := deleteComponentShards(ctx, r.Client, workflow.Status.Namespace, stem, seal.ShardCount); err != nil {
-			log.V(1).Info("Could not delete a superseded attempt's shards",
+		if err := deleteComponentShards(
+			ctx, r.Client, componentShardNamespace(workflow), stem, seal.ShardCount,
+		); err != nil {
+			log.V(1).Info("Could not delete a superseded attempt's shards; keeping its seal "+
+				"so the total still accounts for them",
 				"group", g.Name, "attempt", seal.Attempt, "error", err)
+			kept = append(kept, seal)
+			continue
 		}
 	}
 	g.ComponentSeals = slices.Clone(kept)
+}
+
+// componentShardNamespace returns the namespace a Workflow's shards live in.
+//
+// Shards are created beside the Job that produced them, which is the
+// Workflow's own namespace. Status.Namespace is the Certification-tier field
+// for the namespace a run was targeted at; nothing in the controller writes it
+// on a Workflow, so it is empty on every object the product creates and
+// reading it alone sends a delete to namespace "".
+func componentShardNamespace(workflow *nvcrev1alpha1.Workflow) string {
+	if ns := workflow.Status.Namespace; ns != "" {
+		return ns
+	}
+	return workflow.Namespace
 }
 
 // deleteWorkflowComponentShards removes every shard a Workflow owns.
@@ -271,10 +310,7 @@ func (r *WorkflowReconciler) deleteWorkflowComponentShards(
 	if orch == nil {
 		return nil
 	}
-	namespace := workflow.Status.Namespace
-	if namespace == "" {
-		namespace = workflow.Namespace
-	}
+	namespace := componentShardNamespace(workflow)
 
 	var errs []error
 	del := func(seal nvcrev1alpha1.GroupComponentSeal) {
@@ -373,22 +409,11 @@ var _ = []string{
 	reasonProducerUnavailable,
 }
 
-// workflowStatusTerminal reports whether a Workflow has reached a terminal
-// condition, reading status alone.
-//
-// A free function on status rather than the reconciler's isTerminal method,
-// because the recompute runs inside a status-mutation closure that has the
-// object but not the receiver. Final is what tells a reader the total can be
-// checked: shards are produced per Job and Jobs finish at different times, so
-// a total alone cannot distinguish "complete so far" from "missing".
-func workflowStatusTerminal(status *nvcrev1alpha1.WorkflowStatus) bool {
-	for _, cond := range status.Conditions {
-		if cond.Status != metav1.ConditionTrue {
-			continue
-		}
-		if cond.Type == nvcrev1alpha1.WorkflowSucceeded || cond.Type == nvcrev1alpha1.WorkflowFailed {
-			return true
-		}
-	}
-	return false
-}
+// There is deliberately no helper here that derives finality from the
+// conditions on a Workflow. One existed, and reading status was exactly the
+// bug: the recompute runs inside a status-mutation closure, every such closure
+// runs before applyExclusiveConditions applies the new phase, so a read of the
+// conditions returns the phase being replaced. On the single write that makes a
+// Workflow terminal it returned false, and no run could ever publish a final
+// total. Finality is passed down from the phase being applied, in
+// setExclusiveCondition.

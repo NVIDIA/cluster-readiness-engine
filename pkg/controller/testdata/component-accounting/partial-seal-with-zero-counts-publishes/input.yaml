@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A producer that came up and could not be read: Partial, and every count
+# zero, because a log page that could not be fetched gives no way to know how
+# many rows were on it.
+#
+# This must still publish. Suppressing it leaves the category with no
+# componentResults block, nvcrectl's walk skips it, and a run that failed to
+# deliver its evidence goes missing from the bundle instead of reporting that
+# it failed.
+phase: Failed
+groups:
+  - name: group-0
+    retries: 0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 0
+        rowCount: 0
+        phase: Partial

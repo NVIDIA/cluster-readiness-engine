@@ -1,0 +1,13 @@
+# A log that could not be read at all: every line in a truncated page lacks a
+# timestamp, so there is no cursor to page from and nothing was collected.
+#
+# Sealed Partial with the reason, and the record is ALSO written as a shard so
+# it reaches truncation.json. This is the case where that matters most: there
+# are no rows to go with it, so without the record the category resolves to an
+# empty result with no stated reason, which reads as a run that produced
+# nothing rather than one whose evidence could not be read.
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

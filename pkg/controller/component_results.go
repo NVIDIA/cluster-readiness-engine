@@ -151,14 +151,37 @@ func (r *JobReconciler) reconcileComponentResults(
 		// Nothing was read at all. Record why and seal Partial, rather than
 		// requeueing forever on a log that will not become readable.
 		log.Error(produceErr, "Could not produce component result rows")
-		return ctrl.Result{}, r.sealComponentResults(ctx, job, &nvcrev1alpha1.ComponentResultSeal{
+		message := truncateMessage(produceErr.Error())
+		if err := r.sealComponentResults(ctx, job, &nvcrev1alpha1.ComponentResultSeal{
 			Phase: nvcrev1alpha1.ComponentResultsPartial,
 			Truncations: []nvcrev1alpha1.ComponentTruncation{{
 				Reason:  result.reason,
 				Count:   0,
-				Message: truncateMessage(produceErr.Error()),
+				Message: message,
 			}},
-		})
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Write the record as a shard too, even though there are no rows to go
+		// with it. This is the one case where the category has nothing else in
+		// the bundle, so it is the case where a loss recorded only in Job
+		// status is most completely invisible to a bundle reader: without this
+		// the category resolves to no rows and no stated reason, which reads
+		// as a run that produced nothing rather than one that could not be
+		// read.
+		stem := shardNameStem(string(workflow.UID), job.Name)
+		if err := r.writeComponentShards(ctx, workflow, job, stem, shard.Result{
+			Dropped: []shard.Dropped{{
+				Reason: result.reason, Count: 0, Message: message,
+			}},
+		}); err != nil {
+			if errors.As(err, new(*accessDeniedWriteError)) {
+				return ctrl.Result{}, err
+			}
+			log.Error(err, "Failed to write the truncation record; will retry")
+			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 
 	built, buildErr := buildComponentShards(result.rows)
@@ -170,7 +193,12 @@ func (r *JobReconciler) reconcileComponentResults(
 	}
 
 	stem := shardNameStem(string(workflow.UID), job.Name)
-	truncations := componentTruncations(built, result, produceErr)
+	truncations, controllerDropped := componentTruncations(built, result, produceErr)
+	// Fold the controller's own losses into the set the shards carry, so
+	// truncation.json reports everything the status does. Without this a read
+	// that could not be paginated is recorded only in Job status, which a
+	// bundle reader never sees.
+	built.Dropped = append(built.Dropped, controllerDropped...)
 
 	// The seal is written BEFORE the first shard exists (ADR-090 decision 3).
 	// A Job whose every shard write then fails still records that it owed
@@ -489,9 +517,12 @@ func (r *JobReconciler) produceComponentRows(
 
 // componentTruncations turns everything that was lost into status records,
 // aggregated per reason because the list is a listType=map keyed on reason.
+// It returns the status records and, separately, the subset the controller
+// raised itself, encoded as shard.Dropped for the caller to append to the set
+// that reaches truncation.json.
 func componentTruncations(
 	built shard.Result, produced producedRows, readErr error,
-) []nvcrev1alpha1.ComponentTruncation {
+) ([]nvcrev1alpha1.ComponentTruncation, []shard.Dropped) {
 	byReason := map[string]*nvcrev1alpha1.ComponentTruncation{}
 	add := func(reason string, count int64, message string) {
 		if existing, ok := byReason[reason]; ok {
@@ -509,22 +540,42 @@ func componentTruncations(
 		}
 	}
 
+	// Records the controller raises rather than the encoder. These are also
+	// returned as shard.Dropped so writeComponentShards puts them in
+	// truncation.json: ADR-090 requires a run that could not read all its
+	// evidence to say so in the bundle, and the bundle is the only artifact
+	// that leaves the cluster. Returning them from here rather than building a
+	// second set keeps the status and the bundle provably identical.
+	var extra []shard.Dropped
+	addBoth := func(reason string, count int64, message string) {
+		add(reason, count, message)
+		extra = append(extra, shard.Dropped{
+			Reason: reason, Count: count, Message: truncateMessage(message),
+		})
+	}
+
 	for _, d := range built.Dropped {
 		add(d.Reason, d.Count, "")
 	}
 	// DroppedTotal is exact while the ledger is bounded, so a per-reason sum
 	// over a capped ledger can understate. Reconcile the difference onto the
 	// reason that produced it, which is the only one that can overflow.
+	//
+	// Summed before anything below is added, so a controller-side record
+	// cannot be mistaken for encoder output and absorb a real shortfall.
 	var ledgerTotal int64
 	for _, t := range byReason {
 		ledgerTotal += t.Count
 	}
 	if short := built.DroppedTotal - ledgerTotal; short > 0 {
-		add(shard.ReasonRowBudgetExceeded, short, "ledger bounded; count is exact")
+		addBoth(shard.ReasonRowBudgetExceeded, short, "ledger bounded; count is exact")
 	}
 
+	// Count 0 on purpose: a page that could not be fetched gives no way to
+	// know how many rows were on it, and inventing one would misstate the
+	// magnitude. The record is the finding.
 	if produced.partial && readErr != nil {
-		add(reasonLogUnpageable, 0, readErr.Error())
+		addBoth(reasonLogUnpageable, 0, readErr.Error())
 	}
 	// Lines that declared a row and could not be read. RowUnencodable rather
 	// than a reason of its own: the enum's meaning is a row that could not be
@@ -532,7 +583,7 @@ func componentTruncations(
 	// seen from the other side. The message names the first offender, which is
 	// what a human needs to find the harness bug.
 	if produced.rejected > 0 {
-		add(shard.ReasonRowUnencodable, produced.rejected, produced.firstReject)
+		addBoth(shard.ReasonRowUnencodable, produced.rejected, produced.firstReject)
 	}
 
 	out := make([]nvcrev1alpha1.ComponentTruncation, 0, len(byReason))
@@ -541,7 +592,7 @@ func componentTruncations(
 	}
 	// Sorted so the status is stable across reconciles and golden tests.
 	sortTruncations(out)
-	return out
+	return out, extra
 }
 
 // Reasons the controller raises, as opposed to the encoder's own. These must

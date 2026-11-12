@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The regression guard for the finality marker. A Workflow reaching Succeeded
+# must publish final=true: it is the reader's only way to tell "complete so
+# far" from "missing", and nvcrectl warns that a bundle is incomplete without
+# it. Sums all three sources at once so a dropped source shows up here too.
+phase: Succeeded
+groups:
+  - name: group-0
+    retries: 0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-2
+        shardCount: 2
+        rowCount: 120
+history:
+  - name: group-0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 1
+        rowCount: 60
+retired:
+  shardCount: 1
+  rowCount: 30
+  truncatedRowCount: 4

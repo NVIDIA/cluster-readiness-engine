@@ -29,6 +29,26 @@
       "rows": [
         "gpu-node-1 GPU-f00d idx=1 achievedTFLOPS sample=0 value=1402.75 unit=TFLOPS outcome=pass ts=2026-01-22T10:04:00Z"
       ]
+    },
+    {
+      "name": "shard-01234567-wf-group-0-iter-1-truncation",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/job": "wf-group-0-iter-1",
+        "nvcre.nvidia.com/shard-kind": "truncation",
+        "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
+      },
+      "ownedBy": "Workflow/wf",
+      "dataKeys": [
+        "formatVersion",
+        "rowCount"
+      ],
+      "binaryKeys": [
+        "truncation.ndjson.gz"
+      ],
+      "dropped": [
+        "RowUnencodable node= component= index=0 count=1 message=\"line 1 declares a result row but does not parse: unexpected end of JSON input\""
+      ]
     }
   ]
 }

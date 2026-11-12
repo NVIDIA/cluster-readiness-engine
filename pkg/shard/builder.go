@@ -191,6 +191,13 @@ type Dropped struct {
 	// magnitude that collapsing them would otherwise lose. Name and Sample are
 	// the first lost row's, as an example rather than an enumeration.
 	Count int64 `json:"count"`
+	// Message is free text explaining a loss the record cannot express on its
+	// own. The encoder's own drops leave it empty: the reason and the row
+	// identity say everything about them. It is here for the records the
+	// controller appends, where the reason alone does not tell a bundle reader
+	// why a read came back short, and the bundle is the only thing that leaves
+	// the cluster.
+	Message string `json:"message,omitempty"`
 }
 
 // Shard is one ConfigMap's worth of compressed rows.

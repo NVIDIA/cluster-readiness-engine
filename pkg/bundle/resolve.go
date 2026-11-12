@@ -327,6 +327,7 @@ func walkShards(
 				Node:        d.Node,
 				ComponentID: d.ComponentID,
 				Index:       d.Index,
+				Message:     d.Message,
 			})
 		}
 	}

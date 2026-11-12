@@ -3512,11 +3512,6 @@ func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1al
 	want := orch.DeepCopy()
 	return func(w *nvcrev1alpha1.Workflow) bool {
 		w.Status.Orchestration = want.DeepCopy()
-		// Recompute the component-result totals from the status just applied,
-		// never incrementally. This runs on every orchestration write, so the
-		// total converges across the re-entry, conflict retries and restarts
-		// that an incremental counter would double-count (ADR-090).
-		recomputeComponentResults(&w.Status, string(w.UID), workflowStatusTerminal(&w.Status))
 		return true
 	}
 }
@@ -3613,6 +3608,29 @@ func applyDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcre
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
+	// Recompute the component-result totals from the status this write is
+	// applying, never incrementally, so the total converges across the
+	// re-entry, conflict retries and restarts that a `+=` would double-count
+	// (ADR-090).
+	//
+	// Finality comes from conditionType rather than from the conditions on the
+	// object, because every extra runs BEFORE applyExclusiveConditions does:
+	// reading the conditions here sees the phase this write is replacing, so on
+	// the one write that makes the Workflow terminal it still reads InProgress
+	// and no run could ever publish a final total. Deriving it from the phase
+	// being applied also keeps a future terminal call site correct by
+	// construction, since all three go through this function.
+	//
+	// Appended last so it runs after any applyOrchestration extra has written
+	// the orchestration state it sums. Recomputing on non-orchestration writes
+	// is free: it is a pure function of status, so it rewrites the same value
+	// and reports no change.
+	final := conditionType == nvcrev1alpha1.WorkflowSucceeded ||
+		conditionType == nvcrev1alpha1.WorkflowFailed
+	extra = append(slices.Clone(extra), func(w *nvcrev1alpha1.Workflow) bool {
+		return recomputeComponentResults(&w.Status, string(w.UID), final)
+	})
+
 	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
 		func(w *nvcrev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{

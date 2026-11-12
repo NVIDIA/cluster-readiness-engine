@@ -183,7 +183,7 @@ A sink would buy unattended egress and long-term durability. Both are real, both
 
 ## Amendments
 
-These record where the implementation departs from the decisions above, and why. Each was found by building the thing: the figures are measured, not estimated. The encoder is `pkg/shard`, the controller write path is `pkg/controller/component_*.go`; the egress half, `nvcrectl --results-bundle` and its reader, is not yet written.
+These record where the implementation departs from the decisions above, and why. Each was found by building the thing: the figures are measured, not estimated. The encoder is `pkg/shard`, the controller write path is `pkg/controller/component_*.go`, and the egress half, `nvcrectl --results-bundle` with its reader and the three normative bundle rules, is `pkg/bundle`.
 
 ### The per-row cap is 128 KiB of raw input, not 256 KiB of compressed output
 
@@ -222,6 +222,10 @@ Decision 3 seals per Job and per attempt but does not say what happens to a supe
 A superseded attempt's seal is therefore dropped where `retirePreviousAttempts` deletes that attempt's Job and its shards, so at most two are ever held. This is the only bound the existing control flow supports: retirement already enumerates earlier attempts from durable state and already blocks the next launch until every one is confirmed gone, so retries cannot advance past an unretired seal. Bounding `retryFailedGroups` instead would bound the wrong axis and impose a user-visible spec restriction to fix an internal accounting choice.
 
 This makes retirement load bearing on an invariant the type system does not enforce: `retireComponentSeals` runs where `retirePreviousAttempts` already deletes an earlier attempt's Job. If a superseded seal is ever left behind, the bound is `MaxItems=4` and the Workflow stalls on a refused status write rather than silently miscounting.
+
+Corrected while building it, on two points. The shards are addressed in the **Workflow's own namespace**, not `status.namespace`: nothing in the controller writes that field on a Workflow, so reading it sent every delete to namespace `""` and the shards survived.
+
+And the delete is **not** best effort. The seal is kept whenever its delete fails, which is the opposite of how `retirePreviousMeasurements` treats a leaked measurement, because the two leaks are not comparable. A leaked measurement is inert. A leaked shard is still resolved: the reader walks namespace and label selector alone, with no Job-name filter, so a shard that outlives its seal is still counted, the resolved count exceeds what the total admits, and the category is refused permanently for a run whose evidence is intact. Holding the seal keeps the total honest about what is still on the cluster and lets the next pass retry. It does not hold up the next launch, which gates on the superseded Job being gone rather than on its seal.
 
 ### A group's seal carries a truncated-row count, not the per-reason detail
 
@@ -265,6 +269,22 @@ A Job that declares nothing therefore writes nothing. The absent field is the an
 The same rule applies one tier up. The Workflow publishes its totals when there is something to say — any shard, any row, or any row dropped — and leaves the field absent otherwise. Keying that on the run being finished instead, which the first implementation did, put a zero-valued block and a live label selector on every Workflow that reached a terminal condition. A reader cannot tell that block from a run that genuinely finished with an empty result, so it is worse than absent: it invites a bundle for a run that never had a producer.
 
 Truncation is in that test deliberately. A run that dropped every row it produced has no shards and no rows, and suppressing it on counts alone would hide exactly the evidence this mechanism exists to surface.
+
+Counts are not sufficient for that test, though, which the first implementation got wrong. The two reasons that matter most here carry a count of **zero**, because they are the ones a count cannot describe: a log page that could not be fetched gives no way to know how many rows were on it, and a producer that never came up produced nothing to count. Gating on counts alone therefore suppressed exactly the cases the exemption exists for, the category resolved with no `componentResults` block at all, and a run that failed to deliver its evidence went missing from the bundle instead of reporting that it failed. A seal that is `Partial` is now something to say in its own right, whatever its numbers.
+
+### Finality comes from the phase being applied, not from the object
+
+Decision 3's `final` marker is the reader's only way to tell "complete so far" from "missing", and the first implementation could never set it.
+
+The totals are recomputed inside a status-mutation closure, which is correct: it is what makes the value survive a 409 refetch. But every such closure runs **before** `applyExclusiveConditions` writes the new phase, so a closure that derives finality by reading the conditions off the object sees the phase being replaced. On the single write that makes a Workflow terminal it read `InProgress` and returned false. Every run published a non-final total, every `manifest.json` recorded `"final": false`, and the bundle writer warned that complete bundles were incomplete.
+
+Finality is therefore passed down from the condition being applied, in the Workflow's `setExclusiveCondition`, and the helper that read it from status is deleted rather than left available. Deriving it from the phase also keeps a future terminal call site correct by construction, since all three phases go through that one function.
+
+### A loss the controller finds reaches truncation.json, not only the status
+
+"Bundle integrity" requires that rows lost to log pagination are recorded as a partial read. The encoder's own drops satisfied this; the controller's did not. A `LogUnpageable` or `ProducerUnavailable` record was added to the Job's status seal and never to the truncation shard, so `truncation.json` was written as an empty list for a run that had explicitly failed to read its evidence. The shard builder's doc comment already described a caller appending its own records to that set, and no caller did.
+
+Both sets now come from one function, so the status and the bundle cannot disagree, and `shard.Dropped` carries a message because the reason alone does not tell a bundle reader why a read came back short. The branch where nothing could be read at all writes a truncation shard with no row shards beside it, which is the case where this matters most: there is nothing else in the bundle for that category, so without the record it resolves as a run that produced nothing rather than one whose evidence could not be read.
 
 ### The group waits for the Job's seal, and waits ahead of the workload delete
 

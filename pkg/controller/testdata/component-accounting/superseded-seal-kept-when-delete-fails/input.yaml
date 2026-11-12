@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# When the delete fails the seal must stay. A leaked shard is still walked and
+# still counted, so dropping its seal would make the total understate what is
+# on the cluster and ShardMismatchError would refuse the category for a run
+# whose evidence is intact. Holding the seal keeps the total honest and lets
+# the next pass retry the delete.
+phase: InProgress
+retire: true
+deleteFails: true
+existingShards:
+  - shard-01234567-wf-group-0-iter-1-0000
+  - shard-01234567-wf-group-0-iter-1-retry-1-0000
+groups:
+  - name: group-0
+    retries: 1
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 1
+        rowCount: 60
+      - attempt: 1
+        jobName: wf-group-0-iter-1-retry-1
+        shardCount: 1
+        rowCount: 60

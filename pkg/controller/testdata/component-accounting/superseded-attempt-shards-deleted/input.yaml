@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The regression guard for retirement. Attempt 0 lost to a retry, so its
+# shards must be gone from the cluster and its seal gone from the group,
+# leaving only attempt 1 in both.
+#
+# The shards are addressed by the Workflow's own namespace. Reading
+# Status.Namespace instead sent every delete to namespace "", the superseded
+# shards survived, and because nvcrectl resolves shards by namespace and label
+# alone with no Job-name filter, the walk then counted more shards than the
+# total admitted and refused the category permanently.
+phase: InProgress
+retire: true
+existingShards:
+  - shard-01234567-wf-group-0-iter-1-0000
+  - shard-01234567-wf-group-0-iter-1-retry-1-0000
+groups:
+  - name: group-0
+    retries: 1
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 1
+        rowCount: 60
+      - attempt: 1
+        jobName: wf-group-0-iter-1-retry-1
+        shardCount: 1
+        rowCount: 60

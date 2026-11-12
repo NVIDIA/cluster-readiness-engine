@@ -303,9 +303,12 @@ func describeShard(cm *corev1.ConfigMap) shardReport {
 			return rep
 		}
 		for _, d := range dropped {
+			// Message is printed because carrying it into the shard is the
+			// point: a bundle reader never sees Job status, so without it a
+			// partial read reaches the bundle as a reason with no cause.
 			rep.Dropped = append(rep.Dropped,
-				fmt.Sprintf("%s node=%s component=%s index=%d count=%d",
-					d.Reason, d.Node, d.ComponentID, d.Index, d.Count))
+				fmt.Sprintf("%s node=%s component=%s index=%d count=%d message=%q",
+					d.Reason, d.Node, d.ComponentID, d.Index, d.Count, d.Message))
 		}
 	}
 	return rep
