@@ -245,16 +245,26 @@ func foldRetiredComponentResults(orch *nvcrev1alpha1.OrchestrationStatus) {
 // fall at an iteration boundary, and a reader cannot tell a total that fell
 // from one that was never complete.
 //
-// The seal is kept when its delete fails, and that is not the best-effort
-// handling retirePreviousMeasurements gets. A leaked measurement is inert; a
-// leaked shard is not. nvcrectl resolves shards by namespace and label
-// selector alone (pkg/bundle/resolve.go), with no Job-name filter, so a
-// superseded shard that outlives its seal is still walked and still counted,
-// the resolved count exceeds what the total admits, and ShardMismatchError
-// refuses the whole category permanently for a run whose evidence is intact.
-// Holding the seal keeps the total honest about what is still on the cluster
-// and lets the next pass retry the delete. It does not hold up the next
-// launch, which gates on the superseded Job being gone, not on its seal.
+// A seal whose delete FAILED is kept, up to maxRetainedFailedSeals, and that
+// is not the best-effort handling retirePreviousMeasurements gets. A leaked
+// measurement is inert; a leaked shard is not. nvcrectl resolves shards by
+// namespace and label selector alone (pkg/bundle/resolve.go), with no Job-name
+// filter, so a superseded shard that outlives its seal is still walked and
+// still counted, the resolved count exceeds what the total admits, and
+// ShardMismatchError refuses the whole category permanently for a run whose
+// evidence is intact. Holding the seal keeps the total honest about what is
+// still on the cluster and lets the next pass retry the delete. It does not
+// hold up the next launch, which gates on the superseded Job being gone.
+//
+// The cap is what keeps that from becoming a worse bug than the one it fixes.
+// Holding a failed seal indefinitely would reintroduce unbounded growth by
+// another route, and the ceiling is not a soft one: past MaxItems the API
+// server refuses the status write with a 422 that no retry can clear, so the
+// Workflow stops making progress entirely. A category whose bundle is refused
+// is a degraded export; a Workflow that cannot write its status is a dead run.
+// So past the cap the seal is dropped anyway and the loss is logged at error
+// level, because by then the delete has failed repeatedly and the shard is
+// much more likely to be genuinely unreachable than transiently so.
 func (r *WorkflowReconciler) retireComponentSeals(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus,
 ) {
@@ -264,6 +274,7 @@ func (r *WorkflowReconciler) retireComponentSeals(
 	log := logf.FromContext(ctx)
 
 	kept := g.ComponentSeals[:0]
+	retainedFailures := 0
 	for _, seal := range g.ComponentSeals {
 		if int(seal.Attempt) >= g.Retries {
 			kept = append(kept, seal)
@@ -273,11 +284,24 @@ func (r *WorkflowReconciler) retireComponentSeals(
 		if err := deleteComponentShards(
 			ctx, r.Client, componentShardNamespace(workflow), stem, seal.ShardCount,
 		); err != nil {
-			log.V(1).Info("Could not delete a superseded attempt's shards; keeping its seal "+
-				"so the total still accounts for them",
-				"group", g.Name, "attempt", seal.Attempt, "error", err)
-			kept = append(kept, seal)
-			continue
+			if retainedFailures < maxRetainedFailedSeals {
+				retainedFailures++
+				log.V(1).Info("Could not delete a superseded attempt's shards; keeping its seal "+
+					"so the total still accounts for them",
+					"group", g.Name, "attempt", seal.Attempt, "error", err)
+				kept = append(kept, seal)
+				continue
+			}
+			// Dropped rather than held past the cap. See the function comment:
+			// the status write is refused past MaxItems and no retry clears
+			// that, so retaining this would stop the Workflow rather than
+			// degrade one category's export.
+			log.Error(err, "Giving up on deleting a superseded attempt's shards; dropping its "+
+				"seal to keep the Workflow writable. Its shards are now outside the total, so "+
+				"a results bundle for this category will be refused as mismatched until they "+
+				"are removed by hand",
+				"group", g.Name, "attempt", seal.Attempt,
+				"shardStem", shardNameStem(string(workflow.UID), seal.JobName))
 		}
 	}
 	g.ComponentSeals = slices.Clone(kept)
@@ -349,6 +373,15 @@ func (r *WorkflowReconciler) deleteWorkflowComponentShards(
 // Measured from drainStart, the same persisted anchor the pod-drain barrier
 // uses, so the bound survives a controller restart instead of resetting.
 const componentSealGracePeriod = 2 * time.Minute
+
+// maxRetainedFailedSeals bounds how many superseded seals retirement will hold
+// on one group because their shard delete failed.
+//
+// Two, against GroupComponentSeal's MaxItems=4, which leaves room for the live
+// attempt and a margin. The margin is the point: the list is capped by the
+// CRD, and exceeding it is a 422 on the status write that no retry can clear,
+// so this has to stay comfortably below the ceiling rather than reach it.
+const maxRetainedFailedSeals = 2
 
 // shouldWaitForComponentSeal reports whether a group must stay Running until
 // the Job tier has accounted for its per-component rows.

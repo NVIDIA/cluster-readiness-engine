@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -74,8 +75,12 @@ func TestReconcileComponentResults(t *testing.T) {
 			NoWorkloadRef bool `yaml:"noWorkloadRef"`
 			// Truncated makes every log read report that it could not be paged
 			// to the end.
-			Truncated bool   `yaml:"truncated"`
-			Log       string `yaml:"log"`
+			Truncated bool `yaml:"truncated"`
+			// ShardWriteFails makes every shard ConfigMap write fail, so a case
+			// can pin that the pass stays retryable instead of sealing a
+			// terminal phase over a shard set that was never written.
+			ShardWriteFails bool   `yaml:"shardWriteFails"`
+			Log             string `yaml:"log"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -158,7 +163,7 @@ func TestReconcileComponentResults(t *testing.T) {
 		if !input.NoWorkflow {
 			objs = append(objs, workflow.DeepCopy())
 		}
-		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+		builder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
 			WithStatusSubresource(&nvcrev1alpha1.Job{}).
 			WithIndex(&corev1.Pod{}, podread.JobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)
@@ -169,8 +174,21 @@ func TestReconcileComponentResults(t *testing.T) {
 					return []string{jn}
 				}
 				return nil
-			}).
-			Build()
+			})
+		if input.ShardWriteFails {
+			builder = builder.WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context, c client.WithWatch, obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					if _, isCM := obj.(*corev1.ConfigMap); isCM {
+						return fmt.Errorf("simulated shard write failure")
+					}
+					return c.Create(ctx, obj, opts...)
+				},
+			})
+		}
+		c := builder.Build()
 
 		logText := input.Log
 		r := &JobReconciler{

@@ -152,14 +152,20 @@ func (r *JobReconciler) reconcileComponentResults(
 		// requeueing forever on a log that will not become readable.
 		log.Error(produceErr, "Could not produce component result rows")
 		message := truncateMessage(produceErr.Error())
-		if err := r.sealComponentResults(ctx, job, &nvcrev1alpha1.ComponentResultSeal{
-			Phase: nvcrev1alpha1.ComponentResultsPartial,
+		owed := &nvcrev1alpha1.ComponentResultSeal{
+			// Writing, not Partial, and the order matters as much here as on
+			// the normal path below. Partial is terminal, so the short-circuit
+			// at the top of this function returns before doing anything once
+			// it is set: sealing it first would make the requeue below a
+			// no-op and lose the truncation shard on the first failed write.
+			Phase: nvcrev1alpha1.ComponentResultsWriting,
 			Truncations: []nvcrev1alpha1.ComponentTruncation{{
 				Reason:  result.reason,
 				Count:   0,
 				Message: message,
 			}},
-		}); err != nil {
+		}
+		if err := r.sealComponentResults(ctx, job, owed); err != nil {
 			return ctrl.Result{}, err
 		}
 		// Write the record as a shard too, even though there are no rows to go
@@ -181,7 +187,9 @@ func (r *JobReconciler) reconcileComponentResults(
 			log.Error(err, "Failed to write the truncation record; will retry")
 			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 		}
-		return ctrl.Result{}, nil
+		final := owed.DeepCopy()
+		final.Phase = nvcrev1alpha1.ComponentResultsPartial
+		return ctrl.Result{}, r.sealComponentResults(ctx, job, final)
 	}
 
 	built, buildErr := buildComponentShards(result.rows)
