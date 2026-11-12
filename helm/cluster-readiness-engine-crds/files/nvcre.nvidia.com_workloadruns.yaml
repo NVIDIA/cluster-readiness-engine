@@ -293,6 +293,23 @@ spec:
                   - name
                   type: object
                 type: array
+              fabric:
+                description: |-
+                  fabric selects the inter-node network fabric the platform overrides
+                  render for: efa, ib, roce or tcpxo (ADR-110). When set, it is
+                  validated against the target nodes, and a mismatch fails the WorkloadRun
+                  with FabricValidationFailed: efa needs vpc.amazonaws.com/efa
+                  allocatable on every target node, roce on AWS needs RoCE devices from
+                  the dra.networking.k8s.aws DRA driver on every target node, and the
+                  value must be one NVCRE renders on the detected platform and GPU
+                  architecture. When unset, the fabric is detected on AWS GB300 and is
+                  otherwise the platform default.
+                enum:
+                - efa
+                - ib
+                - roce
+                - tcpxo
+                type: string
               framework:
                 description: |-
                   framework specifies how to run the workload.
@@ -2216,6 +2233,28 @@ spec:
                                   Available variables: gpuArchitecture, platform, workloadKind, topology, config
                                   Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                                 type: string
+                              fabric:
+                                description: |-
+                                  fabric matches against the resolved network fabric (efa, ib, roce,
+                                  tcpxo): the parent's spec.fabric when set, otherwise the detected
+                                  fabric or the platform default (ADR-110). A Certification or
+                                  WorkloadRun resolves these matchers before it creates the Workflow.
+                                properties:
+                                  equals:
+                                    description: equals checks for exact match.
+                                    type: string
+                                  in:
+                                    description: in checks if value is in the list.
+                                    items:
+                                      type: string
+                                    type: array
+                                  notIn:
+                                    description: notIn checks if value is not in the
+                                      list.
+                                    items:
+                                      type: string
+                                    type: array
+                                type: object
                               gpuArchitecture:
                                 description: gpuArchitecture matches against detected
                                   GPU architecture.
@@ -2483,6 +2522,27 @@ spec:
                             Available variables: gpuArchitecture, platform, workloadKind, topology, config
                             Example: "gpuArchitecture == 'gb200' && platform == 'aws'"
                           type: string
+                        fabric:
+                          description: |-
+                            fabric matches against the resolved network fabric (efa, ib, roce,
+                            tcpxo): the parent's spec.fabric when set, otherwise the detected
+                            fabric or the platform default (ADR-110). A Certification or
+                            WorkloadRun resolves these matchers before it creates the Workflow.
+                          properties:
+                            equals:
+                              description: equals checks for exact match.
+                              type: string
+                            in:
+                              description: in checks if value is in the list.
+                              items:
+                                type: string
+                              type: array
+                            notIn:
+                              description: notIn checks if value is not in the list.
+                              items:
+                                type: string
+                              type: array
+                          type: object
                         gpuArchitecture:
                           description: gpuArchitecture matches against detected GPU
                             architecture.
@@ -4846,6 +4906,18 @@ spec:
                 - name
                 type: object
                 x-kubernetes-map-type: atomic
+              resolvedFabric:
+                description: |-
+                  resolvedFabric is the network fabric the Workflow was rendered for:
+                  spec.fabric when set, otherwise the detected fabric or the platform
+                  default (ADR-110). It is recorded only where the fabric chose the
+                  render: when spec.fabric is set, or on AWS GB300.
+                enum:
+                - efa
+                - ib
+                - roce
+                - tcpxo
+                type: string
               resolvedGpusPerNode:
                 description: resolvedGpusPerNode is the final GPU count per node used
                   for the workload.

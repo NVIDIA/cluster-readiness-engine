@@ -1,0 +1,5 @@
+field: efa
+platform: azure
+gpuArchitecture: h100
+nodes:
+  - name: azure-a

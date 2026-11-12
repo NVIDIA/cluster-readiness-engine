@@ -1,0 +1,7 @@
+{
+  "fabric": "roce",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "stderr": "Warning: fabric \"roce\" is set, but the ResourceSlice list that checks it for RoCE devices was refused (resourceslices.resource.k8s.io is forbidden: user cannot list resourceslices); grant get and list on resourceslices.resource.k8s.io. Rendering fabric \"roce\" unchecked; the controller lists ResourceSlices with its own service account and checks it when it reconciles.\n"
+}

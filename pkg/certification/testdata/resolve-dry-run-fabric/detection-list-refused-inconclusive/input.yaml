@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Without the RoCE signal, EFA everywhere cannot be told apart from both
+# fabrics, so detection keeps the default and says why.
+nodes:
+  - name: gb300-a
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "1"}
+listRefused: true

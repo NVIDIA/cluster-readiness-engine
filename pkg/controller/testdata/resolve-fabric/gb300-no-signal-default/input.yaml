@@ -1,0 +1,13 @@
+# The fixtures every existing AWS GB300 golden uses: no EFA allocatable and no
+# networking slices. Detection finds nothing and silently renders the default.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"

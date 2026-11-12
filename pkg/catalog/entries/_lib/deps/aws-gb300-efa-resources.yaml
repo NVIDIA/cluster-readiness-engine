@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The vpc.amazonaws.com/efa request for AWS GB300 on an EFA fabric (ADR-110),
+# for the entries that keep their own image and command: the loopback
+# entries and torch training. IPC_LOCK lets the EFA provider pin the memory
+# it registers for RDMA; the communication entries' base runtime already
+# carries it, torch training's does not. The count is read from node
+# allocatable. See aws-gb300-efa-runtime-patch-comm.yaml for why no hugepages.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
+                    resources:
+                      limits:
+                        vpc.amazonaws.com/efa: "{{ .EFAPerNode }}"
+                      requests:
+                        vpc.amazonaws.com/efa: "{{ .EFAPerNode }}"
