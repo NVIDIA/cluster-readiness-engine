@@ -33,9 +33,22 @@ type ResolvedComponent struct {
 	// report` accepts several names at once, and two certifications that ran
 	// the same category would otherwise write the same component file and one
 	// would silently replace the other.
-	Scope             string
-	Domain            string
-	Variant           string
+	Scope   string
+	Domain  string
+	Variant string
+	// Workflow is the name of the Workflow the category ran as, when it had
+	// one. It is what makes the file name unique.
+	//
+	// Domain and variant do not: two categories can name the same pair and
+	// differ only in their options, which is the case categoryOptionsSuffix
+	// exists for, and that is not a hypothetical. Two compute/cutlass-gemm
+	// categories with different floors are the headline use of the suffix, and
+	// under a name built from domain and variant alone they collide,
+	// ComponentFileNamesUnique refuses the bundle, and the run's entire
+	// per-component evidence becomes unobtainable. The Workflow name already
+	// carries the suffix, so it distinguishes exactly the categories that are
+	// distinguishable.
+	Workflow          string
 	NDJSON            []byte
 	ShardCount        int32
 	RowCount          int64
@@ -47,13 +60,18 @@ type ResolvedComponent struct {
 
 // FileName is the component file's name within the components directory.
 //
-// Built from whichever of scope, domain and variant are set, so a
-// certification category reads as "<cert>-<domain>-<variant>.ndjson" and a
-// WorkloadRun, which has no catalog category at all, reads as
-// "<run>.ndjson" rather than carrying two empty segments.
+// Built from whichever of scope, domain, variant and Workflow name are set, so
+// a certification category reads as
+// "<cert>-<domain>-<variant>-<workflow>.ndjson" and a WorkloadRun, which has
+// no catalog category at all, reads as "<run>.ndjson" rather than carrying
+// empty segments.
+//
+// The Workflow name is what carries uniqueness; domain and variant are kept
+// ahead of it because they are what a human scans the directory for, and the
+// Workflow name alone reads as an opaque token.
 func (c ResolvedComponent) FileName() string {
-	parts := make([]string, 0, 3)
-	for _, part := range []string{c.Scope, c.Domain, c.Variant} {
+	parts := make([]string, 0, 4)
+	for _, part := range []string{c.Scope, c.Domain, c.Variant, c.Workflow} {
 		if part != "" {
 			parts = append(parts, part)
 		}
@@ -119,6 +137,12 @@ func ResolveCertification(
 			return nil, err
 		}
 		comp.Scope = cert.Name
+		// The Workflow name is what makes the component file name unique:
+		// domain and variant repeat across categories that differ only in
+		// their options.
+		if cs.WorkflowRef != nil {
+			comp.Workflow = cs.WorkflowRef.Name
+		}
 		for i := range comp.Truncations {
 			comp.Truncations[i].Scope = cert.Name
 		}
@@ -348,10 +372,17 @@ func CollectTruncations(comps []ResolvedComponent) []TruncationRecord {
 // ComponentFileNamesUnique reports a collision between two categories' file
 // names, which would silently overwrite one with the other.
 //
-// A domain and a variant cannot contain a path separator, because both are
-// catalog directory names, so the only way two categories collide is by being
-// the same category twice. That should be impossible; this makes it loud
-// rather than a bundle quietly missing a category.
+// Two categories CAN name the same domain and variant and differ only in
+// their options, which is what categoryOptionsSuffix exists for, so the file
+// name carries the Workflow name as well. An earlier version of this comment
+// claimed the collision was impossible; it was reachable by the headline use
+// of that suffix, two compute/cutlass-gemm categories with different floors,
+// and it refused the whole bundle rather than one category.
+//
+// This check stays as the backstop. Domain and variant cannot contain a path
+// separator because both are catalog directory names, and the Workflow name is
+// a DNS-1035 label, so a collision now means two genuinely identical
+// categories; that is loud here rather than a bundle quietly missing one.
 func ComponentFileNamesUnique(comps []ResolvedComponent) error {
 	seen := make(map[string]string, len(comps))
 	for _, c := range comps {

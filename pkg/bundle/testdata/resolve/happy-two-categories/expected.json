@@ -1,7 +1,7 @@
 {
   "components": [
     {
-      "fileName": "gpu-cluster-cert-compute-cutlass-gemm.ndjson",
+      "fileName": "gpu-cluster-cert-compute-cutlass-gemm-wf-0.ndjson",
       "shardCount": 1,
       "rowCount": 2,
       "final": true,
@@ -11,7 +11,7 @@
       ]
     },
     {
-      "fileName": "gpu-cluster-cert-diagnostics-dcgm-level4.ndjson",
+      "fileName": "gpu-cluster-cert-diagnostics-dcgm-level4-wf-1.ndjson",
       "shardCount": 1,
       "rowCount": 1,
       "final": true,

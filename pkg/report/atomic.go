@@ -65,11 +65,27 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	}
 	path = resolved
 
-	if info, statErr := os.Lstat(path); statErr == nil && info.IsDir() {
-		// Caught here so the error names the problem. Left to the rename, it
-		// surfaces on macOS as "file exists", which reads as a stale temporary
-		// file rather than as the destination being a directory.
-		return fmt.Errorf("write %s: destination is a directory", path)
+	if info, statErr := os.Lstat(path); statErr == nil {
+		if info.IsDir() {
+			// Caught here so the error names the problem. Left to the rename, it
+			// surfaces on macOS as "file exists", which reads as a stale temporary
+			// file rather than as the destination being a directory.
+			return fmt.Errorf("write %s: destination is a directory", path)
+		}
+		if !info.Mode().IsRegular() {
+			// A character device, a FIFO or a socket. Written in place, which
+			// is what os.WriteFile did before this function existed.
+			//
+			// Atomicity is not merely unnecessary here, it is wrong in two
+			// ways. There is no partial read to protect: a reader of a stream
+			// consumes what is written as it arrives and never sees a
+			// half-written file. And a rename would REPLACE the destination
+			// with a regular file, so `--results-file /dev/stdout` would stop
+			// writing to the terminal and, running as root, `--junit-file
+			// /dev/null` would replace the device node for everything else on
+			// the machine. Both of those used to work.
+			return os.WriteFile(path, data, reportFilePerm)
+		}
 	}
 
 	dir := filepath.Dir(path)

@@ -151,7 +151,104 @@ type TruncationRecord struct {
 // are on disk and hashed. An interrupted write therefore leaves a directory
 // with no manifest, which the reader refuses, rather than a manifest that
 // certifies files that are not all there.
+// ExportPath is one of a command's other output paths, named by its flag so a
+// refusal can say which one is in the way.
+type ExportPath struct {
+	Flag string
+	Path string
+}
+
+// ValidateExportPaths refuses an export path that resolves inside dir.
+//
+// A bundle lists every file it contains in manifest.json and a reader refuses
+// one that holds anything unlisted, so the other export paths have to stay
+// outside it. Both ways of getting this wrong were silent in different ways:
+// a path written BEFORE the bundle became an unlisted file and the bundle's
+// own self-verify failed after everything had been written and sealed, and one
+// written AFTER left the bundle verifying clean, the command printing success,
+// and the artifact on disk already invalid.
+//
+// Checked up front rather than fixed by reordering the writes, because
+// reordering only moves which of the two breaks.
+func ValidateExportPaths(dir string, paths ...ExportPath) error {
+	if dir == "" {
+		return nil
+	}
+	bundleDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve bundle directory %s: %w", dir, err)
+	}
+	for _, p := range paths {
+		if p.Path == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p.Path)
+		if err != nil {
+			return fmt.Errorf("resolve %s path %s: %w", p.Flag, p.Path, err)
+		}
+		rel, err := filepath.Rel(bundleDir, abs)
+		if err != nil {
+			// Different volumes on Windows, so it cannot be inside.
+			continue
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return fmt.Errorf(
+			"%s (%s) is inside the bundle directory (%s): every file in a bundle is "+
+				"listed in manifest.json and a reader refuses one that holds anything "+
+				"else, so writing a report there would invalidate the bundle. Use a path "+
+				"outside it", p.Flag, p.Path, dir)
+	}
+	return nil
+}
+
+// requireEmptyBundleDir refuses a target that already holds files.
+//
+// A missing directory is fine, and so is an empty one: Write creates what it
+// needs. Anything else is refused, with the offending entry named, because the
+// operator has to know WHICH file is in the way to decide what to do about it.
+func requireEmptyBundleDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect bundle directory %s: %w", dir, err)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"bundle directory %s is not empty (contains %q): a bundle must be the only "+
+			"thing in its directory, because every file in it is listed in manifest.json "+
+			"and a reader refuses one that is not. Use an empty or new directory",
+		dir, entries[0].Name())
+}
+
 func Write(dir string, c Contents) error {
+	// Refuse a directory that already holds something, before writing a byte.
+	//
+	// Verify rejects any file the manifest does not list, so a leftover from a
+	// previous run makes the bundle unverifiable. That used to surface at the
+	// worst possible moment: writeBundleDir writes every file, seals the
+	// manifest, and only then self-verifies, so the command failed with an
+	// integrity error after leaving a sealed manifest certifying a directory
+	// no reader would accept. The failure also named a tampering check for
+	// what was really a stale file.
+	//
+	// And it was not a corner case. `nvcrectl certification run` defaults the
+	// Certification name to nvcrectl-<timestamp>, and that name is part of
+	// every component file name, so a second run into the same directory
+	// always left the first run's components behind. Pointing --results-bundle
+	// at a CI artifacts directory that holds anything at all did the same.
+	//
+	// Refused rather than cleared: this directory is the operator's, named on
+	// a command line, and deleting its contents on the strength of a flag is
+	// not a liberty a reporting command should take.
+	if err := requireEmptyBundleDir(dir); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(dir, ComponentsDir), bundleDirPerm); err != nil {
 		return fmt.Errorf("create bundle directory: %w", err)
 	}

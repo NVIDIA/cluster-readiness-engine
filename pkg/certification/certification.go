@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/bundle"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
@@ -1237,6 +1238,11 @@ Use --cleanup to teardown installed components after completion.`,
 			if err := validateReportPaths(resultsFile, junitFile); err != nil {
 				return err
 			}
+			if err := bundle.ValidateExportPaths(resultsBundle,
+				bundle.ExportPath{Flag: "--results-file", Path: resultsFile},
+				bundle.ExportPath{Flag: "--junit-file", Path: junitFile}); err != nil {
+				return err
+			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
@@ -2284,6 +2290,11 @@ Multiple certification names can be provided to combine them into a single repor
 Each certification is shown in its own section with categories and summary.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := bundle.ValidateExportPaths(resultsBundle,
+				bundle.ExportPath{Flag: "--results-file", Path: resultsFile},
+				bundle.ExportPath{Flag: "--junit-file", Path: junitFile}); err != nil {
+				return err
+			}
 			return runReport(args, configFlags, reportTargets{
 				resultsFile:   resultsFile,
 				junitFile:     junitFile,

@@ -29,6 +29,7 @@ import (
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/bundle"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
@@ -862,6 +863,15 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			// added here, so the two changes do not collide.
 			if !doWait && resultsBundle != "" {
 				return fmt.Errorf("--results-bundle requires --wait")
+			}
+			// A report written inside the bundle makes it unverifiable: every
+			// file in a bundle is listed in manifest.json and a reader refuses
+			// one that holds anything else. Here --results-file is written
+			// before the bundle, so it would fail the bundle's own self-verify
+			// after everything had been written.
+			if err := bundle.ValidateExportPaths(resultsBundle,
+				bundle.ExportPath{Flag: "--results-file", Path: resultsFile}); err != nil {
+				return err
 			}
 			pullSet := 0
 			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
