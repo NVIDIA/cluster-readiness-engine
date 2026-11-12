@@ -26,7 +26,11 @@ GEMM_IMG ?= $(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY):$(GEMM_IMAGE_TAG)
 # targets; a caller may also set these directly.
 DOCKER_IMG ?= $(IMG)
 DOCKERFILE ?= Dockerfile
-DOCKER_CONTEXT ?= .
+# NOT named DOCKER_CONTEXT: that is a reserved Docker CLI variable which
+# selects the daemon context, so passing it on a make command line or as a
+# job env exported it to docker and every build failed with
+# 'no builder <path> found' before it read the Dockerfile.
+DOCKER_BUILD_CONTEXT ?= .
 # Scratch names, derived from the Dockerfile so two concurrent builds in one
 # workspace cannot delete each other's builder or temporary file. The previous
 # constants meant the first `make docker-buildx` to exit removed the other's.
@@ -340,7 +344,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -f "$(DOCKERFILE)" -t "$(DOCKER_IMG)" "$(DOCKER_CONTEXT)"
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -f "$(DOCKERFILE)" -t "$(DOCKER_IMG)" "$(DOCKER_BUILD_CONTEXT)"
 
 .PHONY: docker-push
 docker-push: check-clean-version ## Push docker image with the manager.
@@ -352,7 +356,7 @@ docker-push: check-clean-version ## Push docker image with the manager.
 .PHONY: gemm-image-build
 gemm-image-build: ## Build the CUTLASS GEMM harness image (ADR-091).
 	$(MAKE) docker-build DOCKER_IMG="$(GEMM_IMG)" \
-		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_CONTEXT=images/cutlass-gemm
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm
 
 .PHONY: gemm-image-push
 gemm-image-push: ## Push the CUTLASS GEMM harness image.
@@ -361,7 +365,7 @@ gemm-image-push: ## Push the CUTLASS GEMM harness image.
 .PHONY: gemm-image-buildx
 gemm-image-buildx: ## Build and push the GEMM harness image for both platforms.
 	$(MAKE) docker-buildx DOCKER_IMG="$(GEMM_IMG)" \
-		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_CONTEXT=images/cutlass-gemm
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -387,7 +391,7 @@ docker-buildx: #check-clean-version ## Build and push docker image for the manag
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' "$(DOCKERFILE)" > "$(DOCKERFILE_CROSS)"; \
 	$(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER) >/dev/null 2>&1 || true; \
 	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER); \
-	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "$(DOCKER_IMG)" -f "$(DOCKERFILE_CROSS)" "$(DOCKER_CONTEXT)"
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "$(DOCKER_IMG)" -f "$(DOCKERFILE_CROSS)" "$(DOCKER_BUILD_CONTEXT)"
 
 ##@ Deployment
 

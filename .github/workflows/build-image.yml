@@ -151,7 +151,7 @@ jobs:
           IMG: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
           DOCKER_IMG: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
           DOCKERFILE: ${{ inputs.dockerfile }}
-          DOCKER_CONTEXT: ${{ inputs.build_context }}
+          DOCKER_BUILD_CONTEXT: ${{ inputs.build_context }}
           IMAGE_TAG: ${{ inputs.image_tag }}
 
       # An SBOM describes exactly one root filesystem, and this image is a
