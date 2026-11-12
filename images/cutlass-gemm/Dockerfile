@@ -69,8 +69,27 @@ RUN cmake /src/cutlass -G Ninja \
       -DCUTLASS_LIBRARY_KERNELS="${CUTLASS_KERNELS}" \
       -DCUTLASS_ENABLE_TESTS=OFF \
       -DCUTLASS_UNITY_BUILD_ENABLED=ON \
-    && ninja cutlass_profiler \
-    && strip tools/profiler/cutlass_profiler
+    && ninja cutlass_profiler
+
+# Stage the binary together with the shared libraries it links against.
+#
+# cutlass_profiler is NOT self-contained: CUTLASS builds libcutlass.so and
+# links the profiler against it, so copying the binary alone produced an image
+# whose only executable failed at startup with "libcutlass.so: cannot open
+# shared object file". Every GPU would have reported no result and the run
+# would have failed the node for a missing library.
+#
+# Collected by searching the build tree rather than naming a path, because the
+# path is a CUTLASS build-layout detail that a version bump may move, and a
+# stale COPY of a file that no longer exists fails the build loudly while a
+# stale directory can silently copy nothing. If a future CUTLASS links the
+# profiler statically, the search simply finds nothing and the result still
+# works.
+RUN set -eux; \
+    mkdir -p /out/bin /out/lib; \
+    strip tools/profiler/cutlass_profiler; \
+    cp tools/profiler/cutlass_profiler /out/bin/; \
+    find . -name 'libcutlass*.so*' -exec cp -av {} /out/lib/ \;
 
 # ---------------------------------------------------------------------------
 # Runtime.
@@ -84,9 +103,34 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends bash gawk \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /src/build/tools/profiler/cutlass_profiler /usr/local/bin/cutlass_profiler
+COPY --from=build /out/bin/cutlass_profiler /usr/local/bin/cutlass_profiler
+COPY --from=build /out/lib/ /usr/local/lib/cutlass/
 COPY entrypoint.sh /usr/local/bin/nvcre-gemm-burnin
 RUN chmod 0755 /usr/local/bin/nvcre-gemm-burnin /usr/local/bin/cutlass_profiler
+
+# Where libcutlass.so lives. ldconfig rather than LD_LIBRARY_PATH: the variable
+# is inherited by anything the harness runs and is the kind of thing a workload
+# override can clobber, while the cache is a property of the image.
+RUN echo /usr/local/lib/cutlass > /etc/ld.so.conf.d/cutlass.conf && ldconfig
+
+# Fail the build rather than the burn-in if the profiler cannot start.
+#
+# Without this the image was publishable with its only executable broken, and
+# the first sign would have been every GPU on a real node reporting no result,
+# which reads as failed hardware rather than a packaging mistake.
+#
+# The test is "no unresolved shared library", not "--help exits 0". That is the
+# precise failure this guards: a tool is entitled to a non-zero exit from
+# --help, and a smoke test resting on that would fail builds of a perfectly
+# good image. An unresolved library, by contrast, is never acceptable.
+RUN set -eux; \
+    ldd /usr/local/bin/cutlass_profiler > /tmp/ldd.txt; \
+    cat /tmp/ldd.txt; \
+    if grep -q 'not found' /tmp/ldd.txt; then \
+      echo "cutlass_profiler has unresolved shared libraries; it cannot start"; \
+      exit 1; \
+    fi; \
+    rm -f /tmp/ldd.txt
 
 # Not root. The harness reads nvidia-smi and runs a compute kernel; neither
 # needs privilege, and unlike dcgm-level4 there is no hostengine to talk to.

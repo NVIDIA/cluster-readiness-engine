@@ -300,12 +300,15 @@ log "Soak complete: ${sample} sample(s) per GPU over $(( SECONDS - START ))s"
 # ---------------------------------------------------------------------------
 
 failed=0
+no_result=0
+below_floor=0
 printf '\n'
 log "Per-GPU results (verdict on the maximum, as DCGM compares it):"
 for ((d = 0; d < GPU_COUNT; d++)); do
   if [[ ${SAMPLES[d]} -eq 0 ]]; then
     log "  GPU ${d} ${GPU_UUIDS[d]}: NO RESULT (${FAILED_SWEEPS[d]} failed sweep(s))"
     failed=1
+    no_result=$(( no_result + 1 ))
     continue
   fi
   max_t="$(awk -v g="${MAX_GFLOPS[d]}" 'BEGIN { printf "%.2f", g / 1000.0 }')"
@@ -316,6 +319,7 @@ for ((d = 0; d < GPU_COUNT; d++)); do
      awk -v m="${MAX_GFLOPS[d]}" -v f="${FLOOR_GFLOPS}" 'BEGIN { exit !(m < f) }'; then
     verdict="BELOW FLOOR"
     failed=1
+    below_floor=$(( below_floor + 1 ))
   fi
   log "  GPU ${d} ${GPU_UUIDS[d]}: max ${max_t} TFLOPS (the verdict), min ${min_t} TFLOPS," \
       "mean ${avg_t} TFLOPS over ${SAMPLES[d]} sample(s): ${verdict}"
@@ -331,11 +335,17 @@ done
 
 if [[ ${failed} -ne 0 ]]; then
   printf '\n'
-  if (( FLOOR_GFLOPS > 0 )); then
-    log "FAILED: at least one GPU never reached ${FLOOR_GFLOPS} GFLOPS (${FLOOR_SOURCE}). Named above; per-GPU rows carry every sample."
-  else
-    log "FAILED: at least one GPU produced no result at all. Named above."
+  # Named separately because they are different faults. A GPU that produced
+  # nothing is a device or driver problem; one that ran and stayed under the
+  # floor is a performance problem. A single message covering both sends an
+  # operator looking in the wrong place for whichever they have.
+  if (( no_result > 0 )); then
+    log "FAILED: ${no_result} GPU(s) produced no result at all; that is a device or driver fault, not performance."
   fi
+  if (( below_floor > 0 )); then
+    log "FAILED: ${below_floor} GPU(s) never reached ${FLOOR_GFLOPS} GFLOPS (${FLOOR_SOURCE})."
+  fi
+  log "Named above; per-GPU rows carry every sample."
   exit 1
 fi
 printf '\n'
