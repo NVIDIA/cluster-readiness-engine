@@ -90,6 +90,13 @@ followed them.
   now an error rather than a panic, and a symlinked results path updates the file it
   points at instead of silently replacing the link.
 
+### Security
+
+- Built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054), an HTTP/1
+  server crash from a `MaxBytesReader` header race in `net/http`. The manager
+  serves HTTP for metrics and health probes, so it reaches the affected code
+  (#601).
+
 ## [0.11.0] - 2026-11-09
 
 ### Changed
