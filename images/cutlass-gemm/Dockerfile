@@ -45,13 +45,28 @@ ARG CUTLASS_REF
 # in this image, which is the correct trade for a single-purpose harness.
 #
 # Architectures, from pkg/catalog/entries/_lib/gpu-defaults.yaml:
-#   80   A100
-#   89   L40 / L40S
-#   90a  H100 / H200          (a: arch-conditional features)
-#   100a B200 / GB200
-#   103a B300 / GB300
-#   120a RTX PRO 6000 Blackwell
-ARG CUTLASS_ARCHS="80;89;90a;100a;103a;120a"
+#   80   A100                  x86
+#   89   L40 / L40S            x86
+#   90a  H100 / H200           x86   (a: arch-conditional features)
+#   100a B200 (x86) / GB200 (Grace, arm64)
+#   103a B300 (x86) / GB300 (Grace, arm64)
+#   120a RTX PRO 6000 Blackwell x86
+#
+# The list is narrowed per TARGET architecture, not per build host, and the two
+# are not the same set. Grace-Blackwell is the only arm64 host in the catalog,
+# so an arm64 image can only ever meet a GB200 or a GB300 and needs two of the
+# six families; compiling the other four into it is work that nothing can run.
+# The amd64 list stays complete, because every x86 part in the catalog spans
+# all six, B300 included.
+#
+# This matters for more than image size. nvcc compiles for the host, so each
+# architecture's image has to be built natively, and the arm64 leg is the one
+# with the least headroom. Two families instead of six is what makes it fit.
+ARG TARGETARCH
+ARG CUTLASS_ARCHS_AMD64="80;89;90a;100a;103a;120a"
+ARG CUTLASS_ARCHS_ARM64="100a;103a"
+# CUTLASS_ARCHS overrides both, for a one-off build of a single architecture.
+ARG CUTLASS_ARCHS=""
 ARG CUTLASS_KERNELS="cutlass_simt_sgemm_*"
 
 RUN apt-get update \
@@ -63,13 +78,45 @@ RUN git clone --depth 1 --branch "${CUTLASS_REF}" \
         https://github.com/NVIDIA/cutlass.git /src/cutlass
 
 WORKDIR /src/build
-RUN cmake /src/cutlass -G Ninja \
+# Resolved in the shell rather than with a build arg per platform, because
+# TARGETARCH is only set when buildx is driving; a plain `docker build` leaves
+# it empty and must still produce a working image. An unrecognised value is a
+# hard error rather than a silent fall back to the amd64 list: a new arm64 host
+# shipping an image full of x86 kernels is exactly the failure this file is
+# being changed to prevent, and it would look like healthy GPUs returning
+# nothing.
+RUN set -eux; \
+    archs="${CUTLASS_ARCHS}"; \
+    if [ -z "${archs}" ]; then \
+      case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+        amd64) archs="${CUTLASS_ARCHS_AMD64}" ;; \
+        arm64) archs="${CUTLASS_ARCHS_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH '${TARGETARCH:-unset}'; set CUTLASS_ARCHS explicitly" >&2; \
+           exit 1 ;; \
+      esac; \
+    fi; \
+    echo "building cutlass_profiler for CUTLASS_NVCC_ARCHS=${archs}"; \
+    # Cap the parallelism by MEMORY, not by core count. CUTLASS_UNITY_BUILD
+    # makes each translation unit large, and an nvcc instance on one can reach
+    # a couple of gigabytes; ninja defaults to roughly one job per core, so a
+    # small machine with a generous core-to-RAM ratio invites the OOM killer.
+    # That failure is worth avoiding specifically because of how it looks: the
+    # kernel kills nvcc, ninja reports a bare non-zero exit, and nothing in the
+    # log says memory. Three gigabytes per job, at least one, never more than
+    # the cores available.
+    mem_gb=$(awk '/MemTotal/ { printf "%d", $2 / 1048576 }' /proc/meminfo); \
+    jobs=$(( mem_gb / 3 )); \
+    [ "${jobs}" -ge 1 ] || jobs=1; \
+    cores=$(nproc); \
+    [ "${jobs}" -le "${cores}" ] || jobs="${cores}"; \
+    echo "ninja -j${jobs} (${cores} cores, ${mem_gb}GiB RAM)"; \
+    cmake /src/cutlass -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCUTLASS_NVCC_ARCHS="${CUTLASS_ARCHS}" \
+      -DCUTLASS_NVCC_ARCHS="${archs}" \
       -DCUTLASS_LIBRARY_KERNELS="${CUTLASS_KERNELS}" \
       -DCUTLASS_ENABLE_TESTS=OFF \
-      -DCUTLASS_UNITY_BUILD_ENABLED=ON \
-    && ninja cutlass_profiler
+      -DCUTLASS_UNITY_BUILD_ENABLED=ON; \
+    ninja -j"${jobs}" cutlass_profiler
 
 # Stage the binary together with the shared libraries it links against.
 #

@@ -362,9 +362,10 @@ gemm-image-build: ## Build the CUTLASS GEMM harness image (ADR-091).
 gemm-image-push: ## Push the CUTLASS GEMM harness image.
 	$(MAKE) docker-push DOCKER_IMG="$(GEMM_IMG)"
 
-.PHONY: gemm-image-buildx
-gemm-image-buildx: ## Build and push the GEMM harness image for both platforms.
-	$(MAKE) docker-buildx DOCKER_IMG="$(GEMM_IMG)" \
+.PHONY: gemm-image-native
+gemm-image-native: ## Build the GEMM harness image for PLATFORM natively and push it by digest.
+	$(MAKE) docker-buildx-native \
+		DOCKER_IMAGE_NAME="$(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY)" \
 		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
@@ -375,6 +376,15 @@ gemm-image-buildx: ## Build and push the GEMM harness image for both platforms.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
 
+# One platform, for docker-buildx-native. Deliberately not named
+# DOCKER_DEFAULT_PLATFORM: that is a reserved Docker CLI variable and setting
+# it would override the build for every docker command in the environment.
+PLATFORM ?= linux/amd64
+# Image path with NO tag. push-by-digest refuses a tag, because the point is
+# that the leg is addressed by digest until the index is assembled.
+DOCKER_IMAGE_NAME ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)
+BUILDX_METADATA ?= buildx-metadata.json
+
 # Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
 NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
@@ -384,6 +394,35 @@ NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 BUILDX_PUSH ?= --push
 
 .PHONY: docker-buildx
+.PHONY: docker-buildx-native
+docker-buildx-native: ## Build ONE platform from the unmodified Dockerfile and push it by digest.
+	# No sed, and that is the entire difference from docker-buildx. That target
+	# rewrites the first FROM to --platform=$${BUILDPLATFORM} so the builder
+	# stage runs natively while the result targets another architecture, which
+	# is exactly right for a Go binary built with GOARCH=$${TARGETARCH} and
+	# exactly wrong for anything compiled by nvcc: the CUDA stage would compile
+	# for the build host and the result would be an arm64 image full of x86-64
+	# binaries. So this target leaves the Dockerfile alone and relies on the
+	# caller running it on hardware of the target architecture.
+	#
+	# --platform is still passed explicitly, even though it matches the host,
+	# because it is what makes BuildKit set TARGETARCH, which the GEMM
+	# Dockerfile reads to choose its GPU architecture list.
+	#
+	# --provenance=false and --sbom=false because push-by-digest with
+	# attestations returns the digest of a small index (the image manifest plus
+	# an attestation manifest) rather than of the image manifest, and feeding
+	# that to `imagetools create` yields a child with no usable platform. SBOMs
+	# for this image are generated from the assembled index instead.
+	trap '$(CONTAINER_TOOL) buildx rm $(BUILDX_BUILDER) >/dev/null 2>&1 || true' EXIT; \
+	$(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER) >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER); \
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) \
+		--platform=$(PLATFORM) --provenance=false --sbom=false \
+		--metadata-file "$(BUILDX_METADATA)" \
+		--output=type=image,"name=$(DOCKER_IMAGE_NAME)",push-by-digest=true,name-canonical=true,push=true \
+		-f "$(DOCKERFILE)" "$(DOCKER_BUILD_CONTEXT)"
+
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# Run as one shell, so the trap removes the builder and the temporary
 	# Dockerfile even when the build fails.

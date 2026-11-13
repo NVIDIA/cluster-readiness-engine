@@ -45,6 +45,49 @@ on:
         required: false
         default: '.'
         type: string
+      native_per_arch:
+        description: >-
+          Build each architecture on a runner of that architecture instead of
+          cross-compiling one.
+
+          False, the default, keeps the controller image's path: its Dockerfile
+          cross-compiles with GOARCH=${TARGETARCH}, so one amd64 runner
+          produces both platforms and that is both correct and fast.
+
+          True is for an image whose compiler targets the host. nvcc has no
+          equivalent of GOARCH, so the CUDA stage of the GEMM harness compiles
+          for whatever machine it runs on; cross-compiling it produced an arm64
+          image holding x86-64 binaries, which is a GB200 or GB300 node whose
+          GPUs report nothing. Emulation is not the way out either: the amd64
+          harness build takes over an hour natively, so QEMU would take most of
+          a day.
+        required: false
+        default: false
+        type: boolean
+      arm64_runner:
+        description: >-
+          Runner label for the native arm64 leg. Only read when
+          native_per_arch is true.
+
+          Defaults to GitHub's hosted arm64 runner, which this repository being
+          public makes available. It is the smallest thing that works, not the
+          right thing: four vCPUs compiling CUTLASS is slow, and its memory and
+          disk are the tighter limits. Point this at a self-hosted arm64 label
+          when one exists, mirroring linux-amd64-cpu32.
+        required: false
+        default: ubuntu-24.04-arm
+        type: string
+      build_timeout_minutes:
+        description: >-
+          Minutes before the build is killed.
+
+          An input because 40 fits the controller image and does not fit a
+          CUTLASS compile: the harness amd64 build was measured at 1h14m, so
+          the harness would have been killed at 40 minutes on its first
+          publish, and image-attested turns that into a red release.
+        required: false
+        default: 40
+        type: number
     outputs:
       image_name:
         description: 'Registry path of the image, without tag or digest.'
@@ -68,11 +111,199 @@ env:
   IMAGE_NAME: ${{ inputs.image_name }}
 
 jobs:
+  native-amd64:
+    name: Build amd64 natively
+    # Skipped entirely unless the caller asks for native builds, so the
+    # controller image's path is unchanged by this job existing.
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      inputs.native_per_arch
+    runs-on: linux-amd64-cpu32
+    timeout-minutes: ${{ inputs.build_timeout_minutes }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      # Re-validated here for the same reason the build job re-validates: this
+      # value reaches a shell in a job holding packages:write.
+      - name: Validate image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          case "${IMAGE_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::image_tag contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+          if [[ ! "${IMAGE_TAG}" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?|main-[0-9a-f]{7})$ ]]; then
+            echo "::error::image_tag is neither vMAJOR.MINOR.PATCH[-prerelease] nor main-<sha>: ${IMAGE_TAG}"
+            exit 1
+          fi
+
+      # The whole point of this job is that the build runs on hardware of the
+      # target architecture, so assert it rather than trust the label. A label
+      # that silently resolves to the wrong architecture either emulates for
+      # hours or dies inside BuildKit with an unrelated message, and the image
+      # it would publish is the broken one this job exists to prevent.
+      - name: Confirm the runner is amd64
+        env:
+          WANT: amd64
+        run: |
+          set -euo pipefail
+          case "${RUNNER_ARCH}" in
+            X64)   got=amd64 ;;
+            ARM64) got=arm64 ;;
+            *)     got="${RUNNER_ARCH}" ;;
+          esac
+          if [[ "${got}" != "${WANT}" ]]; then
+            echo "::error::this job must run on ${WANT} but the runner is ${got};" \
+                 "nvcc compiles for the host, so it would publish an image of the wrong architecture"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config: /etc/buildkit/buildkitd.toml
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        env:
+          PLATFORM: linux/amd64
+          DOCKER_IMAGE_NAME: ${{ inputs.image_name }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          DOCKER_BUILD_CONTEXT: ${{ inputs.build_context }}
+          BUILDX_METADATA: buildx-metadata.json
+        run: |
+          set -euo pipefail
+          make docker-buildx-native
+          # Read the digest buildx recorded rather than inspecting a tag:
+          # this leg pushes by digest and carries no tag, so there is nothing
+          # to inspect until the index is assembled.
+          digest=$(jq -r '."containerimage.digest" // empty' "${BUILDX_METADATA}")
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::buildx reported no usable digest for linux/amd64: '${digest}'"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+  native-arm64:
+    name: Build arm64 natively
+    # Skipped entirely unless the caller asks for native builds, so the
+    # controller image's path is unchanged by this job existing.
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      inputs.native_per_arch
+    runs-on: ${{ inputs.arm64_runner }}
+    timeout-minutes: ${{ inputs.build_timeout_minutes }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      # Re-validated here for the same reason the build job re-validates: this
+      # value reaches a shell in a job holding packages:write.
+      - name: Validate image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          case "${IMAGE_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::image_tag contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+          if [[ ! "${IMAGE_TAG}" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?|main-[0-9a-f]{7})$ ]]; then
+            echo "::error::image_tag is neither vMAJOR.MINOR.PATCH[-prerelease] nor main-<sha>: ${IMAGE_TAG}"
+            exit 1
+          fi
+
+      # The whole point of this job is that the build runs on hardware of the
+      # target architecture, so assert it rather than trust the label. A label
+      # that silently resolves to the wrong architecture either emulates for
+      # hours or dies inside BuildKit with an unrelated message, and the image
+      # it would publish is the broken one this job exists to prevent.
+      - name: Confirm the runner is arm64
+        env:
+          WANT: arm64
+        run: |
+          set -euo pipefail
+          case "${RUNNER_ARCH}" in
+            X64)   got=amd64 ;;
+            ARM64) got=arm64 ;;
+            *)     got="${RUNNER_ARCH}" ;;
+          esac
+          if [[ "${got}" != "${WANT}" ]]; then
+            echo "::error::this job must run on ${WANT} but the runner is ${got};" \
+                 "nvcc compiles for the host, so it would publish an image of the wrong architecture"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        env:
+          PLATFORM: linux/arm64
+          DOCKER_IMAGE_NAME: ${{ inputs.image_name }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          DOCKER_BUILD_CONTEXT: ${{ inputs.build_context }}
+          BUILDX_METADATA: buildx-metadata.json
+        run: |
+          set -euo pipefail
+          make docker-buildx-native
+          # Read the digest buildx recorded rather than inspecting a tag:
+          # this leg pushes by digest and carries no tag, so there is nothing
+          # to inspect until the index is assembled.
+          digest=$(jq -r '."containerimage.digest" // empty' "${BUILDX_METADATA}")
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::buildx reported no usable digest for linux/arm64: '${digest}'"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build and Push Container
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    needs: [native-amd64, native-arm64]
+    # !cancelled() rather than a bare repository check, because both native
+    # jobs are skipped on the controller image's path and a skipped dependency
+    # would otherwise skip this job too. The explicit failure and cancellation
+    # tests are what keep a broken native leg from being assembled into an
+    # index and signed.
+    if: >-
+      !cancelled() &&
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     runs-on: linux-amd64-cpu32
-    timeout-minutes: 40
+    timeout-minutes: ${{ inputs.build_timeout_minutes }}
     permissions:
       contents: read
       packages: write
@@ -134,17 +365,49 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Assemble the index from the legs that already pushed, when the caller
+      # asked for native builds. Nothing is compiled here: imagetools create
+      # writes a manifest list referring to the two digests, so each child
+      # keeps the digest it was pushed under and the per-platform resolution
+      # and attestation below are unchanged.
+      - name: Assemble the multi-platform index
+        if: inputs.native_per_arch
+        env:
+          AMD64: ${{ needs.native-amd64.outputs.digest }}
+          ARM64: ${{ needs.native-arm64.outputs.digest }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          for v in AMD64 ARM64; do
+            eval "d=\${$v}"
+            if [[ ! "${d}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::the ${v} leg reported no usable digest ('${d}'); refusing to"
+              echo "::error::assemble an index that would be missing a platform"
+              exit 1
+            fi
+          done
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${IMAGE_TAG}" \
+            "${IMAGE_NAME}@${AMD64}" \
+            "${IMAGE_NAME}@${ARM64}"
+
       - name: Build and push
         id: push
         run: |
           set -euo pipefail
-          make docker-buildx
+          # Cross-compiled in one pass unless the legs above already built and
+          # pushed each architecture natively.
+          if [[ "${NATIVE_PER_ARCH}" != "true" ]]; then
+            make docker-buildx
+          fi
           # Capture the image digest for signing
           DIGEST=$(docker buildx imagetools inspect \
             "${IMAGE_NAME}:${IMAGE_TAG}" \
             --format '{{.Manifest.Digest}}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
         env:
+          NATIVE_PER_ARCH: ${{ inputs.native_per_arch }}
           # GHCR paths must be lowercase and github.repository expands to
           # uppercase 'NVIDIA/...', so the path is hardcoded. Keep in sync with
           # the Makefile, helm values.yaml, and pkg/setup/setup.go.

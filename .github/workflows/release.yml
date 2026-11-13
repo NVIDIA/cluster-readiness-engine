@@ -224,6 +224,16 @@ jobs:
       image_name: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
       dockerfile: images/cutlass-gemm/Dockerfile
       build_context: images/cutlass-gemm
+      # nvcc compiles for the host, so each architecture is built on a runner
+      # of that architecture and the two are assembled into one index. Without
+      # this the arm64 image would hold x86-64 binaries, which is a GB200 or
+      # GB300 node whose GPUs report nothing.
+      native_per_arch: true
+      # The amd64 CUTLASS compile was measured at 1h14m; the default 40 would
+      # kill it, and a skipped or failed build turns into a red release through
+      # image-attested. The arm64 leg compiles two GPU architecture families
+      # instead of six but on a smaller runner, so it gets the same budget.
+      build_timeout_minutes: 330
 
   gemm-attest-image-index:
     name: Attest GEMM index (signature + provenance)
