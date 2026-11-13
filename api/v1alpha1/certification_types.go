@@ -91,6 +91,14 @@ type CertificationCategoryStatus struct {
 	// +optional
 	WorkflowRef *WorkflowReference `json:"workflowRef,omitempty"`
 
+	// resolvedFabric is the network fabric this category's Workflow was
+	// rendered for: spec.fabric when set, otherwise the detected fabric or
+	// the platform default (ADR-110). It is recorded only where the fabric
+	// chose the render: when spec.fabric is set, or on AWS GB300, the one
+	// target the catalog renders for more than one fabric.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
+
 	// status is the current status of this category.
 	// Values: "Pending", "InProgress", "Succeeded", "Failed"
 	Status string `json:"status"`
@@ -644,6 +652,27 @@ type CertificationSpec struct {
 	// so it also replaces the scheduler a catalog entry hardcodes.
 	// +optional
 	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
+
+	// fabric selects the inter-node network fabric the workloads are rendered
+	// for: efa, ib, roce or tcpxo (ADR-110). It is a property of the cluster,
+	// so it applies to every category and cannot be set per category.
+	//
+	// When set, it is validated against the target nodes before any Workflow
+	// is created, and a mismatch fails the Certification with
+	// FabricValidationFailed rather than rendering pods that cannot schedule:
+	// efa needs vpc.amazonaws.com/efa allocatable on every target node, roce
+	// on AWS needs RoCE devices from the dra.networking.k8s.aws DRA driver on
+	// every target node, and the value must be one the catalog renders on the
+	// detected platform and GPU architecture (AWS GB300 renders roce and efa;
+	// every other target renders only its default fabric). ib and tcpxo have
+	// no cluster signal and are accepted as given.
+	//
+	// When unset, the controller detects the fabric on AWS GB300 from those
+	// same signals, and otherwise uses the platform default, which is the
+	// fabric NVCRE has always rendered there. The EFA device count requested
+	// per worker is read from node allocatable.
+	// +optional
+	Fabric Fabric `json:"fabric,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.
 	CategoryOptions `json:",inline"`

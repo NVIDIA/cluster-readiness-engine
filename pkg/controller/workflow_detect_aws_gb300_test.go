@@ -19,11 +19,12 @@ import (
 const testGPUArchGB300 = "gb300"
 
 // TestAWSGB300EFAStripInvariant asserts that every NCCL-using catalog entry,
-// after applying its overrides for the (platform=aws, gpuArchitecture=gb300)
-// context, produces a trainer container that does NOT leave the AWS EFA stack
-// active.
+// after applying its overrides for the (platform=aws, gpuArchitecture=gb300,
+// fabric=roce) context, produces a trainer container that does NOT leave the
+// AWS EFA stack active.
 //
-// AWS GB300 nodes use a RoCE fabric — they do NOT have EFA devices. Container
+// AWS GB300 nodes on a RoCE fabric do NOT have EFA devices (ADR-110 adds the
+// EFA fabric, which TestAWSGB300EFAFabricInvariant covers). Container
 // images such as nvcr.io/nvidia/pytorch:26.01-py3 ship /opt/amazon/aws-ofi-nccl
 // and export NCCL_NET_PLUGIN=ofi by default. Without an explicit strip, NCCL
 // initialization fails with "No eligible providers were found" and downstream
@@ -56,6 +57,7 @@ func TestAWSGB300EFAStripInvariant(t *testing.T) {
 		Platform:        testPlatformAWS,
 		GPUArchitecture: testGPUArchGB300,
 		WorkloadKind:    "trainJob",
+		Fabric:          string(nvcrev1alpha1.FabricRoCE),
 	}
 
 	var checked, skipped []string
@@ -114,6 +116,76 @@ func TestAWSGB300EFAStripInvariant(t *testing.T) {
 		len(checked), checked)
 	if len(skipped) > 0 {
 		t.Logf("skipped %d non-buildable entries: %v", len(skipped), skipped)
+	}
+}
+
+// TestAWSGB300EFAFabricInvariant is the EFA-fabric counterpart of
+// TestAWSGB300EFAStripInvariant (ADR-110). For every NCCL-using catalog entry
+// resolved for AWS GB300 with fabric efa, the Workflow must request EFA
+// devices, select the EFA libfabric provider, request no RoCE claim, and keep
+// the AWS-OFI-NCCL stack instead of stripping it.
+//
+// The override context is built by buildOverrideContext, the function every
+// controller and CLI path calls, so this also pins that a when.fabric matcher
+// actually fires: a matcher that only parsed would leave the RoCE arm in
+// place and every assertion below would fail.
+func TestAWSGB300EFAFabricInvariant(t *testing.T) {
+	configs := []catalog.BuildConfig{
+		{NodesPerJob: 1, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300, EFAPerNode: 2},
+		{NodesPerJob: 4, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300, EFAPerNode: 2},
+		{NodesPerJob: 8, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300, EFAPerNode: 2},
+		{NodesPerJob: 32, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300, EFAPerNode: 2},
+		{NodesPerJob: 128, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300, EFAPerNode: 2},
+	}
+	target := nvcrev1alpha1.TargetSpec{NodeSelector: map[string]string{testGPUProductLabel: "NVIDIA-GB300"}}
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		DetectedPlatform:        testPlatformAWS,
+		DetectedGPUArchitecture: testGPUArchGB300,
+	}
+
+	var checked []string
+	for _, info := range catalog.List() {
+		name := info.Domain + "/" + info.Variant
+		entry := catalog.Lookup(info.Domain, info.Variant)
+		spec, err := buildWithFallback(entry, target, configs)
+		if err != nil || !entryUsesNCCL(spec) {
+			continue
+		}
+		octx := buildOverrideContext(&spec, orch, nil, string(nvcrev1alpha1.FabricEFA))
+		if err := applyOverrides(&spec, octx); err != nil {
+			t.Errorf("%s: applyOverrides failed: %v", name, err)
+			continue
+		}
+		// Only what was applied counts; the unmatched blocks (the RoCE arm,
+		// other platforms) stay in the list until a caller prunes them.
+		spec.Overrides = nil
+		raw, err := json.Marshal(spec)
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", name, err)
+		}
+		rendered := string(raw)
+		for _, want := range []string{`"vpc.amazonaws.com/efa":"2"`, "FI_PROVIDER"} {
+			if !strings.Contains(rendered, want) {
+				t.Errorf("%s: AWS GB300 EFA render lacks %s", name, want)
+			}
+		}
+		for _, unwanted := range []string{"roce.networking.k8s.aws", "rm -rf /opt/amazon", "unset NCCL_NET_PLUGIN", "hugepages"} {
+			if strings.Contains(rendered, unwanted) {
+				t.Errorf("%s: AWS GB300 EFA render carries %q", name, unwanted)
+			}
+		}
+		checked = append(checked, name)
+	}
+	for _, c := range []string{
+		"communication/nccl-all-gather",
+		"communication/nccl-all-reduce",
+		"communication/nccl-alltoall",
+		"communication/nccl-loopback",
+		"communication/nccl-loopback-nvswitch",
+		"training/nemotron5-56b",
+		"training/nemotron5-8b",
+	} {
+		mustContain(t, checked, c)
 	}
 }
 
@@ -195,7 +267,7 @@ func hasAWSGB300When(w nvcrev1alpha1.WhenSpec) bool {
 	if w.Platform == nil || w.GPUArchitecture == nil {
 		return false
 	}
-	platformMatches := w.Platform.Equals == "aws" || containsString(w.Platform.In, "aws")
+	platformMatches := w.Platform.Equals == testPlatformAWS || containsString(w.Platform.In, testPlatformAWS)
 	archMatches := w.GPUArchitecture.Equals == testGPUArchGB300 ||
 		containsString(w.GPUArchitecture.In, testGPUArchGB300)
 	return platformMatches && archMatches

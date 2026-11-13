@@ -1,0 +1,9 @@
+# The platform overrides for an MPI WorkloadRun whose fabric resolved to efa.
+# The AWS GB300 EFA block restates the worker's capability list and renders
+# only at fabric efa, so overrides-mpi, which leaves the fabric unset, never
+# walks it (ADR-110).
+source: overrides
+frameworkType: mpi
+fabric: efa
+nodesPerJob: 2
+gpusPerNode: 8

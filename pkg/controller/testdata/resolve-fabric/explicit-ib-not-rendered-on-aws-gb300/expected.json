@@ -1,0 +1,8 @@
+{
+  "fabric": "ib",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"ib\" is not rendered for platform \"aws\" and GPU architecture \"gb300\"; NVCRE renders roce or efa there"
+}

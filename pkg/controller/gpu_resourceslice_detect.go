@@ -137,20 +137,9 @@ func CountDRAGPUs(ctx context.Context, reader client.Reader) (map[string]int32, 
 		return nil, err
 	}
 
-	newest := map[string]int64{}
-	for _, rs := range slices.Items {
-		if rs.Spec.Driver != gpuResourceSliceDriver {
-			continue
-		}
-		if g, ok := newest[rs.Spec.Pool.Name]; !ok || rs.Spec.Pool.Generation > g {
-			newest[rs.Spec.Pool.Name] = rs.Spec.Pool.Generation
-		}
-	}
-
 	counts := map[string]int32{}
-	for _, rs := range slices.Items {
-		if rs.Spec.Driver != gpuResourceSliceDriver || rs.Spec.NodeName == nil ||
-			rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name] {
+	for _, rs := range currentPoolSlices(slices.Items, gpuResourceSliceDriver) {
+		if rs.Spec.NodeName == nil {
 			continue
 		}
 		for _, d := range rs.Spec.Devices {
@@ -161,4 +150,26 @@ func CountDRAGPUs(ctx context.Context, reader client.Reader) (map[string]int32, 
 		}
 	}
 	return counts, nil
+}
+
+// currentPoolSlices returns the slices driver publishes in the newest
+// generation of their pool. Older generations of a pool are stale by the
+// ResourcePool contract, so a device that only they carry is no longer there.
+func currentPoolSlices(items []resourcev1.ResourceSlice, driver string) []resourcev1.ResourceSlice {
+	newest := map[string]int64{}
+	for _, rs := range items {
+		if rs.Spec.Driver != driver {
+			continue
+		}
+		if g, ok := newest[rs.Spec.Pool.Name]; !ok || rs.Spec.Pool.Generation > g {
+			newest[rs.Spec.Pool.Name] = rs.Spec.Pool.Generation
+		}
+	}
+	var out []resourcev1.ResourceSlice
+	for _, rs := range items {
+		if rs.Spec.Driver == driver && rs.Spec.Pool.Generation >= newest[rs.Spec.Pool.Name] {
+			out = append(out, rs)
+		}
+	}
+	return out
 }

@@ -69,6 +69,8 @@ overrides:
 
 Template variables like `{{ .NodesPerJob }}` and `{{ .GpusPerNode }}` are resolved at render time from the detected cluster and any flag overrides.
 
+A `when` clause can match `platform`, `gpuArchitecture`, `workloadKind`, `topology`, `fabric` and a CEL `expression`. `fabric` matches the resolved network fabric (`efa`, `ib`, `roce`, `tcpxo`); see [Network fabric](../concepts/platform-detection.md#network-fabric). Use it only where one platform and architecture renders more than one fabric. Every other override can leave it unset and match whatever the fabric is.
+
 ## Minimal example
 
 ```yaml

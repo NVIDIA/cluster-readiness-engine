@@ -325,6 +325,18 @@ type WorkloadRunSpec struct {
 	// +optional
 	EnableMNNVL *bool `json:"enableMNNVL,omitempty"`
 
+	// fabric selects the inter-node network fabric the platform overrides
+	// render for: efa, ib, roce or tcpxo (ADR-110). When set, it is
+	// validated against the target nodes, and a mismatch fails the WorkloadRun
+	// with FabricValidationFailed: efa needs vpc.amazonaws.com/efa
+	// allocatable on every target node, roce on AWS needs RoCE devices from
+	// the dra.networking.k8s.aws DRA driver on every target node, and the
+	// value must be one NVCRE renders on the detected platform and GPU
+	// architecture. When unset, the fabric is detected on AWS GB300 and is
+	// otherwise the platform default.
+	// +optional
+	Fabric Fabric `json:"fabric,omitempty"`
+
 	// checkpoint configures checkpoint storage. When set, provisions a PVC
 	// and enables checkpoint-based restart.
 	// +optional
@@ -447,6 +459,13 @@ type WorkloadRunStatus struct {
 	// resolvedGpusPerNode is the final GPU count per node used for the workload.
 	// +optional
 	ResolvedGpusPerNode int32 `json:"resolvedGpusPerNode,omitempty"`
+
+	// resolvedFabric is the network fabric the Workflow was rendered for:
+	// spec.fabric when set, otherwise the detected fabric or the platform
+	// default (ADR-110). It is recorded only where the fabric chose the
+	// render: when spec.fabric is set, or on AWS GB300.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
 
 	// succeededNodesRef references the ConfigMap holding the underlying Workflow's
 	// succeeded-nodes list (comma-separated node names).

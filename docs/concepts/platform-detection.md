@@ -31,9 +31,23 @@ Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have n
 
 The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. `nvcrectl workflow render` and `nvcrectl certification render`, offline or with `--dry-run`, also write these values as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on each rendered Workflow for inspection. An offline `certification render` detects from a synthetic node built from `--platform`, `--gpu-arch` and the target `nodeSelector`. Without `--platform` that node has no `providerID`, so it detects as `onprem` and the on-prem overrides apply, unless the `nodeSelector` carries a Forge marker (`nke.nvidia.com/site-name`, or a `kubernetes.io/hostname` containing `forge`): the node then detects as `forge`, with or without `--platform onprem`.
 
+## Network fabric
+
+Most targets are built one way, so their fabric follows from the platform and GPU architecture: EFA on AWS, InfiniBand on Azure, Forge, TogetherAI, Mistral and Nscale, RoCE on OCI and on GCP GB200/GB300, TCPXO on GCP H100. AWS GB300 (`p6e-gb300r.36xlarge`) is the exception. A RoCE rack exposes its NICs only through the AWS networking DRA driver, while a stock EKS cluster has the EFA device plugin and no RoCE devices. The instance type is the same, so NVCRE resolves the fabric instead ([ADR-110](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/110-fabric-selection.md)):
+
+1. **`spec.fabric` set** (`efa`, `ib`, `roce` or `tcpxo`, on Certification or WorkloadRun): used after validation against the target nodes. A value the nodes cannot carry fails the run with `FabricValidationFailed` and never falls back to a detected fabric. `efa` needs `vpc.amazonaws.com/efa` allocatable on every target node. `roce` on AWS needs RoCE devices from the `dra.networking.k8s.aws` driver on every target node. The value must also be one NVCRE renders on the target: AWS GB300 renders `roce` or `efa`, and every other target only its usual fabric.
+2. **Unset, on AWS GB300:** detected. Every node advertising `vpc.amazonaws.com/efa` and none with RoCE devices gives `efa`; the reverse gives `roce`. The RoCE signal is a ResourceSlice whose `spec.driver` is `dra.networking.k8s.aws` with a device whose `dra.vpc.amazonaws.com/deviceType` is `roce`. `roce.networking.k8s.aws` is the DeviceClass, not the driver.
+3. **Otherwise:** the platform default above, which is what NVCRE has always rendered. Conflicting or partial signals on AWS GB300 also fall back to it, as does a refused ResourceSlice list, with a Normal `FabricDetection` event that says what was found.
+
+The target nodes in all three steps are the ones the job can run on: a Certification or WorkloadRun leaves out nodes of other GPU architectures and nodes without the GPUs the run requests, so a node that never runs the job cannot fail an explicit value or tip detection.
+
+The EFA device count is read from node allocatable, the smallest across the target nodes, so every node can satisfy it. The resolved fabric is recorded as `resolvedFabric` in the Certification category status or WorkloadRun status, and as the `nvcrectl.nvidia.com/detected-fabric` render annotation, wherever it chose the render. A hand-written Workflow that matches on `when.fabric` records it as `status.orchestration.resolvedFabric`. `nvcrectl certification render` and `nvcrectl workloadrun render` take `--fabric` to choose offline. The value set matches the one AICR emits ([AICR ADR-028](https://github.com/NVIDIA/aicr/pull/3506)).
+
+Catalog overrides match the resolved fabric with `when.fabric`, a string matcher like `when.platform`. Only the AWS GB300 overrides use it, so every other override matches whatever the fabric is.
+
 ## Override matching
 
-Catalog entries define a base `WorkflowSpec`. Overrides are matched by platform + GPU architecture and applied in order. Two patch mechanisms are supported:
+Catalog entries define a base `WorkflowSpec`. Overrides are matched by platform, GPU architecture and, where it matters, fabric, and applied in order. Two patch mechanisms are supported:
 
 ### `jobTemplate` (strategic merge patch)
 
@@ -79,7 +93,8 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 |-------------|---------|-------------|--------------|
 | GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, ComputeDomain |
 | GB200 | Azure | InfiniBand | NIC request (`nvidia.com/mlnxnics`, or `nicResourceName` when set), topo ConfigMap, ComputeDomain |
-| GB300 | AWS | RoCE | `roce-channel` resource claim (DRA), no hugepages, no EFA |
+| GB300 | AWS | RoCE (default; see [Network fabric](#network-fabric)) | `roce-channel` resource claim (DRA), no hugepages, no EFA |
+| GB300 | AWS | EFA (`fabric: efa`, or detected on stock EKS) | `vpc.amazonaws.com/efa` at the allocatable count (1 or 2 on p6e-gb300r), no hugepages, no RoCE claim, aws-ofi-nccl kept |
 | GB300 | Azure | InfiniBand | NIC request (`nvidia.com/mlnxnics`, or `nicResourceName` when set), topo ConfigMap, ComputeDomain |
 | B300 | AWS | EFA | `vpc.amazonaws.com/efa: 16` (p6-b300.48xlarge: card 0 is ENA-only), no hugepages, same EFA env as H100 |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |

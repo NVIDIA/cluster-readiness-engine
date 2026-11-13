@@ -1,0 +1,16 @@
+fabric: roce
+overrides:
+  - when:
+      fabric:
+        equals: efa
+    jobTemplate:
+      metadata:
+        labels:
+          marker: echo-efa
+  - when:
+      fabric:
+        equals: roce
+    jobTemplate:
+      metadata:
+        labels:
+          marker: echo-roce

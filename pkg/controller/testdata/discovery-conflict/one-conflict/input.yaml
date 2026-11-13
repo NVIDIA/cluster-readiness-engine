@@ -1,0 +1,6 @@
+# The write that ends discovery is rejected once with a 409. The groups, the
+# detected platform, the resolved fabric and the dependency ref must survive
+# the re-fetch. Discovery may run up to three times; with the state persisted
+# the first time, the second and third runs are skipped.
+conflicts: 1
+reconciles: 3
