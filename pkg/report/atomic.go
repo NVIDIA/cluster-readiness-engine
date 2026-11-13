@@ -65,7 +65,11 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	}
 	path = resolved
 
+	// The mode an existing destination already has, so replacing it does not
+	// widen it. Zero when there is nothing there.
+	var existingPerm os.FileMode
 	if info, statErr := os.Lstat(path); statErr == nil {
+		existingPerm = info.Mode().Perm()
 		if info.IsDir() {
 			// Caught here so the error names the problem. Left to the rename, it
 			// surfaces on macOS as "file exists", which reads as a stale temporary
@@ -117,6 +121,25 @@ func writeFileAtomic(path string, data []byte) (err error) {
 		return fmt.Errorf(
 			"write %s: could not create a temporary file in %s, which writing atomically requires: %w",
 			path, dir, err)
+	}
+
+	// Carry the destination's own permissions onto the replacement.
+	//
+	// A rename publishes the temporary file's mode, and createTemp makes it
+	// 0644. os.WriteFile, which this replaced, left an existing file's mode
+	// alone. So a results file an operator had deliberately restricted to 0600
+	// came back world-readable after the next run, and the results are exactly
+	// the thing worth restricting. Chmod rather than opening with the mode,
+	// because O_CREATE's mode is masked by umask and this must not be.
+	if existingPerm != 0 && existingPerm != reportFilePerm {
+		if err := tmp.Chmod(existingPerm); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+			return fmt.Errorf(
+				"write %s: could not carry the existing file's permissions (%v) onto the "+
+					"replacement, and publishing it would have widened them: %w",
+				path, existingPerm, err)
+		}
 	}
 	tmpName := tmp.Name()
 	defer func() {

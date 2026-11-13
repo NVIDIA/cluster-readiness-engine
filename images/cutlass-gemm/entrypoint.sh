@@ -373,7 +373,11 @@ for ((d = 0; d < GPU_COUNT; d++)); do
     verdict="BELOW FLOOR"
     failed=1
     below_floor=$(( below_floor + 1 ))
-  elif (( FAILED_SWEEPS[d] > 0 )) && (( error_pct > NVCRE_GEMM_MAX_ERROR_PERCENT )); then
+  # Compared as a cross-product, not on error_pct. That value is integer
+  # division, so 2 failures in 19 sweeps floors to 10 and slips past a limit of
+  # 10 even though the real rate is 10.5%. error_pct is for the log line only.
+  elif (( FAILED_SWEEPS[d] > 0 )) && \
+       (( FAILED_SWEEPS[d] * 100 > NVCRE_GEMM_MAX_ERROR_PERCENT * total_sweeps )); then
     verdict="ERRORING"
     failed=1
     erroring=$(( erroring + 1 ))

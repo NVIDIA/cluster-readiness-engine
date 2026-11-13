@@ -17,7 +17,9 @@
         "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
       },
       "ownedBy": "",
-      "dataKeys": null,
+      "dataKeys": [
+        "rowCount"
+      ],
       "binaryKeys": null
     },
     {
@@ -29,7 +31,9 @@
         "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
       },
       "ownedBy": "",
-      "dataKeys": null,
+      "dataKeys": [
+        "rowCount"
+      ],
       "binaryKeys": null
     },
     {

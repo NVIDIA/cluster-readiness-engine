@@ -88,6 +88,23 @@ func TestReconcileComponentResults(t *testing.T) {
 			// seals a read failure has to preserve the count the group already
 			// copied rather than overwrite it with zero.
 			PriorSealShards int32 `yaml:"priorSealShards"`
+			// PriorSealShardsWritten is how many of those shards actually made
+			// it onto the cluster. Defaults to all of them. Fewer is the case
+			// that matters: the seal is written BEFORE the first shard, so a
+			// Job that reached Writing and then failed its writes holds a
+			// count backed by nothing.
+			PriorSealShardsWritten *int32 `yaml:"priorSealShardsWritten"`
+			// LogReadFails makes every log read fail with an ordinary error
+			// rather than a pagination failure. That distinction decides
+			// whether the read is retried: an unpageable log fails the same
+			// way every time, so retrying it only delays the group.
+			LogReadFails bool `yaml:"logReadFails"`
+			// LogReadFailsForPod fails only pods whose name contains this, so a
+			// case can have rows from one pod and a failed read on another.
+			LogReadFailsForPod string `yaml:"logReadFailsForPod"`
+			// SecondWorker adds a second worker pod, so a case can have two
+			// pods that are both read.
+			SecondWorker bool `yaml:"secondWorker"`
 			// TerminalAge backdates the Job's terminal condition. A read that
 			// fails is retried until componentSealGracePeriod has passed since
 			// the Job went terminal, so a case that wants the sealing path has
@@ -158,11 +175,28 @@ func TestReconcileComponentResults(t *testing.T) {
 			Labels: map[string]string{
 				podread.JobLabel:       jobName,
 				jobSetNameLabel:        jobName + "-workload",
-				replicatedJobNameLabel: "node",
+				replicatedJobNameLabel: labelNode,
 			},
 			Spec:   corev1.PodSpec{NodeName: "gpu-node-1"},
 			Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
 		}
+		// A second worker, when a case needs two pods that are both read, so
+		// that one can fail while the other produces rows. Labelled exactly as
+		// the first is, because the cached read selects on the job label.
+		var extraWorker *corev1.Pod
+		if input.SecondWorker {
+			extraWorker = &corev1.Pod{
+				Name: jobName + "-workload-worker-1", Namespace: ns,
+				Labels: map[string]string{
+					podread.JobLabel:       jobName,
+					jobSetNameLabel:        jobName + "-workload",
+					replicatedJobNameLabel: labelNode,
+				},
+				Spec:   corev1.PodSpec{NodeName: "gpu-node-2"},
+				Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
+			}
+		}
+
 		launcher := &corev1.Pod{
 			Name: jobName + "-workload-" + testLauncherJob + "-0", Namespace: ns,
 			Labels: map[string]string{
@@ -191,12 +225,19 @@ func TestReconcileComponentResults(t *testing.T) {
 		}
 
 		objs := []client.Object{job.DeepCopy(), worker, launcher}
+		if extraWorker != nil {
+			objs = append(objs, extraWorker)
+		}
 		// Seed the shards that seal claims. On a real cluster they are there:
 		// the seal was written before the first shard, and the writes that
 		// followed are what succeeded before the workload went away. A fixture
 		// that omitted them would record the invariant against a state that
 		// cannot occur.
-		for i := range int(input.PriorSealShards) {
+		written := input.PriorSealShards
+		if input.PriorSealShardsWritten != nil {
+			written = *input.PriorSealShardsWritten
+		}
+		for i := range int(written) {
 			cm := &corev1.ConfigMap{}
 			cm.Name = shardName(shardNameStem(workflowUID, jobName), i)
 			cm.Namespace = ns
@@ -206,6 +247,10 @@ func TestReconcileComponentResults(t *testing.T) {
 				labelShardKind:                 shardKindRows,
 				"app.kubernetes.io/managed-by": managedByValue,
 			}
+			// rowCount as a real shard carries it: the reconciliation sums this
+			// rather than decoding payloads, so a fixture without it would
+			// record the invariant against a shard shape that cannot occur.
+			cm.Data = map[string]string{shard.RowCountKey: "10"}
 			objs = append(objs, cm)
 		}
 		if !input.NoWorkflow {
@@ -240,10 +285,13 @@ func TestReconcileComponentResults(t *testing.T) {
 
 		logText := input.Log
 		r := &JobReconciler{
-			Client:     c,
-			APIReader:  c,
-			Scheme:     scheme,
-			LogFetcher: staticLogFetcher{log: &logText, truncated: input.Truncated},
+			Client:    c,
+			APIReader: c,
+			Scheme:    scheme,
+			LogFetcher: staticLogFetcher{
+				log: &logText, truncated: input.Truncated, failRead: input.LogReadFails,
+				failReadFor: input.LogReadFailsForPod,
+			},
 		}
 
 		live := &nvcrev1alpha1.Job{}

@@ -34,7 +34,14 @@ DOCKER_BUILD_CONTEXT ?= .
 # Scratch names, derived from the Dockerfile so two concurrent builds in one
 # workspace cannot delete each other's builder or temporary file. The previous
 # constants meant the first `make docker-buildx` to exit removed the other's.
-BUILDX_BUILDER ?= nvcre-builder-$(notdir $(DOCKERFILE))
+# Derived from the full Dockerfile path, not its basename. Every Dockerfile in
+# this repository is named "Dockerfile", so a basename gave the manager build
+# and the harness build the same builder, and each recipe's trap removes the
+# builder it used on exit. Two builds running at once would then have one
+# delete the other's builder mid-build, which surfaces as an unrelated BuildKit
+# error. Separators become dashes because a builder name takes only
+# alphanumerics, dashes and underscores.
+BUILDX_BUILDER ?= nvcre-builder-$(subst .,-,$(subst /,-,$(DOCKERFILE)))
 DOCKERFILE_CROSS ?= $(DOCKERFILE).cross
 
 # Helm chart directory (used by manifests and helm-* targets).

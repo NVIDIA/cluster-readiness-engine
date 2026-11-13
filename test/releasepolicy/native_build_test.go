@@ -173,3 +173,32 @@ func makeRecipe(t *testing.T, body, target string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// TestBuildersAreDistinctPerDockerfile pins that two concurrent builds do not
+// share a buildx builder.
+//
+// Every Dockerfile in this repository is named "Dockerfile", so deriving the
+// builder name from the basename gave the controller build and the harness
+// build the same one. Each recipe's trap removes the builder it used on exit,
+// so two builds running at once had one delete the other's mid-build, which
+// surfaces as an unrelated BuildKit error rather than as a name collision.
+func TestBuildersAreDistinctPerDockerfile(t *testing.T) {
+	raw, err := os.ReadFile("../../Makefile")
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	line := regexp.MustCompile(`(?m)^BUILDX_BUILDER\s*\?=\s*(.+)$`).FindStringSubmatch(string(raw))
+	if line == nil {
+		t.Fatal("the Makefile no longer sets BUILDX_BUILDER; if it moved, update this test")
+	}
+	def := line[1]
+	if strings.Contains(def, "notdir") {
+		t.Errorf("BUILDX_BUILDER is %q, which uses notdir. Every Dockerfile here is "+
+			"named \"Dockerfile\", so that gives concurrent builds the same builder and "+
+			"each recipe's trap deletes the other's.", def)
+	}
+	if !strings.Contains(def, "DOCKERFILE") {
+		t.Errorf("BUILDX_BUILDER is %q, which does not depend on the Dockerfile at all, "+
+			"so every build shares one builder", def)
+	}
+}

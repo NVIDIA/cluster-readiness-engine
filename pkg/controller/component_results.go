@@ -147,28 +147,39 @@ func (r *JobReconciler) reconcileComponentResults(
 	}
 
 	result, produceErr := r.produceComponentRows(ctx, job)
-	if produceErr != nil && result.rows == nil {
-		message := truncateMessage(produceErr.Error())
 
-		// Retry first, inside the same window the group gives this Job. A pod
-		// log read fails transiently for ordinary reasons: the API server is
-		// briefly unavailable, or the pod is terminating and its logs are not
-		// servable for a moment. Sealing on the first error made every one of
-		// those permanent, recorded the run as having produced nothing, and
-		// did so at the one moment a retry was most likely to succeed.
-		//
-		// Bounded by componentSealGracePeriod from the Job going terminal,
-		// which is exactly how long completeTerminalGroup waits for this seal,
-		// so the retry cannot outlive the thing waiting on it. A Job with no
-		// terminal timestamp to measure from is sealed rather than retried: an
-		// unbounded retry here would hold the group open indefinitely.
+	// Retry a transient read before sealing anything, whether or not some pods
+	// already produced rows.
+	//
+	// A pod log read fails transiently for ordinary reasons: the API server is
+	// briefly unavailable, or the pod is terminating and its logs are not
+	// servable for a moment. Sealing on the first error made every one of
+	// those permanent at the one moment a retry was most likely to succeed.
+	// Gating the retry on having read NOTHING was the narrower mistake inside
+	// that one: a node whose eighth pod failed while seven succeeded has rows,
+	// so it took the sealing path and the result set was finalised one pod
+	// short, with the terminal phase then blocking any later read.
+	//
+	// ErrLogUnpageable is excluded deliberately. A log that cannot be paged
+	// fails the same way on every attempt, so retrying it only delays the
+	// group for the whole grace period before recording the same thing.
+	//
+	// Bounded by componentSealGracePeriod from the Job going terminal, which is
+	// exactly how long completeTerminalGroup waits for this seal, so the retry
+	// cannot outlive the thing waiting on it. A Job with no terminal timestamp
+	// to measure from is sealed rather than retried: an unbounded retry here
+	// would hold the group open indefinitely.
+	if produceErr != nil && !errors.Is(produceErr, podlogs.ErrLogUnpageable) {
 		if start := drainStart(job); start != nil &&
 			time.Since(start.Time) <= componentSealGracePeriod {
-			log.Error(produceErr, "Could not produce component result rows; will retry",
-				"within", componentSealGracePeriod)
+			log.Error(produceErr, "A component result log could not be read; will retry",
+				"within", componentSealGracePeriod, "rowsSoFar", len(result.rows))
 			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 		}
+	}
 
+	if produceErr != nil && result.rows == nil {
+		message := truncateMessage(produceErr.Error())
 		log.Error(produceErr, "Could not produce component result rows; sealing partial")
 
 		// Merge into whatever is already sealed rather than replacing it.
@@ -183,6 +194,33 @@ func (r *JobReconciler) reconcileComponentResults(
 		if prev := job.Status.ComponentResults; prev != nil &&
 			prev.Phase != nvcrev1alpha1.ComponentResultsNone {
 			owed = prev.DeepCopy()
+			// The earlier seal's counts are a claim, not a receipt. It is
+			// written BEFORE the first shard, so a Job that reached Writing and
+			// then failed every shard write holds a positive ShardCount backed
+			// by nothing. Carrying that forward hands nvcrectl a total it can
+			// never satisfy and the category's bundle is refused permanently,
+			// which is the same failure as dropping the count, reached from the
+			// other side.
+			//
+			// So the counts are reconciled against what is actually on the
+			// cluster. Fewer shards than claimed is the normal outcome here.
+			if owed.ShardCount > 0 {
+				gotShards, gotRows, err := r.observedShards(
+					ctx, job.Namespace, shardNameStem(string(workflow.UID), job.Name),
+					owed.ShardCount)
+				if err != nil {
+					// Requeued rather than sealed on a guess: this runs inside
+					// the grace period's tail and a wrong count here is
+					// permanent.
+					log.Error(err, "Could not confirm which component result shards exist; will retry")
+					return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
+				}
+				if gotShards != owed.ShardCount {
+					log.Info("Lowering a seal to the shards that were actually written",
+						"claimed", owed.ShardCount, "observed", gotShards)
+				}
+				owed.ShardCount, owed.RowCount = gotShards, gotRows
+			}
 		}
 		// Writing, not Partial, and the order matters as much here as on
 		// the normal path below. Partial is terminal, so the short-circuit
@@ -277,6 +315,39 @@ func (r *JobReconciler) reconcileComponentResults(
 	final := sealed.DeepCopy()
 	final.Phase = phase
 	return ctrl.Result{}, r.sealComponentResults(ctx, job, final)
+}
+
+// observedShards counts the row shards that actually exist for a stem, and the
+// rows they hold, up to the number a seal claimed.
+//
+// By name rather than by selector, for the same reason deleteComponentShards
+// is: the controller's ConfigMap grant has no list and no watch. Row counts
+// come from each shard's data block rather than from decoding its payload,
+// which is what the block carries them for.
+//
+// A read error is returned rather than swallowed. Guessing low would shrink a
+// seal that was in fact complete, and guessing high would reinstate the
+// mismatch this exists to avoid.
+func (r *JobReconciler) observedShards(
+	ctx context.Context, namespace, stem string, claimed int32,
+) (int32, int64, error) {
+	var shards int32
+	var rows int64
+	for i := range int(claimed) {
+		cm := &corev1.ConfigMap{}
+		key := client.ObjectKey{Namespace: namespace, Name: shardName(stem, i)}
+		if err := r.Get(ctx, key, cm); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return 0, 0, fmt.Errorf("read shard %s: %w", key.Name, err)
+		}
+		shards++
+		if n, err := strconv.ParseInt(cm.Data[shard.RowCountKey], 10, 64); err == nil {
+			rows += n
+		}
+	}
+	return shards, rows, nil
 }
 
 // componentResultsSealed reports whether a phase is terminal. Writing is not:

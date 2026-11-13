@@ -47,6 +47,7 @@ func TestWriteFileAtomicKeepsNonRegularDestinations(t *testing.T) {
 		// ten-minute test timeout, which in CI reads as a stuck job rather
 		// than as this assertion failing.
 		const wait = 15 * time.Second
+		const payload = "hello"
 
 		read := make(chan string, 1)
 		go func() {
@@ -59,7 +60,7 @@ func TestWriteFileAtomicKeepsNonRegularDestinations(t *testing.T) {
 		}()
 
 		wrote := make(chan error, 1)
-		go func() { wrote <- WriteFileAtomic(fifo, []byte("hello")) }()
+		go func() { wrote <- WriteFileAtomic(fifo, []byte(payload)) }()
 
 		select {
 		case err := <-wrote:
@@ -83,7 +84,7 @@ func TestWriteFileAtomicKeepsNonRegularDestinations(t *testing.T) {
 
 		select {
 		case got := <-read:
-			if got != "hello" {
+			if got != payload {
 				t.Errorf("the FIFO's reader got %q, want %q", got, "hello")
 			}
 		case <-time.After(wait):
@@ -106,6 +107,67 @@ func TestWriteFileAtomicKeepsNonRegularDestinations(t *testing.T) {
 		}
 		if info.Mode().IsRegular() {
 			t.Fatalf("%s was replaced by a regular file", os.DevNull)
+		}
+	})
+}
+
+// TestWriteFileAtomicPreservesExistingPermissions pins that replacing a file
+// does not widen its mode.
+//
+// A rename publishes the temporary file's permissions, and the temporary file
+// is created 0644. os.WriteFile, which this replaced, left an existing file's
+// mode alone, so a results file an operator had restricted to 0600 came back
+// world-readable after the next run. Results are exactly the artifact worth
+// restricting, which makes this a disclosure rather than an inconvenience.
+// replacement is the payload these cases write.
+const replacement = "new"
+
+func TestWriteFileAtomicPreservesExistingPermissions(t *testing.T) {
+	for _, mode := range []os.FileMode{0o600, 0o640, 0o400} {
+		t.Run(mode.String(), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "results.json")
+			if err := os.WriteFile(path, []byte("old"), mode); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			// Guard against a umask having already widened the seed, which
+			// would make the assertion below vacuous.
+			if before, err := os.Stat(path); err != nil {
+				t.Fatalf("stat seed: %v", err)
+			} else if before.Mode().Perm() != mode {
+				t.Skipf("the filesystem gave the seed %v, not %v", before.Mode().Perm(), mode)
+			}
+
+			if err := WriteFileAtomic(path, []byte(replacement)); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+
+			after, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat: %v", err)
+			}
+			if got := after.Mode().Perm(); got != mode {
+				t.Errorf("permissions changed from %v to %v; a reader who could not see "+
+					"the previous file's contents can see these", mode, got)
+			}
+			b, err := os.ReadFile(path)
+			if err != nil || string(b) != replacement {
+				t.Errorf("content not replaced: %q err=%v", b, err)
+			}
+		})
+	}
+
+	// A file that does not exist yet gets the default, not 0000.
+	t.Run("new file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "results.json")
+		if err := WriteFileAtomic(path, []byte("x")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if info.Mode().Perm() == 0 {
+			t.Error("a new report file has no permissions at all")
 		}
 	})
 }

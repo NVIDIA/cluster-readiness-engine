@@ -1,0 +1,46 @@
+{
+  "requeued": false,
+  "sealPhase": "Partial",
+  "sealShardCount": 1,
+  "sealRowCount": 10,
+  "sealedAtSet": true,
+  "truncations": [
+    "LogUnpageable count=0 message=\"log cannot be read in full: line without a timestamp in a truncated page\""
+  ],
+  "shardObjects": [
+    {
+      "name": "shard-01234567-wf-group-0-iter-1-0000",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/job": "wf-group-0-iter-1",
+        "nvcre.nvidia.com/shard-kind": "rows",
+        "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
+      },
+      "ownedBy": "",
+      "dataKeys": [
+        "rowCount"
+      ],
+      "binaryKeys": null
+    },
+    {
+      "name": "shard-01234567-wf-group-0-iter-1-truncation",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/job": "wf-group-0-iter-1",
+        "nvcre.nvidia.com/shard-kind": "truncation",
+        "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
+      },
+      "ownedBy": "Workflow/wf",
+      "dataKeys": [
+        "formatVersion",
+        "rowCount"
+      ],
+      "binaryKeys": [
+        "truncation.ndjson.gz"
+      ],
+      "dropped": [
+        "LogUnpageable node= component= index=0 count=0 message=\"log cannot be read in full: line without a timestamp in a truncated page\""
+      ]
+    }
+  ]
+}

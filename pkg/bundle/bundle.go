@@ -151,6 +151,49 @@ type TruncationRecord struct {
 // are on disk and hashed. An interrupted write therefore leaves a directory
 // with no manifest, which the reader refuses, rather than a manifest that
 // certifies files that are not all there.
+// realPath makes a path absolute and resolves symlinks through it, as far as
+// the path exists.
+//
+// A lexical comparison is not enough for the containment check. If /tmp/alias
+// links to the bundle directory /tmp/out, then /tmp/alias/junit.xml yields
+// "../alias/junit.xml" from filepath.Rel and reads as outside, while the
+// writer resolves the parent and creates the file inside the bundle. The
+// bundle then holds a file its manifest does not list, which is exactly the
+// invalidation the check exists to prevent, and the command still reports
+// success.
+//
+// Neither path need exist yet: the nearest existing ancestor is resolved and
+// the remaining components are appended, which is what makes this usable
+// before the directory is created.
+func realPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	rest := ""
+	probe := abs
+	for {
+		resolved, err := filepath.EvalSymlinks(probe)
+		if err == nil {
+			if rest == "" {
+				return resolved, nil
+			}
+			return filepath.Join(resolved, rest), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			// Reached the root without finding anything that exists, so there
+			// is nothing to resolve and the lexical form is the answer.
+			return abs, nil
+		}
+		rest = filepath.Join(filepath.Base(probe), rest)
+		probe = parent
+	}
+}
+
 // ExportPath is one of a command's other output paths, named by its flag so a
 // refusal can say which one is in the way.
 type ExportPath struct {
@@ -174,7 +217,7 @@ func ValidateExportPaths(dir string, paths ...ExportPath) error {
 	if dir == "" {
 		return nil
 	}
-	bundleDir, err := filepath.Abs(dir)
+	bundleDir, err := realPath(dir)
 	if err != nil {
 		return fmt.Errorf("resolve bundle directory %s: %w", dir, err)
 	}
@@ -182,7 +225,7 @@ func ValidateExportPaths(dir string, paths ...ExportPath) error {
 		if p.Path == "" {
 			continue
 		}
-		abs, err := filepath.Abs(p.Path)
+		abs, err := realPath(p.Path)
 		if err != nil {
 			return fmt.Errorf("resolve %s path %s: %w", p.Flag, p.Path, err)
 		}

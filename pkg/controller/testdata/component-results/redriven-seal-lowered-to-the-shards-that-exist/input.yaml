@@ -1,0 +1,19 @@
+# A Job re-driven onto the read-failure branch holding a Writing seal that
+# claims three shards, of which only one was ever written.
+#
+# That is the ordinary shape of this failure: the seal is written BEFORE the
+# first shard, so a Job that reached Writing and then had its writes rejected
+# holds a count backed by nothing. Preserving the claim hands nvcrectl a total
+# it can never satisfy and the category's bundle is refused permanently, which
+# is the same outcome as dropping the count, reached from the other side.
+#
+# So the counts are reconciled against what is on the cluster: one shard, and
+# the rows that shard declares.
+priorSealShards: 3
+priorSealShardsWritten: 1
+terminalAge: 5m
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

@@ -241,6 +241,15 @@ func ncclBandwidthProfile() *nvcrev1alpha1.LogProfile {
 type staticLogFetcher struct {
 	log       *string
 	truncated bool
+	// failRead makes FetchLogs return an ordinary error, which is what a
+	// transient API failure looks like. Distinct from truncated, which
+	// produces ErrLogUnpageable and is deterministic.
+	failRead bool
+	// failReadFor fails only the pods whose name contains this substring, so a
+	// case can collect rows from one pod and fail on another. That combination
+	// is the one worth testing: a read error on a node that already produced
+	// rows took the sealing path rather than the retry.
+	failReadFor string
 }
 
 func (f staticLogFetcher) FetchLogsPage(ctx context.Context, namespace, podName string, opts podlogs.LogOptions) (podlogs.Page, error) {
@@ -249,6 +258,10 @@ func (f staticLogFetcher) FetchLogsPage(ctx context.Context, namespace, podName 
 }
 
 func (f staticLogFetcher) FetchLogs(_ context.Context, _, podName string, _ podlogs.LogOptions) ([]string, error) {
+	if f.failRead ||
+		(f.failReadFor != "" && strings.Contains(podName, f.failReadFor)) {
+		return nil, fmt.Errorf("simulated transient failure reading logs for %s", podName)
+	}
 	if f.log == nil {
 		return nil, fmt.Errorf("no log for pod %s", podName)
 	}

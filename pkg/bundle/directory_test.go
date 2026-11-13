@@ -107,6 +107,10 @@ func TestWriteRefusesANonEmptyDirectory(t *testing.T) {
 // self-verify failed after everything had been written. A path written after
 // left the bundle verifying clean, the command printing success, and the
 // artifact already invalid with nothing reporting it.
+// junitFlag is the flag these cases pass; named because goconst counts
+// across the package.
+const junitFlag = "--junit-file"
+
 func TestValidateExportPathsRefusesPathsInsideTheBundle(t *testing.T) {
 	root := t.TempDir()
 	bundleDir := filepath.Join(root, "out")
@@ -128,13 +132,13 @@ func TestValidateExportPathsRefusesPathsInsideTheBundle(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateExportPaths(bundleDir, ExportPath{Flag: "--junit-file", Path: tc.path})
+			err := ValidateExportPaths(bundleDir, ExportPath{Flag: junitFlag, Path: tc.path})
 			if tc.wantRefuse {
 				if err == nil {
 					t.Fatalf("accepted %q inside the bundle directory, which makes the "+
 						"bundle unverifiable", tc.path)
 				}
-				if !strings.Contains(err.Error(), "--junit-file") {
+				if !strings.Contains(err.Error(), junitFlag) {
 					t.Errorf("refusal does not name the flag at fault: %v", err)
 				}
 				return
@@ -149,8 +153,71 @@ func TestValidateExportPathsRefusesPathsInsideTheBundle(t *testing.T) {
 	// check against.
 	t.Run("no bundle requested", func(t *testing.T) {
 		if err := ValidateExportPaths("",
-			ExportPath{Flag: "--junit-file", Path: filepath.Join(root, "junit.xml")}); err != nil {
+			ExportPath{Flag: junitFlag, Path: filepath.Join(root, "junit.xml")}); err != nil {
 			t.Fatalf("refused a path with no bundle in play: %v", err)
+		}
+	})
+}
+
+// TestValidateExportPathsResolvesSymlinks pins that an alias to the bundle
+// directory does not get a report past the containment check.
+//
+// A lexical comparison reads /tmp/alias/junit.xml as outside /tmp/out even
+// when alias links to out, because filepath.Rel returns "../alias/junit.xml".
+// The writer then resolves the parent and creates the file inside the bundle,
+// so the bundle holds a file its manifest does not list and the command still
+// reports success. That is the exact invalidation this check exists to stop,
+// reached by the one spelling the check did not see.
+func TestValidateExportPathsResolvesSymlinks(t *testing.T) {
+	root := t.TempDir()
+	bundleDir := filepath.Join(root, "out")
+	if err := os.MkdirAll(bundleDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(bundleDir, alias); err != nil {
+		t.Skipf("this platform cannot create a symlink: %v", err)
+	}
+
+	t.Run("through a symlinked bundle directory", func(t *testing.T) {
+		err := ValidateExportPaths(bundleDir,
+			ExportPath{Flag: junitFlag, Path: filepath.Join(alias, "junit.xml")})
+		if err == nil {
+			t.Fatal("accepted a path that reaches the bundle through a symlink, so the " +
+				"report would land inside the bundle and invalidate it")
+		}
+	})
+
+	// And the reverse spelling: the bundle named through the alias, the report
+	// named through the real path.
+	t.Run("bundle named through the symlink", func(t *testing.T) {
+		err := ValidateExportPaths(alias,
+			ExportPath{Flag: junitFlag, Path: filepath.Join(bundleDir, "junit.xml")})
+		if err == nil {
+			t.Fatal("accepted a path inside the bundle because the bundle was named " +
+				"through a symlink")
+		}
+	})
+
+	// A genuinely outside path must still be accepted once symlinks resolve,
+	// or the fix would simply refuse everything.
+	t.Run("outside stays outside", func(t *testing.T) {
+		if err := ValidateExportPaths(bundleDir,
+			ExportPath{Flag: junitFlag, Path: filepath.Join(root, "junit.xml")}); err != nil {
+			t.Fatalf("refused a sibling of the bundle: %v", err)
+		}
+	})
+
+	// Neither path existing yet is the ordinary case on a first run.
+	t.Run("neither path exists yet", func(t *testing.T) {
+		fresh := filepath.Join(root, "fresh")
+		if err := ValidateExportPaths(fresh,
+			ExportPath{Flag: junitFlag, Path: filepath.Join(fresh, "junit.xml")}); err == nil {
+			t.Fatal("accepted a path inside a bundle directory that does not exist yet")
+		}
+		if err := ValidateExportPaths(fresh,
+			ExportPath{Flag: junitFlag, Path: filepath.Join(root, "junit.xml")}); err != nil {
+			t.Fatalf("refused an outside path when neither exists: %v", err)
 		}
 	})
 }
