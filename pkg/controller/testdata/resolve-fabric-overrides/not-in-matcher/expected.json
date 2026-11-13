@@ -1,0 +1,12 @@
+[
+  {
+    "when": {},
+    "jobTemplate": {
+      "metadata": {
+        "labels": {
+          "marker": "echo-not-efa-or-roce"
+        }
+      }
+    }
+  }
+]

@@ -108,6 +108,7 @@ func newCertificationRenderCommand() *cobra.Command {
 	var dryRun bool
 	var platformFlag string
 	var gpuArchFlag string
+	var fabricFlag string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
@@ -135,7 +136,7 @@ which detects the architecture from real nodes.`, platform.NamesList()),
 						"Usage: nvcrectl certification render [flags] <certification.yaml>",
 				)
 			}
-			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag, gpuArchFlag)
+			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag, gpuArchFlag, fabricFlag)
 		},
 	}
 
@@ -146,16 +147,22 @@ which detects the architecture from real nodes.`, platform.NamesList()),
 		"Simulate platform for override matching ("+platform.NamesList()+")")
 	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
 		"GPU architecture for offline render; wins over the target nodeSelector's nvidia.com/gpu.product label")
+	cmd.Flags().StringVar(&fabricFlag, "fabric", "",
+		"Network fabric to render for ("+controller.FabricNamesList()+"); wins over spec.fabric")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
 func runCertificationRender(certFile, outputFormat string, dryRun bool,
-	configFlags *kubeconfig.ConfigFlags, platformFlag, gpuArchFlag string) error {
+	configFlags *kubeconfig.ConfigFlags, platformFlag, gpuArchFlag, fabricFlag string) error {
 	namespace := *configFlags.Namespace
 
 	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+	fabricOverride, err := controller.ParseFabricFlag(fabricFlag)
+	if err != nil {
 		return err
 	}
 
@@ -170,6 +177,11 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	cert, err := readCertification(certFile)
 	if err != nil {
 		return err
+	}
+	// --fabric stands in for spec.fabric, so it is validated exactly as the
+	// field would be (ADR-110).
+	if fabricOverride != "" {
+		cert.Spec.Fabric = fabricOverride
 	}
 
 	// When --dry-run, connect early so we can auto-detect GPU architecture
@@ -186,6 +198,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	var synthesizedProducts []string
 	var gkeTCPXONetworks []string
 	var tcpxoPluginVersion string
+	var dryRunFabric controller.FabricResolution
 	if dryRun {
 		var cErr error
 		dryRunClient, cErr = render.NewK8sClient(configFlags)
@@ -215,6 +228,11 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 			return fmt.Errorf("discover nodes: %w", nodesErr)
 		}
 		applyNICDetection(cert, dryRunNodes, platformFlag)
+		var fabricErr error
+		dryRunFabric, fabricErr = resolveDryRunFabric(ctx, dryRunClient, cert, dryRunNodes, platformFlag, os.Stderr)
+		if fabricErr != nil {
+			return fabricErr
+		}
 		gkeTCPXONetworks = detectGKETCPXONetworks(dryRunNodes, platformFlag)
 		tcpxoPluginVersion = detectTCPXOPluginVersion(ctx, dryRunClient, dryRunNodes, platformFlag)
 	}
@@ -244,7 +262,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		}
 
 		workflows, err = renderDryRun(ctx, cert, nodes, platformFlag, gpuArchOverride, gkeTCPXONetworks,
-			tcpxoPluginVersion, dryRunClient, namespace, os.Stderr)
+			tcpxoPluginVersion, dryRunFabric, dryRunClient, namespace, os.Stderr)
 		if err != nil {
 			return err
 		}
@@ -304,7 +322,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // skipped with a warning and the default rendered.
 func renderDryRun(
 	ctx context.Context, cert *nvcrev1alpha1.Certification, nodes []corev1.Node, platformFlag, gpuArchOverride string,
-	gkeTCPXONetworks []string, tcpxoPluginVersion string, reader client.Reader, namespace string, stderr io.Writer,
+	gkeTCPXONetworks []string, tcpxoPluginVersion string, fabric controller.FabricResolution,
+	reader client.Reader, namespace string, stderr io.Writer,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	detectedPlatform := controller.DetectPlatform(nodes)
 	renderPlatform := detectedPlatform
@@ -312,12 +331,12 @@ func renderDryRun(
 		renderPlatform = platformFlag
 	}
 	return renderResolvedDetectingOCINetwork(
-		cert, renderPlatform, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion,
+		cert, renderPlatform, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion, &fabric,
 		func(workflows []nvcrev1alpha1.Workflow) error {
 			for i := range workflows {
 				// --platform wins over node-based detection for override matching
 				// and the recorded annotations, matching the workloadrun dry-run.
-				meta, err := render.ResolveWorkflowForPlatform(&workflows[i], nodes, platformFlag)
+				meta, err := render.ResolveWorkflowWithFabric(&workflows[i], nodes, platformFlag, &fabric)
 				if err != nil {
 					return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 				}
@@ -350,7 +369,7 @@ func renderDryRun(
 func renderOffline(
 	cert *nvcrev1alpha1.Certification, platformFlag, gpuArchOverride string, stderr io.Writer,
 ) ([]nvcrev1alpha1.Workflow, error) {
-	return renderResolvedDetectingOCINetwork(cert, platformFlag, gpuArchOverride, nil, "",
+	return renderResolvedDetectingOCINetwork(cert, platformFlag, gpuArchOverride, nil, "", nil,
 		func(workflows []nvcrev1alpha1.Workflow) error {
 			return resolveWorkflowsOffline(cert, workflows, platformFlag, gpuArchOverride)
 		},
@@ -378,8 +397,12 @@ func resolveWorkflowsOffline(
 	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag, gpuArchOverride string,
 ) error {
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
+	fabric, err := offlineRenderFabric(cert, platformFlag, gpuArchOverride)
+	if err != nil {
+		return err
+	}
 	for i := range workflows {
-		meta, err := render.ResolveWorkflow(&workflows[i], syntheticNodes)
+		meta, err := render.ResolveWorkflowWithFabric(&workflows[i], syntheticNodes, "", &fabric)
 		if err != nil {
 			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
@@ -482,6 +505,50 @@ func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, p
 	cert.Spec.NicResourceName = &name
 }
 
+// offlineRenderFabric resolves the fabric for a render that reads no cluster
+// (ADR-110): spec.fabric (or --fabric) when set, checked only against the
+// fabrics NVCRE renders on the target, otherwise the platform default, with
+// the default EFA count. The platform and architecture are the ones override
+// matching sees on the synthetic render node, so the two never disagree.
+func offlineRenderFabric(
+	cert *nvcrev1alpha1.Certification, platformFlag, gpuArchOverride string,
+) (controller.FabricResolution, error) {
+	nodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
+	return controller.OfflineFabric(cert.Spec.Fabric, controller.DetectPlatform(nodes), controller.DetectGPUArchitecture(nodes))
+}
+
+// resolveDryRunFabric resolves the fabric for the dry-run render path the way
+// the certification controller does (ADR-110): on the nodes the job can run
+// on (controller.FabricNodes, with the spec-level gpusPerNode), with --platform
+// winning over node-based detection as in applyNICDetection.
+// render.ResolveDryRunFabric reports what it found and handles a refused
+// ResourceSlice list.
+//
+// The fabric is resolved once for the whole Certification, and the same
+// divergence applies as for detectGKETCPXONetworks: the controller resolves
+// it per category, filtering the nodes on that category's gpusPerNode, which
+// options.gpusPerNode can override. A Certification that sets a per-category
+// count can therefore preview a fabric, or an EFA count, decided over a
+// different node set than the run uses. The two agree when no category
+// overrides gpusPerNode, or on a fleet whose nodes all carry the same GPU
+// count.
+func resolveDryRunFabric(
+	ctx context.Context, reader client.Reader, cert *nvcrev1alpha1.Certification, nodes []corev1.Node,
+	platformFlag string, stderr io.Writer,
+) (controller.FabricResolution, error) {
+	platformName := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		platformName = platformFlag
+	}
+	gpuArch := controller.DetectGPUArchitecture(nodes)
+	gpusPerNode := catalog.GPUDefaults(gpuArch, platformName).GpusPerNode
+	if cert.Spec.GpusPerNode != nil {
+		gpusPerNode = *cert.Spec.GpusPerNode
+	}
+	return render.ResolveDryRunFabric(
+		ctx, reader, cert.Spec.Fabric, platformName, gpuArch, controller.FabricNodes(nodes, gpusPerNode), stderr)
+}
+
 // detectGKETCPXONetworks resolves the GKE networks the GCP H100 TCPXO patch
 // attaches for the dry-run render path, mirroring the certification
 // controller: detection runs only for GCP H100 targets, and only exactly
@@ -559,12 +626,17 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 // again with the name detect returns: the detected network under --dry-run,
 // catalog.DefaultOCISecondaryNetwork offline (ADR-103). Detection does not
 // depend on the category, so one lookup serves them all.
+//
+// fabric is the fabric resolved under --dry-run; nil takes the offline one
+// (offlineRenderFabric).
 func renderResolvedDetectingOCINetwork(
 	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
-	tcpxoPluginVersion string, resolve func([]nvcrev1alpha1.Workflow) error, detect func() (string, error),
+	tcpxoPluginVersion string, fabric *controller.FabricResolution,
+	resolve func([]nvcrev1alpha1.Workflow) error, detect func() (string, error),
 ) ([]nvcrev1alpha1.Workflow, error) {
 	workflows, err := renderCertification(
-		cert, platformName, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion, catalog.OCISecondaryNetworkUnresolved)
+		cert, platformName, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion, catalog.OCISecondaryNetworkUnresolved,
+		fabric)
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +653,7 @@ func renderResolvedDetectingOCINetwork(
 	}
 	// The first pass already printed the per-category notes.
 	workflows, err = renderCertificationTo(io.Discard, cert, platformName, gpuArchOverride, gkeTCPXONetworks,
-		tcpxoPluginVersion, network)
+		tcpxoPluginVersion, network, fabric)
 	if err != nil {
 		return nil, err
 	}
@@ -670,23 +742,37 @@ var ociDefaultNetworkNote = "Note: the OCI RDMA network is rendered as " + catal
 // renderResolvedDetectingOCINetwork, which passes
 // catalog.OCISecondaryNetworkUnresolved first and then the detected name or
 // catalog.DefaultOCISecondaryNetwork.
+//
+// fabric is the fabric resolved under --dry-run; nil resolves the offline one
+// from spec.fabric or the platform default (offlineRenderFabric, ADR-110).
 func renderCertification(
 	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
-	tcpxoPluginVersion, ociSecondaryNetwork string,
+	tcpxoPluginVersion, ociSecondaryNetwork string, fabric *controller.FabricResolution,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	return renderCertificationTo(os.Stderr, cert, platformName, gpuArchOverride, gkeTCPXONetworks,
-		tcpxoPluginVersion, ociSecondaryNetwork)
+		tcpxoPluginVersion, ociSecondaryNetwork, fabric)
 }
 
 // renderCertificationTo is renderCertification with its per-category notes
 // written to stderr, so a second render of the same Certification can discard
 // the notes the first one already printed.
+//
+// fabric is the fabric resolved under --dry-run (resolveDryRunFabric); nil
+// resolves the offline one from spec.fabric or the platform default
+// (offlineRenderFabric).
 func renderCertificationTo(
 	stderr io.Writer, cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string,
-	gkeTCPXONetworks []string, tcpxoPluginVersion, ociSecondaryNetwork string,
+	gkeTCPXONetworks []string, tcpxoPluginVersion, ociSecondaryNetwork string, fabric *controller.FabricResolution,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
+	}
+	if fabric == nil {
+		fr, err := offlineRenderFabric(cert, platformName, gpuArchOverride)
+		if err != nil {
+			return nil, err
+		}
+		fabric = &fr
 	}
 
 	gpuArch := gpuArchOverride
@@ -762,6 +848,8 @@ func renderCertificationTo(
 			GpusPerNode:                gpusPerNode,
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
+			Fabric:                     fabric.Fabric,
+			EFAPerNode:                 fabric.EFAPerNode,
 			RDMADeviceAccess:           opts.RDMADeviceAccess,
 			NetworkAttachments:         opts.NetworkAttachments,
 			GKETCPXONetworks:           gkeTCPXONetworks,

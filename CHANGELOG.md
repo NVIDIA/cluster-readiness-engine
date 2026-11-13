@@ -15,12 +15,29 @@ followed them.
 
 ## [Unreleased]
 
-### Changed
+
+### Added
+
+- AWS GB300 renders for EFA as well as RoCE, so a stock-EKS GB300 cluster, which has
+  the EFA device plugin and no RoCE DRA driver, gets pods that schedule. Certification
+  and WorkloadRun take `spec.fabric` (`efa`, `ib`, `roce` or `tcpxo`). When it is set,
+  the value is validated against the target nodes, and a mismatch fails the run with
+  `FabricValidationFailed` instead of switching to another fabric. When it is unset on
+  AWS GB300, the controller detects EFA from `vpc.amazonaws.com/efa` allocatable and
+  RoCE from the `dra.networking.k8s.aws` DRA driver's ResourceSlices; conflicting or
+  partial signals keep the RoCE default with a `FabricDetection` event. Every other
+  target renders as before. Overrides can match on `when.fabric`, the resolved fabric
+  is recorded as `resolvedFabric` in status, and `nvcrectl certification render` and
+  `nvcrectl workloadrun render` take `--fabric`
+  ([ADR-110](docs/designs/110-fabric-selection.md), #576).
+
+  ### Changed
 
 - `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
   it was asked for, as `workloadrun report` already did. It used to print a
   warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
   without `--wait`, which used to exit 0 having written nothing (#564).
+
 ## [0.11.0] - 2026-11-09
 
 ### Changed

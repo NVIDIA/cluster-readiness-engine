@@ -343,6 +343,8 @@ overrides:
       equals: aws
     gpuArchitecture:
       equals: gb300
+    fabric:
+      equals: roce
   dependencies:
 {{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -568,3 +570,41 @@ overrides:
 # Renders nothing unless the option is set. Last in the list so the privileged
 # flag and the /dev/infiniband mount survive every platform patch above.
 {{ lib "overrides/hostpath-rdma.yaml" . }}
+# --- AWS + GB300 (EFA) ---
+# Kept last in the list so that adding it shifted no existing override's index
+# in the applied-overrides record. It still follows the GB200/GB300 base block.
+# Matched on fabric efa (ADR-110). NCCL_SHM_DISABLE and NCCL_P2P_DISABLE force
+# NCCL onto the network even within the node, so this arm requests the EFA
+# devices and keeps the image's aws-ofi-nccl plugin that the RoCE arm strips.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+    fabric:
+      equals: efa
+  dependencies:
+{{ lib "deps/aws-gb300-efa-resources.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            command:
+            - sh
+            - -c
+            args:
+            - |
+              /usr/local/bin/all_reduce_perf_mpi -b 8 -e "$NCCL_MAX_BYTES" -f 2 -g {{ .GpusPerNode }} -n 10 -N 2
+            env:
+            - name: NCCL_MAX_BYTES
+              value: {{ .MaxBytes }}
+            - name: NCCL_DEBUG
+              value: INFO
+            - name: NCCL_SHM_DISABLE
+              value: "1"
+            - name: NCCL_P2P_DISABLE
+              value: "1"
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+            - name: NCCL_MNNVL_ENABLE
+              value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"

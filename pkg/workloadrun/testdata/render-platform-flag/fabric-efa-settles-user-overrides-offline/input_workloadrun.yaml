@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-gb300
+  namespace: default
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  numNodes: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+  overrides:
+    - when:
+        fabric:
+          equals: efa
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: user-efa-arm
+          data:
+            fabric: efa
+    - when:
+        fabric:
+          equals: roce
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: user-roce-arm
+          data:
+            fabric: roce
