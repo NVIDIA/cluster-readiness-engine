@@ -131,9 +131,13 @@ platforms requests it in place of `nvidia.com/mlnxnics`
 These platforms do not auto-detect the name, so leaving the field unset keeps
 `nvidia.com/mlnxnics`. OCI is the exception among the `nvidia.com/mlnxnics`
 platforms: its request stays `nvidia.com/mlnxnics`, because the
-[detected RDMA network](#oci-rdma-network) is found by that resource name. The count still comes from `mlnxPerNode`, so a device
-plugin that advertises fewer units per node than that count needs
-`mlnxPerNode` lowered to fit.
+[detected RDMA network](#oci-rdma-network) is found by that resource name.
+
+The count still comes from `mlnxPerNode`. Sites running a shared RDMA device
+plugin (one pooled resource such as `rdma/hca_shared_devices_a` advertised at a
+large count) should set `mlnxPerNode: 1`; a higher count schedules, but consumes
+that many quota units for the same device access. A plugin that advertises one
+unit per NIC needs `mlnxPerNode` at or below its per-node count.
 
 Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
 templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
