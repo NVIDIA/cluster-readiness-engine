@@ -15,6 +15,7 @@ followed them.
 
 ## [Unreleased]
 
+
 ### Added
 
 - AWS GB300 renders for EFA as well as RoCE, so a stock-EKS GB300 cluster, which has
@@ -29,6 +30,13 @@ followed them.
   is recorded as `resolvedFabric` in status, and `nvcrectl certification render` and
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
+
+  ### Changed
+
+- `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
+  it was asked for, as `workloadrun report` already did. It used to print a
+  warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
+  without `--wait`, which used to exit 0 having written nothing (#564).
 
 ## [0.11.0] - 2026-11-09
 
