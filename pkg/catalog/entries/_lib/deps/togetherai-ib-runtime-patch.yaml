@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# The NIC resource name is nicResourceName when set, else nvidia.com/mlnxnics,
+# the name the Mellanox host-device plugin advertises; the name is not
+# auto-detected on this platform (issue #583).
+#
 # The whole document is gated on mlnxPerNode because the runtime patch exists
 # only to add the NIC request: at 0 it renders empty and the call site's
 # "dependencies:" key resolves to an empty list. See ADR-087.
@@ -22,7 +26,7 @@
                   - name: node
                     resources:
                       limits:
-                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                        {{ or .NicResourceName "nvidia.com/mlnxnics" }}: "{{ .MlnxPerNode }}"
                       requests:
-                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                        {{ or .NicResourceName "nvidia.com/mlnxnics" }}: "{{ .MlnxPerNode }}"
 {{- end }}

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName names the resource; mlnxPerNode still decides whether one is
+# requested. At 0 the Azure override renders no dependency, so the node
+# container keeps only the base runtime GPU request and neither
+# rdma/hca_shared_devices_a nor nvidia.com/mlnxnics appears.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-nic
+  namespace: default
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 2
+  mlnxPerNode: 0
+  nicResourceName: rdma/hca_shared_devices_a
+  framework:
+    mpi:
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      mpirunPath: /usr/local/mpi/bin/mpirun

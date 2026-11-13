@@ -249,14 +249,16 @@ type CategoryOptions struct {
 	GpusPerNode *int32 `json:"gpusPerNode,omitempty"`
 
 	// mlnxPerNode overrides the auto-detected Mellanox NIC count per node.
-	// Used by platforms with InfiniBand or RoCE networking (Azure, OCI, TogetherAI).
+	// Used by platforms with InfiniBand or RoCE networking (Azure, Forge, OCI,
+	// TogetherAI).
 	// If not specified, derived from GPU architecture and platform via the
 	// catalog's gpu-defaults.yaml (e.g., 8 for most architectures, 2 for OCI L40s,
 	// 0 for OCI GB200).
 	// Setting it to 0 is an opt-out, not a request for zero devices: the catalog
-	// stops requesting nvidia.com/mlnxnics altogether, and on OCI it also drops
-	// the k8s.v1.cni.cncf.io/networks annotation that attaches the detected RDMA
-	// network.
+	// stops requesting the NIC resource altogether (nvidia.com/mlnxnics, or on
+	// Azure, Forge and TogetherAI the resource nicResourceName names), and on
+	// OCI it also drops the k8s.v1.cni.cncf.io/networks annotation that
+	// attaches the detected RDMA network.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
@@ -270,7 +272,11 @@ type CategoryOptions struct {
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
-	// event explaining what was found. Offline nvcrectl render (without
+	// event explaining what was found. On Azure, Forge and TogetherAI, in the
+	// categories whose catalog entries request a NIC resource, the field
+	// replaces the default nvidia.com/mlnxnics name (for example rdma/hca_shared_devices_a from
+	// the Network Operator's shared RDMA device plugin); the name is not
+	// auto-detected there. Offline nvcrectl render (without
 	// --dry-run) has no cluster to inspect and uses only this field. The
 	// value must be a fully qualified extended resource name: a
 	// DNS-subdomain domain, a slash, and a name segment of at most 63

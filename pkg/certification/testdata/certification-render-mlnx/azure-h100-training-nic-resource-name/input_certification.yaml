@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName on deps/azure-h100-ib-training.yaml, the h100-plus-training
+# corner of the four Azure NIC fragments.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-h100-training-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

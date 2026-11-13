@@ -30,6 +30,16 @@ followed them.
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
 
+### Fixed
+
+- `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
+  Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
+  advertises its RDMA NICs under another name, such as AKS with the NVIDIA Network
+  Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), no longer leaves
+  worker pods Pending on `nvidia.com/mlnxnics`. Without the field, these platforms
+  request `nvidia.com/mlnxnics` as before. OCI is unchanged
+  ([#583](https://github.com/NVIDIA/cluster-readiness-engine/issues/583)).
+
 ## [0.11.0] - 2026-11-09
 
 ### Changed

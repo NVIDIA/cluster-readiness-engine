@@ -432,6 +432,9 @@
 {{ lib "deps/gcp-gb200-roce-runtime-patch-training.yaml" . | indent 2 }}
 
 # --- Azure (InfiniBand) ---
+# The NIC resource name is nicResourceName when set, else nvidia.com/mlnxnics,
+# matching the Azure catalog fragments (issue #583). TogetherAI below gets the
+# same through its shared fragment.
 # The dependency is gated on mlnxPerNode: its only content is the NIC request,
 # so at 0 it drops out and the override matches with nothing to apply. The
 # "when" block stays either way, mirroring how a lib-sourced dependency that
@@ -458,9 +461,9 @@
                     - name: node
                       resources:
                         limits:
-                          nvidia.com/mlnxnics: {{ .MlnxPerNode }}
+                          {{ or .NicResourceName "nvidia.com/mlnxnics" }}: {{ .MlnxPerNode }}
                         requests:
-                          nvidia.com/mlnxnics: {{ .MlnxPerNode }}
+                          {{ or .NicResourceName "nvidia.com/mlnxnics" }}: {{ .MlnxPerNode }}
 {{- end }}
 
 # --- TogetherAI (InfiniBand runtime patch) ---
