@@ -123,7 +123,17 @@ func TestWriteFileAtomicKeepsNonRegularDestinations(t *testing.T) {
 const replacement = "new"
 
 func TestWriteFileAtomicPreservesExistingPermissions(t *testing.T) {
-	for _, mode := range []os.FileMode{0o600, 0o640, 0o400} {
+	for _, mode := range []os.FileMode{
+		0o600, 0o640, 0o400,
+		// 0000 must not be read as "no destination". Treating a zero mode as
+		// absence replaced the file at the default and made an unreadable
+		// report readable.
+		0o000,
+		// A mode equal to reportFilePerm must still be applied explicitly.
+		// Skipping the chmod because the two matched left umask deciding, so
+		// under a restrictive umask an existing 0644 file came back 0600.
+		0o644,
+	} {
 		t.Run(mode.String(), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "results.json")
 			if err := os.WriteFile(path, []byte("old"), mode); err != nil {
@@ -149,9 +159,15 @@ func TestWriteFileAtomicPreservesExistingPermissions(t *testing.T) {
 				t.Errorf("permissions changed from %v to %v; a reader who could not see "+
 					"the previous file's contents can see these", mode, got)
 			}
-			b, err := os.ReadFile(path)
-			if err != nil || string(b) != replacement {
-				t.Errorf("content not replaced: %q err=%v", b, err)
+			// Only when the mode leaves the owner able to read it. A 0000
+			// destination is a case this test exists for, and reading it back
+			// fails for anyone but root, which would be the test's limitation
+			// rather than the code's.
+			if mode&0o400 != 0 {
+				b, err := os.ReadFile(path)
+				if err != nil || string(b) != replacement {
+					t.Errorf("content not replaced: %q err=%v", b, err)
+				}
 			}
 		})
 	}

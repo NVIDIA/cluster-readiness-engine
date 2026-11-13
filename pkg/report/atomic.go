@@ -16,6 +16,11 @@ import (
 // files meant to be readable by whatever consumes them.
 const reportFilePerm os.FileMode = 0o644
 
+// tempFilePerm is the mode a replacement is created with before the
+// destination's own mode is applied. Owner only, so there is no interval in
+// which the file is more readable than what it replaces.
+const tempFilePerm os.FileMode = 0o600
+
 // writeFileAtomic writes data to path so that a reader never observes a
 // partial file.
 //
@@ -65,10 +70,18 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	}
 	path = resolved
 
-	// The mode an existing destination already has, so replacing it does not
-	// widen it. Zero when there is nothing there.
-	var existingPerm os.FileMode
+	// Whether a destination is already there, and with what mode, so replacing
+	// it neither widens nor narrows it.
+	//
+	// Existence is tracked separately from the mode. Using a zero mode to mean
+	// "nothing there" conflates it with a file that really is mode 0000, which
+	// would then be replaced at the default and become readable.
+	var (
+		destExists   bool
+		existingPerm os.FileMode
+	)
 	if info, statErr := os.Lstat(path); statErr == nil {
+		destExists = true
 		existingPerm = info.Mode().Perm()
 		if info.IsDir() {
 			// Caught here so the error names the problem. Left to the rename, it
@@ -101,7 +114,16 @@ func writeFileAtomic(path string, data []byte) (err error) {
 		return fmt.Errorf("write %s: %s is not a directory", path, dir)
 	}
 
-	tmp, err := createTemp(dir, filepath.Base(path))
+	// Replacing an existing file creates the temporary one with no group or
+	// other access, whatever the destination's mode turns out to be.
+	//
+	// Creating it at the default and narrowing afterwards leaves a window in
+	// which another local user can open it and keep the descriptor, and a
+	// descriptor opened in that window still reads the report after the
+	// rename. A new destination keeps the default, so umask continues to
+	// decide for a file nobody had set a policy on.
+	tmpPerm := tempPermFor(destExists)
+	tmp, err := createTemp(dir, filepath.Base(path), tmpPerm)
 	if err != nil {
 		// Deliberately no fallback to an in-place write.
 		//
@@ -131,7 +153,7 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	// came back world-readable after the next run, and the results are exactly
 	// the thing worth restricting. Chmod rather than opening with the mode,
 	// because O_CREATE's mode is masked by umask and this must not be.
-	if existingPerm != 0 && existingPerm != reportFilePerm {
+	if destExists && existingPerm != tmpPerm {
 		if err := tmp.Chmod(existingPerm); err != nil {
 			_ = tmp.Close()
 			_ = os.Remove(tmp.Name())
@@ -256,6 +278,27 @@ func resolveDestination(path string) (string, error) {
 		maxSymlinkHops)
 }
 
+// tempPermFor is the mode a replacement is created with.
+//
+// Owner only when something is being replaced, because the destination's own
+// mode is applied afterwards and creating the file at the default first leaves
+// an interval in which another local user can open it and keep the descriptor.
+// A descriptor opened in that interval still reads the report after the
+// rename, so the window is the whole exposure.
+//
+// The default for a new destination, so umask keeps deciding for a file nobody
+// had set a policy on.
+//
+// A function rather than two lines inline because the window it closes is
+// invisible in the finished file: both choices end with the same mode on the
+// destination, so only the creation mode records which one was made.
+func tempPermFor(destExists bool) os.FileMode {
+	if destExists {
+		return tempFilePerm
+	}
+	return reportFilePerm
+}
+
 // createTemp opens a uniquely named file in dir with reportFilePerm.
 //
 // os.CreateTemp is not used because it opens at 0600 and the mode would then
@@ -266,7 +309,7 @@ func resolveDestination(path string) (string, error) {
 // names and per-node hardware verdicts would have gone from -rw------- to
 // -rw-r--r--. Opening with the mode keeps the masking, and the file's
 // permissions stay exactly what they were before this change.
-func createTemp(dir, base string) (*os.File, error) {
+func createTemp(dir, base string, perm os.FileMode) (*os.File, error) {
 	var lastErr error
 	for range 10 {
 		var suffix [8]byte
@@ -274,7 +317,7 @@ func createTemp(dir, base string) (*os.File, error) {
 			return nil, fmt.Errorf("generate temporary file name: %w", err)
 		}
 		name := filepath.Join(dir, base+".tmp-"+hex.EncodeToString(suffix[:]))
-		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, reportFilePerm) // #nosec G304 -- name is derived from the caller's destination
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm) // #nosec G304 -- name is derived from the caller's destination
 		if err == nil {
 			return f, nil
 		}
