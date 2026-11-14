@@ -1,0 +1,19 @@
+{
+  "kind": "bandwidth",
+  "reason": "JobSucceeded",
+  "seedProvisional": true,
+  "results": [
+    {
+      "sizeBytes": 1024,
+      "algBW": "80.5",
+      "busBW": "71.38",
+      "samples": 5
+    },
+    {
+      "sizeBytes": 2048,
+      "algBW": "90",
+      "busBW": "79",
+      "samples": 5
+    }
+  ]
+}
