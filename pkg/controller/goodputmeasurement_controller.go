@@ -131,8 +131,9 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 		return ctrl.Result{}, nil
 	}
 
-	// If measurement is already complete, nothing to do.
+	// Restore frozen metrics after a controller restart without recomputing status.
 	if cond := meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
+		r.syncFinalGoodputMetrics(ctx, measurement)
 		return ctrl.Result{}, nil
 	}
 
@@ -165,7 +166,7 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		anchor := terminalAnchor(job)
 		r.collectFinalSample(ctx, measurement, job, anchor)
-		return r.handleSucceeded(ctx, measurement, job, anchor)
+		return r.handleSucceeded(ctx, measurement, anchor)
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		anchor := terminalAnchor(job)
@@ -852,7 +853,7 @@ func (r *GoodputMeasurementReconciler) mergeSampleWindow( //nolint:gocyclo
 }
 
 // handleSucceeded processes a succeeded job.
-func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, job *nvcrev1alpha1.Job, anchor time.Time) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, anchor time.Time) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	cm := r.buildCumulativeFromStatus(measurement)
@@ -868,24 +869,6 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 
 	r.writeStatusFromCumulative(measurement, cm)
 	log.Info("Job succeeded", "goodput", cm.Goodput, "trainingTime", cm.TrainingTime)
-
-	workflow := job.Labels["nvcre.nvidia.com/workflow"]
-	recordGoodputMetrics(
-		measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow,
-		goodputMetricValues{
-			GoodputRatio:       cm.Goodput,
-			AvgTFLOPS:          parseFloat(measurement.Status.AvgTFLOPSPerGPU),
-			AvgStepTime:        parseFloat(measurement.Status.AvgStepTimeSec),
-			RescheduleTime:     cm.RescheduleTime,
-			ResumeTime:         cm.ResumeTime,
-			CheckpointSaveTime: cm.CheckpointSaveTime,
-			LostWorkTime:       cm.LostWorkTime,
-			TrainingTime:       cm.TrainingTime,
-			WarmupTime:         parseFloat(measurement.Status.WarmupTimeSec),
-			NonWarmupTime:      parseFloat(measurement.Status.NonWarmupTimeSec),
-		},
-	)
-	cleanupOperationalGoodputMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow)
 
 	// A measurement that computed no goodput did not measure anything, whatever
 	// the Job did. Reporting JobSucceeded here reads as a successful measurement.
@@ -985,24 +968,6 @@ func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measure
 
 	r.writeStatusFromCumulative(measurement, cm)
 	measurement.Status.ApplicationStartTime = nil
-
-	workflow := job.Labels["nvcre.nvidia.com/workflow"]
-	recordGoodputMetrics(
-		measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow,
-		goodputMetricValues{
-			GoodputRatio:       cm.Goodput,
-			AvgTFLOPS:          parseFloat(measurement.Status.AvgTFLOPSPerGPU),
-			AvgStepTime:        parseFloat(measurement.Status.AvgStepTimeSec),
-			RescheduleTime:     cm.RescheduleTime,
-			ResumeTime:         cm.ResumeTime,
-			CheckpointSaveTime: cm.CheckpointSaveTime,
-			LostWorkTime:       cm.LostWorkTime,
-			TrainingTime:       cm.TrainingTime,
-			WarmupTime:         parseFloat(measurement.Status.WarmupTimeSec),
-			NonWarmupTime:      parseFloat(measurement.Status.NonWarmupTimeSec),
-		},
-	)
-	cleanupOperationalGoodputMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow)
 
 	return ctrl.Result{}, r.setComplete(ctx, measurement, anchor, "JobFailed", "Referenced Job failed")
 }
@@ -1364,6 +1329,14 @@ func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurem
 		return fmt.Errorf("failed to update measurement status: %w", err)
 	}
 
+	// Do not publish candidate metrics if the status retry helper suppressed
+	// context cancellation (upstream #588). A later reconcile restores them.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	r.syncFinalGoodputMetrics(ctx, measurement)
+
 	logf.FromContext(ctx).Info("Measurement completed",
 		"result", measurement.Status.Result, "reason", reason)
 	return nil
@@ -1380,16 +1353,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 	log.Info("Handling deletion of GoodputMeasurement")
 	r.cleanupState(fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name))
 
-	// Fetch the Job to read the workflow label for metric cleanup.
-	var workflow string
-	if measurement.Spec.JobRef.Name != "" {
-		job := &nvcrev1alpha1.Job{}
-		jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
-		if err := r.Get(ctx, jobKey, job); err == nil {
-			workflow = job.Labels["nvcre.nvidia.com/workflow"]
-		}
-	}
-	cleanupGoodputMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow)
+	cleanupMeasurementGoodputMetrics(measurement.Namespace, measurement.Name)
 
 	controllerutil.RemoveFinalizer(measurement, goodputMeasurementFinalizer)
 	if err := r.Update(ctx, measurement); err != nil {

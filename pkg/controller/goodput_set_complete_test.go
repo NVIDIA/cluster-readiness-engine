@@ -120,6 +120,7 @@ func TestGoodputSetComplete(t *testing.T) {
 			arg.Status.Result = in.AttemptedResult
 			arg.Status.AvgStepTimeSec = "9.999999"
 		}
+		defer cleanupMeasurementGoodputMetrics(arg.Namespace, arg.Name)
 		callErr := r.setComplete(ctx, arg, anchor, in.Reason, "test message")
 
 		after := &nvcrev1alpha1.GoodputMeasurement{}

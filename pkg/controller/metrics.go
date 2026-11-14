@@ -392,8 +392,8 @@ func cleanupGoodputMetrics(namespace, measurement, job, workflow string) {
 
 // cleanupOperationalGoodputMetrics deletes operational goodput gauges (TFLOPs, step time,
 // training time, etc.) but preserves the goodput ratio which reports the outcome.
-// Called when a measurement completes (success or failure) so stale measurement
-// values don't persist in Prometheus.
+// Used by full cleanup when a measurement is deleted. Terminal results are
+// retained until then; checkpoint restarts clear only instantaneous gauges.
 func cleanupOperationalGoodputMetrics(namespace, measurement, job, workflow string) {
 	labels := []string{namespace, measurement, job, workflow}
 	goodputAvgTFLOPSGauge.DeleteLabelValues(labels...)

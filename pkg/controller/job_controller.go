@@ -2259,6 +2259,10 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 		},
 	}
 
+	if workflow := job.Labels[labelWorkflowTracking]; workflow != "" {
+		gm.Labels[labelWorkflowTracking] = workflow
+	}
+
 	// Own by Workflow so measurements survive iteration restarts (Job deletion).
 	// Fall back to Job ownership if the Workflow is not found.
 	if wf := r.getOwnerWorkflow(ctx, job); wf != nil {
