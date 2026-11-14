@@ -1314,6 +1314,7 @@ Use --cleanup to teardown installed components after completion.`,
 			cfg.version = version
 			cfg.resultsFile = resultsFile
 			cfg.junitFile = junitFile
+			cfg.resultsBundle = resultsBundle
 			cfg.grantRunAccess = grantRunAccess
 			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
 				cfg.cert, timeout, cmd.Flags().Changed("timeout"))

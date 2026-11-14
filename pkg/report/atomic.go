@@ -240,6 +240,27 @@ const maxSymlinkHops = 32
 // be repointed in between. That is inherent to any resolve-then-rename and is
 // not worth guarding on a path the operator chose for its own output.
 func resolveDestination(path string) (string, error) {
+	// A destination that is not a regular file is returned untouched, before
+	// any resolution is attempted.
+	//
+	// Resolution exists so a temporary file and the rename land on the same
+	// filesystem as the real target. A stream has no such target and is
+	// written in place, so there is nothing for resolution to achieve, and
+	// attempting it actively breaks: when stdout is a pipe, /dev/stdout links
+	// to /proc/self/fd/1 which links to "pipe:[12345]", a kernel label rather
+	// than a path. EvalSymlinks fails on it, and the loop below reads it as a
+	// relative target and joins it under /proc/<pid>/fd, producing a path that
+	// does not exist. The caller then takes it for a new file, tries to create
+	// a temporary file in /proc/<pid>/fd, and `--results-file /dev/stdout`
+	// fails having written nothing.
+	//
+	// os.Stat rather than Lstat, because the question is what the destination
+	// IS once followed, and that is what the caller's own non-regular branch
+	// asks too.
+	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() && !info.IsDir() {
+		return path, nil
+	}
+
 	// The fast path, and the only one that runs for a destination that already
 	// exists or is not a link at all.
 	if full, err := filepath.EvalSymlinks(path); err == nil {

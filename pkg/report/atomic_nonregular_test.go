@@ -187,3 +187,70 @@ func TestWriteFileAtomicPreservesExistingPermissions(t *testing.T) {
 		}
 	})
 }
+
+// TestSymlinkedStreamResolvesToItself pins that a stream reached through a
+// symlink is not put through symlink resolution.
+//
+// This is the shape of `--results-file /dev/stdout` on Linux: /dev/stdout
+// links to /proc/self/fd/1, which when stdout is a pipe links to
+// "pipe:[12345]" — a kernel label, not a path. EvalSymlinks fails on it, and
+// resolving the chain by hand reads that label as a relative target and joins
+// it under /proc/<pid>/fd, producing a path that does not exist. The caller
+// then takes it for a new file, tries to create a temporary file in
+// /proc/<pid>/fd, and the write fails having produced nothing.
+//
+// Tested with a symlink to a FIFO because that is portable and exercises the
+// same decision: the destination is not a regular file, so resolution has
+// nothing to achieve and must not be attempted.
+func TestSymlinkedStreamResolvesToItself(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("this platform cannot create a FIFO: %v", err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(fifo, link); err != nil {
+		t.Skipf("this platform cannot create a symlink: %v", err)
+	}
+
+	got, err := resolveDestination(link)
+	if err != nil {
+		t.Fatalf("resolveDestination: %v", err)
+	}
+	if got != link {
+		t.Errorf("resolveDestination(%q) = %q; a stream must come back untouched, "+
+			"because resolving it is what turns /dev/stdout into a path under "+
+			"/proc/<pid>/fd that nothing can create a file in", link, got)
+	}
+
+	// And the write still reaches the reader on the other end.
+	const wait = 15 * time.Second
+	read := make(chan string, 1)
+	go func() {
+		b, err := os.ReadFile(fifo)
+		if err != nil {
+			read <- "read failed: " + err.Error()
+			return
+		}
+		read <- string(b)
+	}()
+	wrote := make(chan error, 1)
+	go func() { wrote <- WriteFileAtomic(link, []byte("streamed")) }()
+
+	select {
+	case err := <-wrote:
+		if err != nil {
+			t.Fatalf("writing through a symlinked FIFO failed: %v", err)
+		}
+	case <-time.After(wait):
+		t.Fatalf("WriteFileAtomic did not return within %s", wait)
+	}
+	select {
+	case s := <-read:
+		if s != "streamed" {
+			t.Errorf("the reader got %q", s)
+		}
+	case <-time.After(wait):
+		t.Error("the FIFO's reader saw nothing")
+	}
+}
