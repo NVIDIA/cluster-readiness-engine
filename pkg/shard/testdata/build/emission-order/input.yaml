@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Rows handed in deliberately against the normative order, varying every key
+# including sample, so the golden pins the sort rather than the input order.
+#
+# The last two rows share (node, componentID, index, name) and differ only in
+# sample. Under ADR-090's four field key they would tie, and sort.Slice is not
+# stable, so their relative order would not be reproducible and the bundle
+# manifest's sha256 would be unverifiable. Appending sample is what fixes that,
+# and these two rows are the case that proves it.
+# The first two rows make the leading key load bearing. Every other fixture
+# happens to name components so that componentID sorts the same way as node,
+# which leaves the node comparison redundant: deleting it from rowCompare
+# passed the entire suite. Here componentID sorts the opposite way to node, so
+# only an order that really compares node first puts node-a00 ahead.
+#
+# The pair after them does the same for index, which no other fixture exercises
+# either: same node, same componentID, differing only in index.
+rows:
+  - node: node-b00
+    componentID: GPU-aaa
+    index: 0
+    name: achievedTFLOPS
+    value: 800.5
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-a00
+    componentID: GPU-zzz
+    index: 0
+    name: achievedTFLOPS
+    value: 801.25
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-c00
+    componentID: GPU-same
+    index: 3
+    name: achievedTFLOPS
+    value: 802.75
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-c00
+    componentID: GPU-same
+    index: 1
+    name: achievedTFLOPS
+    value: 803
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-001
+    componentID: GPU-b000
+    index: 1
+    name: achievedTFLOPS
+    value: 900.25
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a001
+    index: 1
+    name: achievedTFLOPS
+    value: 1100
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a000
+    index: 0
+    name: smClock
+    value: 1410
+    unit: MHz
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a000
+    index: 0
+    name: achievedTFLOPS
+    value: 1200.75
+    unit: TFLOPS
+    sample: 2
+    timestamp: "2026-11-03T00:00:02Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a000
+    index: 0
+    name: achievedTFLOPS
+    value: 1201.5
+    unit: TFLOPS
+    sample: 1
+    timestamp: "2026-11-03T00:00:01Z"
+    outcome: pass

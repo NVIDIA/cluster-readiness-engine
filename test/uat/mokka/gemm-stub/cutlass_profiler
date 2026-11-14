@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mokka stub for cutlass_profiler. Writes the CSV the real profiler writes,
+# carrying a GFLOPs column, so the production harness's awk parser is the thing
+# being exercised.
+#
+# It honours --profiling-duration by sleeping for it, because the harness's
+# sweep cadence and its sample ordinals both depend on a sweep taking real
+# time. A stub that returned instantly would make every soak collapse into the
+# cadence guard rather than testing the loop.
+set -uo pipefail
+# shellcheck disable=SC1091
+. /opt/stub/mode
+
+dev="" out="" duration_ms=1000 operation="gemm"
+for a in "$@"; do
+  case "${a}" in
+    # --devices, plural, is the real option name. The singular --device is
+    # rejected rather than tolerated: this stub previously accepted it, which
+    # is why the UAT lane passed while the production harness silently
+    # profiled device 0 for every worker. A stub that accepts an interface the
+    # real binary does not have validates nothing.
+    --devices=*)             dev="${a#*=}" ;;
+    --device=*)
+      echo "stub: unknown option '${a}'. CUTLASS reads --devices (a list); there is no --device." >&2
+      exit 64
+      ;;
+    --operation=*)           operation="${a#*=}" ;;
+    --output=*)              out="${a#*=}" ;;
+    --profiling-duration=*)  duration_ms="${a#*=}" ;;
+  esac
+done
+
+if [[ -z "${dev}" ]]; then
+  echo "stub: no --devices given; the harness must name the device it is measuring" >&2
+  exit 64
+fi
+# One entry only. The harness runs one process per device so that every GPU is
+# loaded at once; a list here would mean it had started walking them instead.
+if [[ "${dev}" == *,* ]]; then
+  echo "stub: --devices=${dev} names more than one device; the harness runs one per process" >&2
+  exit 64
+fi
+
+# A sweep counter per device, so "degrade" can report target on the first
+# sweep and less afterwards. That shape is exactly what DCGM's max-based
+# comparison lets through, which is why the mode exists: it exercises the
+# reporting rather than the verdict.
+#
+# The directory is honoured from TMPDIR rather than hardcoded to /tmp, and a
+# failed write is fatal. An unwritable counter made every sweep read as the
+# first, so the degraded device never degraded and the stub reported a healthy
+# node for a run that was asked to inject a fault. A fault injector that
+# silently stops injecting is worse than none: the lane goes green for a case
+# that never ran.
+state="${TMPDIR:-/tmp}/nvcre-gemm-stub.sweep.${dev}"
+sweep=0
+[[ -r "${state}" ]] && sweep="$(cat "${state}")"
+if ! printf '%s\n' "$((sweep + 1))" >"${state}"; then
+  echo "stub: FATAL: cannot write sweep counter ${state}; fault injection would silently not happen" >&2
+  exit 4
+fi
+
+gflops="${STUB_GFLOPS}"
+case "${STUB_MODE}" in
+  slow)
+    # Under the floor on every sweep, so the maximum is under it too and the
+    # verdict fails. This is the mode that exercises a failing burn-in.
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" ]]; then
+      gflops="${STUB_DEGRADED_GFLOPS}"
+    fi
+    ;;
+  degrade)
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" && "${sweep}" -ge 1 ]]; then
+      gflops="${STUB_DEGRADED_GFLOPS}"
+    fi
+    ;;
+  dead)
+    if [[ "${dev}" == "${STUB_BAD_DEVICE}" ]]; then
+      echo "stub: simulated device failure on ${dev}" >&2
+      sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
+      exit 3
+    fi
+    ;;
+esac
+
+sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
+
+# The real profiler does NOT write the path given to --output. It strips a
+# trailing ".csv" and appends ".<operation>.csv", so --output=X.csv lands at
+# X.gemm.csv. This stub wrote the literal path, so the harness read a file that
+# only existed because the stub created it, and the lane passed while every
+# real sweep found nothing and reported outcome=error. Reproduced here, derived
+# the same way, so the harness's own path derivation is what gets exercised.
+csv="${out%.csv}.${operation}.csv"
+printf 'Operation,GFLOPs\n%s,%s\n' "${operation}" "${gflops}" >"${csv}"
+echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs (wrote ${csv})"

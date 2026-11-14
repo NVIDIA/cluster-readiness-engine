@@ -1,0 +1,14 @@
+┌────────────────────────────────────────────────────────────────┐
+│  compute/cutlass-gemm                                          │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Passed                                             │
+│  Nodes/Job: 1                                                  │
+│  Jobs:      400                                                │
+│                                                                │
+│  Per-GPU results below floor: 37 (worst 2 of them)             │
+│    not failures: the verdict is each GPU's best sample         │
+│    gpu-node-11 idx 0: fell to 11.20, best 29.80, 1700 low      │
+│      GPU-0001                                                  │
+│    gpu-node-2 idx 3: fell to 18.90, best 30.10, 640 low        │
+│      GPU-0002                                                  │
+└────────────────────────────────────────────────────────────────┘

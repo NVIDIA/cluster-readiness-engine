@@ -1,0 +1,25 @@
+{
+  "components": [
+    {
+      "fileName": "gpu-cluster-cert-compute-cutlass-gemm-wf-0.ndjson",
+      "shardCount": 1,
+      "rowCount": 1,
+      "final": true,
+      "truncatedRowCount": 3,
+      "rows": [
+        "{\"node\":\"gpu-node-1\",\"componentID\":\"GPU-cafe\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1460.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"\",\"outcome\":\"\"}"
+      ]
+    }
+  ],
+  "truncations": [
+    {
+      "scope": "gpu-cluster-cert",
+      "domain": "compute",
+      "variant": "cutlass-gemm",
+      "reason": "RowUnencodable",
+      "count": 3,
+      "node": "gpu-node-9",
+      "componentID": "GPU-dead"
+    }
+  ]
+}

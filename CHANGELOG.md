@@ -30,6 +30,73 @@ followed them.
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
 
+### Added
+
+- Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
+  A workload can now report a measurement per GPU, or per any component it names,
+  rather than one figure per node or per job. A node-level average passes when seven
+  GPUs are healthy and the eighth is throttled, which is the failure a burn-in exists
+  to find.
+
+  Rows are stored as gzipped NDJSON in ConfigMaps, sharded so no object approaches the
+  API server's size limit, and each Job seals the counts it produced before writing its
+  first shard, so a short result set is distinguishable from a complete one. The
+  Workflow and Certification carry the summed totals and a label selector rather than a
+  list of references, because shard count tracks Job count and a thousand-node run
+  would otherwise put tens of kilobytes of references in one status.
+
+- `compute/cutlass-gemm`, a per-GPU GEMM burn-in, and the `compute` catalog
+  domain it lives in ([ADR-091](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/091-compute-gemm-catalog-entry.md)).
+  One Job per node holds every GPU under load concurrently for the whole soak and
+  reports a result row per GPU per sample, so a thermally throttled eighth GPU is
+  named rather than averaged away.
+
+  The verdict is DCGM's rule, unchanged. Its Targeted Stress plugin fails a GPU when
+  `maxVal < discountMultiplier * target_perf_min_ratio * target_stress`, and every part
+  is carried over: the maximum achieved value, DCGM's 0.95 default ratio, and DCGM's
+  own built-in per-SKU target table. `discountMultiplier` is 1, which is faithful
+  rather than omitted, because it discounts PCIe copy time and `cutlass_profiler`
+  reports GEMM-kernel throughput alone. The harness runs an FP32 GEMM because that is
+  the pipe those targets are calibrated on.
+
+  A GPU that peaks above the floor and decays through the soak therefore passes, as it
+  does under DCGM. What is new is the reporting: the per-GPU rows carry every sample
+  and the summary names any GPU whose minimum fell under the floor, so the decay is
+  visible evidence even though the verdict does not act on it.
+
+  `spec.gemmFloorTFLOPS`, settable globally or per category, replaces that product
+  with an absolute floor. Grace-Blackwell reports rows without a verdict: DCGM's table
+  has no GB200 row that is both sourced and credible, and arming the gate at half the
+  right level would read as armed while catching nothing.
+
+- `--results-bundle DIR` on `certification run`, `certification report`,
+  `workloadrun run` and `workloadrun report`. It writes a verifiable directory holding
+  the report, the per-component rows as plain NDJSON, an account of anything that was
+  lost, a JSON Schema for a row, and a `manifest.json` written last with a sha256 per
+  file. `nvcrectl` resolves and decompresses the shards, so nothing downstream deals
+  with ConfigMaps.
+
+  The command refuses to write a bundle when the shards it resolves do not match the
+  counts the run sealed: a bundle short of its rows would still carry a manifest
+  certifying it as whole. It also verifies the bundle it has just written before
+  reporting success. Like the other export flags, it requires `--wait` on the `run`
+  commands, which previously would have exited 0 having written nothing.
+
+### Fixed
+
+- Report and JUnit files are written atomically. A crash, a full disk or a cancelled
+  run previously left a truncated file that still parsed as far as it got and was
+  indistinguishable from a complete one. `--results-file` with no report to write is
+  now an error rather than a panic, and a symlinked results path updates the file it
+  points at instead of silently replacing the link.
+
+### Security
+
+- Built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054), an HTTP/1
+  server crash from a `MaxBytesReader` header race in `net/http`. The manager
+  serves HTTP for metrics and health probes, so it reaches the affected code
+  (#601).
+
 ## [0.11.0] - 2026-11-09
 
 ### Changed

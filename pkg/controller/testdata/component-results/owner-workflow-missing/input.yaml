@@ -1,0 +1,13 @@
+# Shards are Workflow-owned, so without a readable Workflow there is nothing to
+# own them. The pass requeues rather than falling back to Job ownership: a
+# Job-owned shard is deleted by the iteration rollover that deletes its Job
+# while the sealed total still claims it, and envtest has no garbage collector
+# so no test would ever see that happen.
+#
+# No seal is written either. A seal naming shards that were never created would
+# make the Workflow total permanently short.
+producer: structured-rows
+containerName: node
+noWorkflow: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}

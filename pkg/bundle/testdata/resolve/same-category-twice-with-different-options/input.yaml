@@ -1,0 +1,20 @@
+# Two categories naming the SAME domain and variant, which is what
+# categoryOptionsSuffix exists to allow: two compute/cutlass-gemm runs at
+# different floors is the headline use of it.
+#
+# The component file name used to be built from scope, domain and variant
+# alone, so these two collided, ComponentFileNamesUnique refused the bundle,
+# and the run's entire per-component evidence became unobtainable. The name now
+# carries the Workflow name, which already carries the options suffix, so the
+# two resolve to distinct files.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    rows:
+      - '{"node":"gpu-node-2","componentID":"GPU-beef","index":0,"name":"achievedTFLOPS","value":1398,"unit":"TFLOPS","sample":0}'

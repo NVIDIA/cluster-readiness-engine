@@ -1,0 +1,79 @@
+{
+  "Job/cr-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "cr-job",
+      "namespace": "default",
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "cr-owner",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "gemm.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "componentResults": {
+        "producer": "structured-rows",
+        "containerName": "node"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "WorkloadCompleted",
+          "message": "Workload has completed"
+        },
+        {
+          "type": "Succeeded",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkloadSucceeded",
+          "message": "Workload succeeded"
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "componentResults": {
+        "phase": "Complete",
+        "shardCount": 1,
+        "rowCount": 4,
+        "sealedAt": "1970-01-01T00:00:00Z"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A producer that emitted nothing.
+#
+# This must produce no shards rather than one empty shard, and it must not be
+# an error. The seal the Job writes then says zero shards and zero rows, which
+# is a positive statement that the Job owed nothing — distinct from a Job that
+# owed rows and failed to write them, which is the distinction the sealed count
+# exists to make (ADR-090 decision 3).
+rows: []

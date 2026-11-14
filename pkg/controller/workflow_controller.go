@@ -2399,6 +2399,16 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	log := logf.FromContext(ctx)
 	jobFailed := ts.failed || ts.hwFailed || ts.validationFailed
 
+	// Hold the group until the Job tier has accounted for its per-component
+	// rows. Ahead of the workload delete below on purpose: that call takes the
+	// pods, and the pods' logs are where those rows come from. Bounded by
+	// componentSealGracePeriod, and a no-op for a Job that declares none.
+	if shouldWaitForComponentSeal(ctx, job) {
+		log.V(1).Info("Waiting for the Job's component results to be sealed",
+			"group", g.Name, "job", job.Name)
+		return groupStillRunning, nil
+	}
+
 	if jobFailed {
 		// Delete the workload to free GPUs and stop hanging pods. This happens
 		// before the retry/terminal decision so pods start draining either way.
@@ -2428,6 +2438,11 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 
 	now := metav1.Now()
 	g.CompletionTime = &now
+
+	// Copy this attempt's component-result seal onto the group. Assigned by
+	// attempt rather than accumulated, because this function is re-entered;
+	// the Workflow total is recomputed from these entries (ADR-090).
+	observeComponentSeal(g, job, g.Retries)
 
 	if len(job.Status.FailedNodes) > 0 {
 		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
@@ -2552,6 +2567,9 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
+			// Cleared with Retries, or iteration N+1 inherits N's seals and
+			// they are counted in both Groups and IterationHistory.
+			orch.Groups[i].ComponentSeals = nil
 			resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, &orch.Groups[i])
 		}
 
@@ -2999,6 +3017,12 @@ func (r *WorkflowReconciler) diagnoseSetGroups(
 ) (ctrl.Result, error) {
 	logf.FromContext(ctx).Info(msg, "stage", diag.Stage, "round", diag.Round)
 
+	// Fold the outgoing groups' seals into the retired totals BEFORE the list
+	// is discarded. Fault isolation rebuilds the groups every round and never
+	// snapshots an iteration, so without this a round's rows vanish from the
+	// Workflow total the moment the next round's groups are installed.
+	foldRetiredComponentResults(orch)
+
 	orch.Groups = make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
 		orch.Groups[i] = nvcrev1alpha1.GroupStatus{
@@ -3077,6 +3101,7 @@ func snapshotIteration(orch *nvcrev1alpha1.OrchestrationStatus) nvcrev1alpha1.It
 			JobName:        jobName,
 			StartTime:      g.StartTime.DeepCopy(),
 			CompletionTime: g.CompletionTime.DeepCopy(),
+			ComponentSeal:  liveSeal(g).DeepCopy(),
 		}
 	}
 	return result
@@ -3614,6 +3639,29 @@ func applyDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcre
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
+	// Recompute the component-result totals from the status this write is
+	// applying, never incrementally, so the total converges across the
+	// re-entry, conflict retries and restarts that a `+=` would double-count
+	// (ADR-090).
+	//
+	// Finality comes from conditionType rather than from the conditions on the
+	// object, because every extra runs BEFORE applyExclusiveConditions does:
+	// reading the conditions here sees the phase this write is replacing, so on
+	// the one write that makes the Workflow terminal it still reads InProgress
+	// and no run could ever publish a final total. Deriving it from the phase
+	// being applied also keeps a future terminal call site correct by
+	// construction, since all three go through this function.
+	//
+	// Appended last so it runs after any applyOrchestration extra has written
+	// the orchestration state it sums. Recomputing on non-orchestration writes
+	// is free: it is a pure function of status, so it rewrites the same value
+	// and reports no change.
+	final := conditionType == nvcrev1alpha1.WorkflowSucceeded ||
+		conditionType == nvcrev1alpha1.WorkflowFailed
+	extra = append(slices.Clone(extra), func(w *nvcrev1alpha1.Workflow) bool {
+		return recomputeComponentResults(&w.Status, string(w.UID), final)
+	})
+
 	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
 		func(w *nvcrev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{
@@ -3824,6 +3872,15 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	}
 
 	log.Info("Handling deletion of Workflow")
+
+	// Delete this Workflow's component-result shards explicitly. The owner
+	// reference cleans them up on a real cluster, but envtest has no garbage
+	// collector, so without this a test cannot assert the cleanup it never
+	// sees. Names come from the durable seals the totals are computed from, so
+	// no list permission on ConfigMaps is needed.
+	if err := r.deleteWorkflowComponentShards(ctx, workflow); err != nil {
+		log.V(1).Info("Could not delete component result shards", "error", err)
+	}
 
 	// Stamp the backing PV of every owned PVC while the PVCs still exist:
 	// Phase 1 deletes the Jobs, and job-scoped PVCs cascade-delete with them

@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A sustained soak is the point of this entry, so the catalog-wide 1h default
+# timeoutPerJob is the wrong shape: it is sized for short runs and would cut a
+# healthy soak short. The default soak is 30 minutes
+# (NVCRE_GEMM_DURATION_SECONDS in the entry), and the image is a CUDA runtime
+# carrying a compiled profiler, so the pull is not small. 1h30m covers the soak
+# with an hour for scheduling and image pull.
+# An explicit spec.timeoutPerJob still overrides this value.
+timeoutPerJob: "1h30m"
+
+# ---------------------------------------------------------------------------
+# The verdict, as DCGM computes it.
+# ---------------------------------------------------------------------------
+#
+# DCGM's Targeted Stress plugin fails a GPU when its achieved performance is
+# below target_perf_min_ratio * target_stress: a per-SKU reference target and a
+# minimum ratio of it. Both knobs are taken over unchanged, and the harness
+# computes the same product.
+#
+# The statistic is DCGM's too: the MAXIMUM achieved value, from
+# TargetedStress_wrapper.cpp's `if (maxVal < discountMultiplier * minRatio *
+# m_targetPerf)`. A GPU that peaks above the floor and degrades through the
+# soak passes, as it does under DCGM. The per-GPU rows record every sample, so
+# the decay is reported even though the verdict does not act on it; see the
+# amendment on ADR-091 for what that gives up.
+#
+# discountMultiplier is 1, which is the faithful value rather than an omission.
+# DCGM's factor discounts the share of its measured interval spent copying over
+# PCIe instead of doing GEMM work, because its own maxVal includes that copy
+# time. cutlass_profiler reports throughput for the GEMM kernel alone, so there
+# is nothing in this maxVal to discount and applying one would put the bar
+# below DCGM's.
+#
+# PRECISION IS PART OF THE CALIBRATION. DCGM's targets come from an FP32-pipe
+# measurement: the field id its own provenance comments cite, 1007, is
+# DCGM_FI_PROF_PIPE_FP32_ACTIVE, and every target below lands at 44-62% of its
+# SKU's FP32 non-tensor peak. The harness therefore runs an FP32 GEMM
+# (NVCRE_GEMM_DTYPE=f32), so it measures the quantity these targets describe.
+# Running FP16 against these numbers would put the floor at roughly 4% of
+# achieved throughput on an H100: the gate would pass every GPU, including a
+# badly degraded one, while still reporting itself as armed.
+
+# target_perf_min_ratio, as whole percent. DCGM's default is 0.95
+# (TargetedStress_wrapper.cpp: AddDouble(TS_STR_TARGET_PERF_MIN_RATIO, 0.95)).
+#
+# Percent rather than a fraction because the value reaches the harness through
+# a shell environment variable, and a float64 rendered by Go's %v switches to
+# scientific notation at some magnitudes.
+gemmMinRatioPercent: 95
+
+# target_stress, in GFLOPS, from DCGM's own built-in per-SKU table
+# (nvvs/diag-skus.yaml.in, DCGM 4.7.0). DCGM keys that table by PCI device id;
+# this catalog keys on architecture, so each row below names the DCGM SKU and
+# device id it was taken from.
+#
+# Where one architecture spans several DCGM SKUs, the LOWER target is used.
+# A floor set from the faster SKU would fail the slower one's healthy GPUs,
+# and a burn-in that rejects good hardware is worse than one that is lenient.
+#
+# The figures are not datasheet peaks. DCGM derived each from a measurement on
+# real hardware discounted by 0.75, recorded in its source as comments of the
+# form "dcgmproftester -t 1007 measures ~39000, multiply by .75 to get ~29250".
+#
+# An architecture absent here, with no "default", resolves to 0, and the
+# harness then reports per-GPU rows without making a performance verdict. That
+# fail-open is deliberate: a target guessed for hardware nobody measured would
+# fail healthy nodes. An operator can always set spec.gemmFloorTFLOPS, which
+# replaces the product outright.
+gemmTargetGFLOPS:
+  # Unknown architecture: report rows, make no verdict.
+  default: 0
+
+  # H100 80GB HBM3, device id 2330. The SXM part, which is the node shape this
+  # catalog's H100 defaults describe (8 GPUs and 8 NICs per node). A PCIe H100
+  # fleet is a different SKU at 15375 (device id 2331, "Nvidia P1010") and
+  # should set spec.gemmFloorTFLOPS rather than inherit this.
+  h100: 29250
+
+  # H200, device id 233b at 32218 rather than 2335 at 37500. Both are H200
+  # rows; the lower is the 600W part.
+  h200: 32218
+
+  # A100-SXM4-80GB, device id 20b2. A100 PCIe is 5963 (device id 20f1), 15%
+  # lower; the SXM figure is used because this catalog's A100 defaults are the
+  # 8-GPU SXM node shape.
+  a100: 6975
+
+  # NVIDIA L40S, device id 26b9. One row, no ambiguity.
+  l40s: 30000
+
+  # L40 spans two rows, 25900 (26f5) and 30000 (26b5). Lower one used.
+  l40: 25900
+
+  # B200 spans 36949 (2901) and 33843 (HGX B200 168GB, 2909). Lower one used.
+  b200: 33843
+
+  # B300, device id 3182.
+  b300: 36825
+
+  # GB300 spans three DCGM rows: NVL Bianca 48750 (31c2), NVL Galaxy 48375
+  # (31C220E5) and MaxQ 46631 (31a1). The lowest is used, so a MaxQ node is not
+  # failed by a target set from a Bianca one.
+  #
+  # Readable because the lookup keys on the raw architecture. ConfigArch
+  # collapses gb300 into gb200 for parallelism, where the two share a GPU count
+  # and so a tp/pp/ep shape; applying that collapse here would have made this
+  # key dead while looking armed, and would have forced GB300's target onto
+  # GB200, where it is far too high.
+  gb300: 46631
+
+  # RTX PRO 6000 Blackwell Max-Q, device id 2bb4, the only row in DCGM's table
+  # carrying an explicit RTX PRO 6000 comment. Max-Q is the lowest-power
+  # variant of that family, so a server part would be faster and this target
+  # stays conservative for it.
+  rtxpro6000: 39306
+
+  # GB200 is deliberately absent, and it is the one gap left.
+  #
+  # DCGM's table has no row named GB200. Its multi-node
+  # diagnostic module maps device id 2941 to "GB200 NVL" in a comment, and
+  # 2941's row in the target table is named "B200 DevId 10DE" with a target of
+  # 15225 -- less than half the 33843 used for b200 above, on what should be
+  # comparable silicon. Identifying 2941 as GB200 takes a cross-reference
+  # between two source files rather than one explicit label, and the value
+  # disagrees with its own siblings.
+  #
+  # So there is no figure for GB200 that is both sourced and credible. A GB200
+  # fleet gets per-GPU rows without a performance verdict until someone
+  # measures one and sets spec.gemmFloorTFLOPS from it. Entering 15225 would
+  # arm the gate at under half the right level, which reads as armed and
+  # catches nothing; borrowing GB300's 46631 would fail healthy GB200 nodes.
+  # Saying so is better than either.
+  #
+  # GB300 is no longer caught up in this: see its own entry above.

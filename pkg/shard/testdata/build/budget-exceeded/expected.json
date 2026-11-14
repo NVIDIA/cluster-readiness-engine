@@ -1,0 +1,58 @@
+{
+  "shardCount": 1,
+  "shards": [
+    {
+      "index": 0,
+      "rows": 3
+    }
+  ],
+  "totalRows": 3,
+  "dropped": [
+    {
+      "node": "node-000",
+      "componentID": "GPU-000-000",
+      "index": 0,
+      "name": "achievedTFLOPS",
+      "sample": 0,
+      "reason": "RowBudgetExceeded",
+      "rawBytes": 177,
+      "count": 4
+    },
+    {
+      "node": "node-000",
+      "componentID": "GPU-000-003",
+      "index": 3,
+      "name": "achievedTFLOPS",
+      "sample": 1,
+      "reason": "RowBudgetExceeded",
+      "rawBytes": 177,
+      "count": 3
+    },
+    {
+      "node": "node-000",
+      "componentID": "GPU-000-002",
+      "index": 2,
+      "name": "achievedTFLOPS",
+      "sample": 1,
+      "reason": "RowBudgetExceeded",
+      "rawBytes": 177,
+      "count": 3
+    },
+    {
+      "node": "node-000",
+      "componentID": "GPU-000-001",
+      "index": 1,
+      "name": "achievedTFLOPS",
+      "sample": 1,
+      "reason": "RowBudgetExceeded",
+      "rawBytes": 177,
+      "count": 3
+    }
+  ],
+  "droppedTotal": 13,
+  "ndjson": [
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-000-001\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":1001.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-000-002\",\"index\":2,\"name\":\"achievedTFLOPS\",\"value\":1002.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-000-003\",\"index\":3,\"name\":\"achievedTFLOPS\",\"value\":1003.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}"
+  ]
+}

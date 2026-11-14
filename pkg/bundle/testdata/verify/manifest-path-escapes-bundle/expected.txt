@@ -1,0 +1,1 @@
+manifest.json lists ../../etc/passwd, which escapes the bundle

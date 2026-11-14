@@ -1,0 +1,34 @@
+# Three superseded attempts whose shard delete keeps failing, plus the live
+# one. Holding every failed seal would be the safer-looking choice and it is
+# the wrong one: GroupComponentSeal is capped at MaxItems=4, retryFailedGroups
+# has no maximum, and a status write refused for MaxItems is a 422 that no
+# retry clears. So two failures are retained and the third is dropped, trading
+# one category's bundle for a Workflow that can still write its status.
+phase: InProgress
+retire: true
+deleteFails: true
+existingShards:
+  - shard-01234567-wf-group-0-iter-1-0000
+  - shard-01234567-wf-group-0-iter-1-retry-1-0000
+  - shard-01234567-wf-group-0-iter-1-retry-2-0000
+  - shard-01234567-wf-group-0-iter-1-retry-3-0000
+groups:
+  - name: group-0
+    retries: 3
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 1
+        rowCount: 10
+      - attempt: 1
+        jobName: wf-group-0-iter-1-retry-1
+        shardCount: 1
+        rowCount: 20
+      - attempt: 2
+        jobName: wf-group-0-iter-1-retry-2
+        shardCount: 1
+        rowCount: 30
+      - attempt: 3
+        jobName: wf-group-0-iter-1-retry-3
+        shardCount: 1
+        rowCount: 40

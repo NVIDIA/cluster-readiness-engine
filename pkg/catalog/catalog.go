@@ -124,6 +124,10 @@ type BuildConfig struct {
 	// 0 means use template default (50).
 	MaxSteps int32
 
+	// GemmFloorTFLOPS is the per-GPU sustained TFLOPS floor for
+	// compute/cutlass-gemm. Zero means the per-architecture default applies.
+	GemmFloorTFLOPS int32
+
 	// ExitDurationMins is the training duration in minutes for NeMo 6 workloads.
 	// 0 means use template default (30).
 	ExitDurationMins int32

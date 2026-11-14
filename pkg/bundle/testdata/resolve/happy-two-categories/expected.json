@@ -1,0 +1,23 @@
+{
+  "components": [
+    {
+      "fileName": "gpu-cluster-cert-compute-cutlass-gemm-wf-0.ndjson",
+      "shardCount": 1,
+      "rowCount": 2,
+      "final": true,
+      "rows": [
+        "{\"node\":\"gpu-node-1\",\"componentID\":\"GPU-cafe\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1460.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"\",\"outcome\":\"\"}",
+        "{\"node\":\"gpu-node-1\",\"componentID\":\"GPU-f00d\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":1402.75,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"\",\"outcome\":\"\"}"
+      ]
+    },
+    {
+      "fileName": "gpu-cluster-cert-diagnostics-dcgm-level4-wf-1.ndjson",
+      "shardCount": 1,
+      "rowCount": 1,
+      "final": true,
+      "rows": [
+        "{\"node\":\"gpu-node-2\",\"componentID\":\"GPU-beef\",\"index\":0,\"name\":\"eccErrors\",\"value\":0.00,\"unit\":\"count\",\"sample\":0,\"timestamp\":\"\",\"outcome\":\"\"}"
+      ]
+    }
+  ]
+}

@@ -14,6 +14,36 @@ IMAGE_TAG ?= $(VERSION)
 # Full image URL
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
+# The CUTLASS GEMM burn-in harness compute/cutlass-gemm runs (ADR-091). A
+# second published image, so every image target below takes the Dockerfile,
+# its context and the buildx scratch names as variables rather than assuming
+# the controller's.
+GEMM_IMAGE_REPOSITORY ?= nvidia/cluster-readiness-engine/cutlass-gemm
+GEMM_IMAGE_TAG ?= $(VERSION)
+GEMM_IMG ?= $(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY):$(GEMM_IMAGE_TAG)
+
+# Which image the docker-* targets act on. Overridden by the gemm-image-*
+# targets; a caller may also set these directly.
+DOCKER_IMG ?= $(IMG)
+DOCKERFILE ?= Dockerfile
+# NOT named DOCKER_CONTEXT: that is a reserved Docker CLI variable which
+# selects the daemon context, so passing it on a make command line or as a
+# job env exported it to docker and every build failed with
+# 'no builder <path> found' before it read the Dockerfile.
+DOCKER_BUILD_CONTEXT ?= .
+# Scratch names, derived from the Dockerfile so two concurrent builds in one
+# workspace cannot delete each other's builder or temporary file. The previous
+# constants meant the first `make docker-buildx` to exit removed the other's.
+# Derived from the full Dockerfile path, not its basename. Every Dockerfile in
+# this repository is named "Dockerfile", so a basename gave the manager build
+# and the harness build the same builder, and each recipe's trap removes the
+# builder it used on exit. Two builds running at once would then have one
+# delete the other's builder mid-build, which surfaces as an unrelated BuildKit
+# error. Separators become dashes because a builder name takes only
+# alphanumerics, dashes and underscores.
+BUILDX_BUILDER ?= nvcre-builder-$(subst .,-,$(subst /,-,$(DOCKERFILE)))
+DOCKERFILE_CROSS ?= $(DOCKERFILE).cross
+
 # Helm chart directory (used by manifests and helm-* targets).
 HELM_CHART_DIR ?= helm/cluster-readiness-engine
 # The CRDs-only chart. make manifests writes the same CRDs to its files/ and to
@@ -321,11 +351,29 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t "${IMG}" .
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -f "$(DOCKERFILE)" -t "$(DOCKER_IMG)" "$(DOCKER_BUILD_CONTEXT)"
 
 .PHONY: docker-push
 docker-push: check-clean-version ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push "${IMG}"
+	$(CONTAINER_TOOL) push "$(DOCKER_IMG)"
+
+# The GEMM harness image. Its own context directory, because the repository
+# root .dockerignore excludes everything and re-includes only Go sources, so a
+# build rooted there cannot see the harness script.
+.PHONY: gemm-image-build
+gemm-image-build: ## Build the CUTLASS GEMM harness image (ADR-091).
+	$(MAKE) docker-build DOCKER_IMG="$(GEMM_IMG)" \
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm
+
+.PHONY: gemm-image-push
+gemm-image-push: ## Push the CUTLASS GEMM harness image.
+	$(MAKE) docker-push DOCKER_IMG="$(GEMM_IMG)"
+
+.PHONY: gemm-image-native
+gemm-image-native: ## Build the GEMM harness image for PLATFORM natively and push it by digest.
+	$(MAKE) docker-buildx-native \
+		DOCKER_IMAGE_NAME="$(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY)" \
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -334,6 +382,15 @@ docker-push: check-clean-version ## Push docker image with the manager.
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
+
+# One platform, for docker-buildx-native. Deliberately not named
+# DOCKER_DEFAULT_PLATFORM: that is a reserved Docker CLI variable and setting
+# it would override the build for every docker command in the environment.
+PLATFORM ?= linux/amd64
+# Image path with NO tag. push-by-digest refuses a tag, because the point is
+# that the leg is addressed by digest until the index is assembled.
+DOCKER_IMAGE_NAME ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)
+BUILDX_METADATA ?= buildx-metadata.json
 
 # Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
 NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
@@ -344,14 +401,43 @@ NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 BUILDX_PUSH ?= --push
 
 .PHONY: docker-buildx
+.PHONY: docker-buildx-native
+docker-buildx-native: ## Build ONE platform from the unmodified Dockerfile and push it by digest.
+	# No sed, and that is the entire difference from docker-buildx. That target
+	# rewrites the first FROM to --platform=$${BUILDPLATFORM} so the builder
+	# stage runs natively while the result targets another architecture, which
+	# is exactly right for a Go binary built with GOARCH=$${TARGETARCH} and
+	# exactly wrong for anything compiled by nvcc: the CUDA stage would compile
+	# for the build host and the result would be an arm64 image full of x86-64
+	# binaries. So this target leaves the Dockerfile alone and relies on the
+	# caller running it on hardware of the target architecture.
+	#
+	# --platform is still passed explicitly, even though it matches the host,
+	# because it is what makes BuildKit set TARGETARCH, which the GEMM
+	# Dockerfile reads to choose its GPU architecture list.
+	#
+	# --provenance=false and --sbom=false because push-by-digest with
+	# attestations returns the digest of a small index (the image manifest plus
+	# an attestation manifest) rather than of the image manifest, and feeding
+	# that to `imagetools create` yields a child with no usable platform. SBOMs
+	# for this image are generated from the assembled index instead.
+	trap '$(CONTAINER_TOOL) buildx rm $(BUILDX_BUILDER) >/dev/null 2>&1 || true' EXIT; \
+	$(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER) >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER); \
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) \
+		--platform=$(PLATFORM) --provenance=false --sbom=false \
+		--metadata-file "$(BUILDX_METADATA)" \
+		--output=type=image,"name=$(DOCKER_IMAGE_NAME)",push-by-digest=true,name-canonical=true,push=true \
+		-f "$(DOCKERFILE)" "$(DOCKER_BUILD_CONTEXT)"
+
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# Run as one shell, so the trap removes the builder and the temporary
 	# Dockerfile even when the build fails.
-	trap '$(CONTAINER_TOOL) buildx rm nvcre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
-	$(CONTAINER_TOOL) buildx create --name nvcre-builder >/dev/null 2>&1 || true; \
-	$(CONTAINER_TOOL) buildx use nvcre-builder; \
-	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "${IMG}" -f Dockerfile.cross .
+	trap '$(CONTAINER_TOOL) buildx rm $(BUILDX_BUILDER) >/dev/null 2>&1 || true; rm -f $(DOCKERFILE_CROSS)' EXIT; \
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' "$(DOCKERFILE)" > "$(DOCKERFILE_CROSS)"; \
+	$(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER) >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER); \
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "$(DOCKER_IMG)" -f "$(DOCKERFILE_CROSS)" "$(DOCKER_BUILD_CONTEXT)"
 
 ##@ Deployment
 

@@ -1,0 +1,5 @@
+# A release candidate. The repository has shipped v0.2.0-rc.2 and its
+# siblings, and release.yml accepts the shape, so the harness image on such a
+# release is tagged with the prerelease too. Resolving this to v0.2.0 would
+# name a different release, quite possibly one that never existed.
+buildVersion: v0.2.0-rc.3

@@ -55,6 +55,18 @@
       ]
     },
     {
+      "workflow": "gcp-h100-pull-secrets-cer-837bc",
+      "category": "compute/cutlass-gemm",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
       "workflow": "gcp-h100-pull-secrets-cer-8684c",
       "category": "communication/nccl-loopback",
       "replicatedJobs": [

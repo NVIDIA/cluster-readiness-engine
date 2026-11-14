@@ -1,0 +1,19 @@
+# A read that collected rows and still could not be paged to the end. The line
+# carries a timestamp, so the pager has a cursor to advance from, but the page
+# keeps reporting more to come at the same second and the reader gives up
+# rather than paging forever.
+#
+# The rows that WERE read are kept and stored, and the shortfall is recorded
+# beside them rather than replacing them: a partial read is not a failed one.
+# Count is 0 on purpose, because a page that was never fetched gives no way to
+# know how many rows were on it, so the record is the finding and the message
+# is what tells a human why.
+#
+# The record has to reach truncation.json and not only Job status. ADR-090
+# makes the bundle the artifact that leaves the cluster, so a loss visible only
+# in status is invisible to the reader the rule is written for.
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  2026-01-22T10:04:00.000000000Z NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

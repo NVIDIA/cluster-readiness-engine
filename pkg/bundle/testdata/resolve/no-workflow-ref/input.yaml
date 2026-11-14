@@ -1,0 +1,10 @@
+# Sealed counts with no workflow reference at all. Inconsistent status rather
+# than a missing object, and reported as such rather than silently skipped: a
+# skipped category is a bundle quietly missing a category's evidence.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    noWorkflowRef: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

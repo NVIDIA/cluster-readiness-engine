@@ -279,6 +279,41 @@ spec:
                         required:
                         - pvcName
                         type: object
+                      componentResults:
+                        description: |-
+                          componentResults declares that this Job's workload produces per-component
+                          result rows, and names the producer that turns its output into them.
+
+                          Absent means it does not, and the Job seals a phase of None as soon as it
+                          reaches a terminal state. That positive "nothing owed" is load bearing:
+                          the Workflow waits for a terminal seal before finalizing a group, so an
+                          absent declaration has to resolve to an answer rather than to silence.
+
+                          The declaration vocabulary proper, which lets a spec describe what a
+                          workload emits rather than naming a built-in producer, is the ADR-090
+                          follow-on. This is the minimum the storage path needs to exist.
+                        properties:
+                          containerName:
+                            description: |-
+                              containerName is the container whose logs the producer reads. When
+                              empty the workload's primary container is used.
+                            maxLength: 63
+                            type: string
+                          producer:
+                            description: producer selects a registered row producer
+                              by name.
+                            maxLength: 63
+                            minLength: 1
+                            type: string
+                          replicatedJobName:
+                            description: |-
+                              replicatedJobName selects which replicated job's pod to read on a
+                              multi-pod workload. When empty the workload's default is used.
+                            maxLength: 63
+                            type: string
+                        required:
+                        - producer
+                        type: object
                       goodputMeasurement:
                         description: |-
                           goodputMeasurement configures automatic creation of a GoodputMeasurement
@@ -7660,6 +7695,145 @@ spec:
           status:
             description: status defines the observed state of Workflow
             properties:
+              componentResults:
+                description: |-
+                  componentResults totals the per-component result rows this Workflow's
+                  Jobs produced, and carries the selector that resolves their shards.
+                properties:
+                  degradedComponentCount:
+                    description: |-
+                      degradedComponentCount is how many components across this Workflow had
+                      at least one sample below the floor, summed over its groups. Exact.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  degradedComponents:
+                    description: |-
+                      degradedComponents is the worst of those across the whole Workflow, by
+                      lowest value reached, so a reader of one category's status sees the
+                      hardware most worth looking at without resolving a single shard.
+
+                      Capped at 16. The count above is exact, so a cap cannot hide how many
+                      there were, only which ones are named. The complete set is in the
+                      bundle.
+                    items:
+                      description: |-
+                        DegradedComponent names one component whose results fell below the floor at
+                        some point during a run, with what it reached and what it fell to.
+
+                        This exists because the verdict is DCGM's and DCGM's comparison is on the
+                        maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                        decays through the soak therefore passes, and without this the report of a
+                        passing run says nothing about it: the evidence would live only in the
+                        result bundle, for whoever thought to ask for one, and in pod logs that do
+                        not outlive the pod.
+
+                        Derived from the rows alone. A producer marks a sample below the floor with
+                        outcome "below", so the Job tier needs no knowledge of the floor to build
+                        this, and a producer that enforces no floor simply yields none.
+                      properties:
+                        belowSamples:
+                          description: |-
+                            belowSamples is how many of the component's samples were under the
+                            floor.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        componentID:
+                          description: componentID is the component's stable identity,
+                            such as a GPU UUID.
+                          maxLength: 128
+                          type: string
+                        erroredSamples:
+                          description: |-
+                            erroredSamples is how many of the component's samples could not be taken
+                            at all: the kernel would not run, the device returned an error, the tool
+                            exited non-zero.
+
+                            Separate from belowSamples because it is a different finding and, for a
+                            burn-in, the stronger one. A component returning a low number is slow; a
+                            component that intermittently cannot run the work is faulty. Summing
+                            them into one count would let an operator read a device fault as a
+                            performance shortfall.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        index:
+                          description: index is the component's device index within
+                            its node.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        maxValue:
+                          description: |-
+                            maxValue is the highest value the component reached, as the producer
+                            rendered it. This is what the verdict compared, which is why a component
+                            listed here can still have passed.
+                          maxLength: 32
+                          type: string
+                        minValue:
+                          description: |-
+                            minValue is the lowest value the component reached. The gap between this
+                            and maxValue is the decay the verdict did not act on.
+                          maxLength: 32
+                          type: string
+                        node:
+                          description: node is the Kubernetes node the component is
+                            attached to.
+                          maxLength: 253
+                          type: string
+                      required:
+                      - belowSamples
+                      - componentID
+                      - index
+                      - node
+                      type: object
+                    maxItems: 16
+                    type: array
+                  final:
+                    description: |-
+                      final reports whether the totals are complete.
+
+                      Shards are produced per Job and Jobs finish at different times, so a
+                      total alone cannot distinguish "complete so far" from "missing": a
+                      reader polling mid-run sees a smaller number either way. It becomes true
+                      only once the Workflow itself is terminal, at which point the count can
+                      be checked against what is actually in the cluster.
+                    type: boolean
+                  rowCount:
+                    description: rowCount is the total number of rows those shards
+                      hold.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  selector:
+                    description: selector resolves every shard ConfigMap belonging
+                      to this Workflow.
+                    maxLength: 253
+                    type: string
+                  shardCount:
+                    description: |-
+                      shardCount is the total number of shard ConfigMaps across this
+                      Workflow's Jobs. Recomputed from the orchestration status on every
+                      write rather than incremented, so a reconcile that runs twice over the
+                      same terminal Job cannot double-count.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  truncated:
+                    description: truncated reports whether any Job lost evidence.
+                    type: boolean
+                  truncatedRowCount:
+                    description: truncatedRowCount is how many rows were lost in total.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                required:
+                - final
+                - rowCount
+                - selector
+                - shardCount
+                type: object
               conditions:
                 description: |-
                   conditions represent the current state of the Workflow resource.
@@ -8149,6 +8323,208 @@ spec:
                             in the current iteration.
                           format: date-time
                           type: string
+                        componentSeals:
+                          description: |-
+                            componentSeals holds the live attempt's seal, and the superseded
+                            attempt's until it is retired.
+
+                            Entries are assigned by attempt, never accumulated, because the function
+                            that observes a terminal group is re-entered: it returns early while
+                            pods drain and again on a stale view, and it is reached afresh after any
+                            failed status write. A running sum would count those passes twice. The
+                            Workflow total is recomputed from these entries instead.
+
+                            A superseded attempt's entry is dropped where retirePreviousAttempts
+                            deletes that attempt's Job and its shards, so at most two are ever held
+                            however large retryFailedGroups is. That is what bounds this list, and
+                            it is the only bound the existing control flow supports: retirement
+                            already enumerates attempts from durable state and already blocks the
+                            next launch until every one is confirmed gone, so retries cannot advance
+                            past an unretired seal. Bounding retryFailedGroups instead would bound
+                            the wrong axis — the problem is aggregate size across groups, not the
+                            count within one — and would impose a user-visible spec restriction to
+                            fix an internal accounting choice.
+
+                            Retiring the entry with the shards is also what keeps the Workflow total
+                            monotonic. Dropping a seal while its shards survived would make the
+                            total fall at an iteration boundary, and a reader cannot tell a total
+                            that fell from one that was never complete.
+
+                            Cleared at the iteration boundary alongside retries, or iteration N+1
+                            would inherit N's seals and count them in both places.
+                          items:
+                            description: |-
+                              GroupComponentSeal is one attempt's seal as the Workflow records it.
+
+                              It carries the Job name, not the shard name stem. The stem is derivable from
+                              the Job name and the Workflow UID, which is the state the retirement path
+                              already has in hand: retirePreviousAttempts re-derives each earlier
+                              attempt's Job name itself. Storing it was 200 bytes per seal of the largest
+                              field in the struct, to save a string concatenation.
+                            properties:
+                              attempt:
+                                description: |-
+                                  attempt is the retry index this seal belongs to, matching
+                                  GroupStatus.retries at the time the attempt ran.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              degradedComponentCount:
+                                description: |-
+                                  degradedComponentCount is how many of the attempt's components had at
+                                  least one sample below the floor. Exact.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              degradedComponents:
+                                description: |-
+                                  degradedComponents is the worst of them, by lowest value reached.
+
+                                  Unlike Truncations above, the detail is kept here rather than left on
+                                  the Job's seal, and the reason is what a reader needs it for. A
+                                  truncation is a fact about the result set, which the row and shard
+                                  counts already quantify. A degraded component is a fact about hardware,
+                                  and the verdict is DCGM's comparison on the maximum, so a GPU listed
+                                  here may well have passed (ADR-091). Nothing else on the Workflow would
+                                  say so.
+
+                                  Capped, with the exact count beside it, so one group is one Job's worth
+                                  of GPUs and the Workflow's aggregate stays bounded over a thousand of
+                                  them.
+                                items:
+                                  description: |-
+                                    DegradedComponent names one component whose results fell below the floor at
+                                    some point during a run, with what it reached and what it fell to.
+
+                                    This exists because the verdict is DCGM's and DCGM's comparison is on the
+                                    maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                                    decays through the soak therefore passes, and without this the report of a
+                                    passing run says nothing about it: the evidence would live only in the
+                                    result bundle, for whoever thought to ask for one, and in pod logs that do
+                                    not outlive the pod.
+
+                                    Derived from the rows alone. A producer marks a sample below the floor with
+                                    outcome "below", so the Job tier needs no knowledge of the floor to build
+                                    this, and a producer that enforces no floor simply yields none.
+                                  properties:
+                                    belowSamples:
+                                      description: |-
+                                        belowSamples is how many of the component's samples were under the
+                                        floor.
+                                      format: int64
+                                      minimum: 0
+                                      type: integer
+                                    componentID:
+                                      description: componentID is the component's
+                                        stable identity, such as a GPU UUID.
+                                      maxLength: 128
+                                      type: string
+                                    erroredSamples:
+                                      description: |-
+                                        erroredSamples is how many of the component's samples could not be taken
+                                        at all: the kernel would not run, the device returned an error, the tool
+                                        exited non-zero.
+
+                                        Separate from belowSamples because it is a different finding and, for a
+                                        burn-in, the stronger one. A component returning a low number is slow; a
+                                        component that intermittently cannot run the work is faulty. Summing
+                                        them into one count would let an operator read a device fault as a
+                                        performance shortfall.
+                                      format: int64
+                                      minimum: 0
+                                      type: integer
+                                    index:
+                                      description: index is the component's device
+                                        index within its node.
+                                      format: int32
+                                      minimum: 0
+                                      type: integer
+                                    maxValue:
+                                      description: |-
+                                        maxValue is the highest value the component reached, as the producer
+                                        rendered it. This is what the verdict compared, which is why a component
+                                        listed here can still have passed.
+                                      maxLength: 32
+                                      type: string
+                                    minValue:
+                                      description: |-
+                                        minValue is the lowest value the component reached. The gap between this
+                                        and maxValue is the decay the verdict did not act on.
+                                      maxLength: 32
+                                      type: string
+                                    node:
+                                      description: node is the Kubernetes node the
+                                        component is attached to.
+                                      maxLength: 253
+                                      type: string
+                                  required:
+                                  - belowSamples
+                                  - componentID
+                                  - index
+                                  - node
+                                  type: object
+                                maxItems: 16
+                                type: array
+                              jobName:
+                                description: |-
+                                  jobName is the Job that produced these rows. The attempt's shard names
+                                  are derived from it together with the Workflow UID.
+                                maxLength: 63
+                                type: string
+                              phase:
+                                description: phase is the attempt's terminal seal
+                                  phase.
+                                enum:
+                                - None
+                                - Writing
+                                - Complete
+                                - Partial
+                                type: string
+                              rowCount:
+                                description: rowCount is how many rows those shards
+                                  hold.
+                                format: int64
+                                minimum: 0
+                                type: integer
+                              shardCount:
+                                description: shardCount is how many shards the attempt
+                                  owes.
+                                format: int32
+                                maximum: 9999
+                                minimum: 0
+                                type: integer
+                              truncatedRowCount:
+                                description: |-
+                                  truncatedRowCount is how many rows this attempt could not store.
+
+                                  A count, not the per-reason detail that ComponentResultSeal carries.
+                                  The distinction is load bearing, and getting it wrong is reachable: a
+                                  Job's seal lives on its own object, one per Job, so eight truncations
+                                  with explanatory messages cost nothing there. A group's seal lives on
+                                  the Workflow, where a thousand-node fleet puts a thousand of them on ONE
+                                  object. Measured: 1000 groups with a seal each is 358 KB of status, 34%
+                                  of the budget; the same with eight truncations each is 25.9 MB, 24 times
+                                  over it. Even one reason per group across a fleet-wide condition adds
+                                  300 KB, and about three makes the status unwritable.
+
+                                  So the Workflow keeps the magnitude and the reasons live where there is
+                                  room for them: on each Job's own seal, and in the truncation ConfigMap,
+                                  which has no per-object constraint at all.
+                                format: int64
+                                minimum: 0
+                                type: integer
+                            required:
+                            - attempt
+                            - jobName
+                            - phase
+                            - rowCount
+                            - shardCount
+                            type: object
+                          maxItems: 4
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - attempt
+                          x-kubernetes-list-type: map
                         domainNodeCounts:
                           additionalProperties:
                             type: integer
@@ -8247,6 +8623,170 @@ spec:
                                 description: completionTime when the group's job finished.
                                 format: date-time
                                 type: string
+                              componentSeal:
+                                description: |-
+                                  componentSeal is the winning attempt's seal for this iteration, copied
+                                  here when the iteration is snapshotted so the Workflow total survives
+                                  the group reset that follows.
+                                properties:
+                                  attempt:
+                                    description: |-
+                                      attempt is the retry index this seal belongs to, matching
+                                      GroupStatus.retries at the time the attempt ran.
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
+                                  degradedComponentCount:
+                                    description: |-
+                                      degradedComponentCount is how many of the attempt's components had at
+                                      least one sample below the floor. Exact.
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
+                                  degradedComponents:
+                                    description: |-
+                                      degradedComponents is the worst of them, by lowest value reached.
+
+                                      Unlike Truncations above, the detail is kept here rather than left on
+                                      the Job's seal, and the reason is what a reader needs it for. A
+                                      truncation is a fact about the result set, which the row and shard
+                                      counts already quantify. A degraded component is a fact about hardware,
+                                      and the verdict is DCGM's comparison on the maximum, so a GPU listed
+                                      here may well have passed (ADR-091). Nothing else on the Workflow would
+                                      say so.
+
+                                      Capped, with the exact count beside it, so one group is one Job's worth
+                                      of GPUs and the Workflow's aggregate stays bounded over a thousand of
+                                      them.
+                                    items:
+                                      description: |-
+                                        DegradedComponent names one component whose results fell below the floor at
+                                        some point during a run, with what it reached and what it fell to.
+
+                                        This exists because the verdict is DCGM's and DCGM's comparison is on the
+                                        maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                                        decays through the soak therefore passes, and without this the report of a
+                                        passing run says nothing about it: the evidence would live only in the
+                                        result bundle, for whoever thought to ask for one, and in pod logs that do
+                                        not outlive the pod.
+
+                                        Derived from the rows alone. A producer marks a sample below the floor with
+                                        outcome "below", so the Job tier needs no knowledge of the floor to build
+                                        this, and a producer that enforces no floor simply yields none.
+                                      properties:
+                                        belowSamples:
+                                          description: |-
+                                            belowSamples is how many of the component's samples were under the
+                                            floor.
+                                          format: int64
+                                          minimum: 0
+                                          type: integer
+                                        componentID:
+                                          description: componentID is the component's
+                                            stable identity, such as a GPU UUID.
+                                          maxLength: 128
+                                          type: string
+                                        erroredSamples:
+                                          description: |-
+                                            erroredSamples is how many of the component's samples could not be taken
+                                            at all: the kernel would not run, the device returned an error, the tool
+                                            exited non-zero.
+
+                                            Separate from belowSamples because it is a different finding and, for a
+                                            burn-in, the stronger one. A component returning a low number is slow; a
+                                            component that intermittently cannot run the work is faulty. Summing
+                                            them into one count would let an operator read a device fault as a
+                                            performance shortfall.
+                                          format: int64
+                                          minimum: 0
+                                          type: integer
+                                        index:
+                                          description: index is the component's device
+                                            index within its node.
+                                          format: int32
+                                          minimum: 0
+                                          type: integer
+                                        maxValue:
+                                          description: |-
+                                            maxValue is the highest value the component reached, as the producer
+                                            rendered it. This is what the verdict compared, which is why a component
+                                            listed here can still have passed.
+                                          maxLength: 32
+                                          type: string
+                                        minValue:
+                                          description: |-
+                                            minValue is the lowest value the component reached. The gap between this
+                                            and maxValue is the decay the verdict did not act on.
+                                          maxLength: 32
+                                          type: string
+                                        node:
+                                          description: node is the Kubernetes node
+                                            the component is attached to.
+                                          maxLength: 253
+                                          type: string
+                                      required:
+                                      - belowSamples
+                                      - componentID
+                                      - index
+                                      - node
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                  jobName:
+                                    description: |-
+                                      jobName is the Job that produced these rows. The attempt's shard names
+                                      are derived from it together with the Workflow UID.
+                                    maxLength: 63
+                                    type: string
+                                  phase:
+                                    description: phase is the attempt's terminal seal
+                                      phase.
+                                    enum:
+                                    - None
+                                    - Writing
+                                    - Complete
+                                    - Partial
+                                    type: string
+                                  rowCount:
+                                    description: rowCount is how many rows those shards
+                                      hold.
+                                    format: int64
+                                    minimum: 0
+                                    type: integer
+                                  shardCount:
+                                    description: shardCount is how many shards the
+                                      attempt owes.
+                                    format: int32
+                                    maximum: 9999
+                                    minimum: 0
+                                    type: integer
+                                  truncatedRowCount:
+                                    description: |-
+                                      truncatedRowCount is how many rows this attempt could not store.
+
+                                      A count, not the per-reason detail that ComponentResultSeal carries.
+                                      The distinction is load bearing, and getting it wrong is reachable: a
+                                      Job's seal lives on its own object, one per Job, so eight truncations
+                                      with explanatory messages cost nothing there. A group's seal lives on
+                                      the Workflow, where a thousand-node fleet puts a thousand of them on ONE
+                                      object. Measured: 1000 groups with a seal each is 358 KB of status, 34%
+                                      of the budget; the same with eight truncations each is 25.9 MB, 24 times
+                                      over it. Even one reason per group across a fleet-wide condition adds
+                                      300 KB, and about three makes the status unwritable.
+
+                                      So the Workflow keeps the magnitude and the reasons live where there is
+                                      room for them: on each Job's own seal, and in the truncation ConfigMap,
+                                      which has no per-object constraint at all.
+                                    format: int64
+                                    minimum: 0
+                                    type: integer
+                                required:
+                                - attempt
+                                - jobName
+                                - phase
+                                - rowCount
+                                - shardCount
+                                type: object
                               jobName:
                                 description: |-
                                   jobName is the Job that ran for this group in this iteration.
@@ -8302,6 +8842,120 @@ spec:
                     - roce
                     - tcpxo
                     type: string
+                  retiredComponentResults:
+                    description: |-
+                      retiredComponentResults folds in the seals of groups whose GroupStatus
+                      entries were replaced outright rather than snapshotted.
+
+                      Only fault isolation does that: each diagnose round rebuilds the group
+                      list from scratch and never snapshots an iteration, so without this the
+                      rows a round produced would vanish from the Workflow total the moment
+                      the next round's groups were installed. Fault isolation is also the mode
+                      where per-component rows are most worth having, so losing them there is
+                      the worst place to lose them.
+                    properties:
+                      degradedComponentCount:
+                        description: DegradedComponentCount is the exact number of
+                          degraded components.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      degradedComponents:
+                        description: DegradedComponents is the capped worst-first
+                          selection of them.
+                        items:
+                          description: |-
+                            DegradedComponent names one component whose results fell below the floor at
+                            some point during a run, with what it reached and what it fell to.
+
+                            This exists because the verdict is DCGM's and DCGM's comparison is on the
+                            maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                            decays through the soak therefore passes, and without this the report of a
+                            passing run says nothing about it: the evidence would live only in the
+                            result bundle, for whoever thought to ask for one, and in pod logs that do
+                            not outlive the pod.
+
+                            Derived from the rows alone. A producer marks a sample below the floor with
+                            outcome "below", so the Job tier needs no knowledge of the floor to build
+                            this, and a producer that enforces no floor simply yields none.
+                          properties:
+                            belowSamples:
+                              description: |-
+                                belowSamples is how many of the component's samples were under the
+                                floor.
+                              format: int64
+                              minimum: 0
+                              type: integer
+                            componentID:
+                              description: componentID is the component's stable identity,
+                                such as a GPU UUID.
+                              maxLength: 128
+                              type: string
+                            erroredSamples:
+                              description: |-
+                                erroredSamples is how many of the component's samples could not be taken
+                                at all: the kernel would not run, the device returned an error, the tool
+                                exited non-zero.
+
+                                Separate from belowSamples because it is a different finding and, for a
+                                burn-in, the stronger one. A component returning a low number is slow; a
+                                component that intermittently cannot run the work is faulty. Summing
+                                them into one count would let an operator read a device fault as a
+                                performance shortfall.
+                              format: int64
+                              minimum: 0
+                              type: integer
+                            index:
+                              description: index is the component's device index within
+                                its node.
+                              format: int32
+                              minimum: 0
+                              type: integer
+                            maxValue:
+                              description: |-
+                                maxValue is the highest value the component reached, as the producer
+                                rendered it. This is what the verdict compared, which is why a component
+                                listed here can still have passed.
+                              maxLength: 32
+                              type: string
+                            minValue:
+                              description: |-
+                                minValue is the lowest value the component reached. The gap between this
+                                and maxValue is the decay the verdict did not act on.
+                              maxLength: 32
+                              type: string
+                            node:
+                              description: node is the Kubernetes node the component
+                                is attached to.
+                              maxLength: 253
+                              type: string
+                          required:
+                          - belowSamples
+                          - componentID
+                          - index
+                          - node
+                          type: object
+                        maxItems: 16
+                        type: array
+                      rowCount:
+                        description: rowCount is a number of rows.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      shardCount:
+                        description: shardCount is a number of shard ConfigMaps.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      truncatedRowCount:
+                        description: truncatedRowCount is how many rows were lost.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                    required:
+                    - rowCount
+                    - shardCount
+                    type: object
                   totalGroups:
                     description: totalGroups created.
                     type: integer

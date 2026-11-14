@@ -1,0 +1,21 @@
+{
+  "shardCount": 1,
+  "shards": [
+    {
+      "index": 0,
+      "rows": 9
+    }
+  ],
+  "totalRows": 9,
+  "ndjson": [
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1201.50,\"unit\":\"TFLOPS\",\"sample\":1,\"timestamp\":\"2026-11-03T00:00:01Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1200.75,\"unit\":\"TFLOPS\",\"sample\":2,\"timestamp\":\"2026-11-03T00:00:02Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"smClock\",\"value\":1410.00,\"unit\":\"MHz\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a001\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":1100.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-001\",\"componentID\":\"GPU-b000\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":900.25,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-a00\",\"componentID\":\"GPU-zzz\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":801.25,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-b00\",\"componentID\":\"GPU-aaa\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":800.50,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-c00\",\"componentID\":\"GPU-same\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":803.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-c00\",\"componentID\":\"GPU-same\",\"index\":3,\"name\":\"achievedTFLOPS\",\"value\":802.75,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}"
+  ]
+}

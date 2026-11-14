@@ -1,0 +1,47 @@
+{
+  "manifest": {
+    "formatVersion": 1,
+    "fileCount": 4,
+    "files": [
+      {
+        "path": "components/gpu-cluster-cert-compute-cutlass-gemm.ndjson",
+        "sha256": "0b93f21e710c78659725beda3d73f10b6c344ab02c6d6a9260fc912c6022c5e4",
+        "bytes": 113
+      },
+      {
+        "path": "results.json",
+        "sha256": "4e7385ff610776ed8106ebfb3ad2e5b95460a6faff572a37ea8a159133e425ed",
+        "bytes": 151
+      },
+      {
+        "path": "schema/component-row.schema.json",
+        "sha256": "14909023c961f5c7dca7167003c5aedd10accc1d15cd59a3c836a284566f946d",
+        "bytes": 1689
+      },
+      {
+        "path": "truncation.json",
+        "sha256": "c61faf709c869fd1c29452537ab0fa51d0873f2974d6a80d2b65b692828d6485",
+        "bytes": 272
+      }
+    ],
+    "components": [
+      {
+        "scope": "gpu-cluster-cert",
+        "domain": "compute",
+        "variant": "cutlass-gemm",
+        "path": "components/gpu-cluster-cert-compute-cutlass-gemm.ndjson",
+        "shardCount": 1,
+        "rowCount": 1,
+        "final": false,
+        "truncatedRowCount": 17
+      }
+    ]
+  },
+  "filesOnDisk": [
+    "components/gpu-cluster-cert-compute-cutlass-gemm.ndjson",
+    "results.json",
+    "schema/component-row.schema.json",
+    "truncation.json"
+  ],
+  "firstComponentRow": "{\"node\":\"gpu-node-1\",\"componentID\":\"GPU-cafe\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1460.00,\"unit\":\"TFLOPS\"}"
+}

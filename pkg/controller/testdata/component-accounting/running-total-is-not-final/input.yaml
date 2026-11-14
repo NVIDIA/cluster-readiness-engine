@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same totals mid-run. A reader polling here sees a smaller number for a
+# legitimate reason, so the block must say it is not final yet.
+phase: InProgress
+groups:
+  - name: group-0
+    retries: 0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 2
+        rowCount: 120

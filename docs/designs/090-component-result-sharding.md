@@ -1,6 +1,6 @@
 # ADR-090: Sharded Component Results and the Report Bundle
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -180,6 +180,167 @@ A sink would buy unattended egress and long-term durability. Both are real, both
 **`[]corev1.TypedLocalObjectReference` on status.** Rejected on the per-entry arithmetic above.
 
 **Size-dispatched streaming encoder.** Rejected: the two encoders do not produce identical bytes, and choosing between them requires the marshal the dispatch was meant to avoid.
+
+## Amendments
+
+These record where the implementation departs from the decisions above, and why. Each was found by building the thing: the figures are measured, not estimated. The encoder is `pkg/shard`, the controller write path is `pkg/controller/component_*.go`, and the egress half, `nvcrectl --results-bundle` with its reader and the three normative bundle rules, is `pkg/bundle`.
+
+### The per-row cap is 128 KiB of raw input, not 256 KiB of compressed output
+
+Decision 2 gives one row "256 KiB of compressed output, a third of the shard bound". Two problems. The arithmetic does not close: 768 KiB of roll plus a 256 KiB row is exactly the 1 MiB object budget, leaving nothing for the plaintext `data` block or for output gzip has buffered but not yet emitted when the roll is checked. And a row's compressed contribution inside a shared stream is not well defined, because it depends on everything written before it; measuring it by compressing each row alone doubles the work for a backstop that only has to be conservative in one direction.
+
+The cap is therefore 128 KiB of **raw** encoded bytes. gzip's worst-case expansion is about 0.03% plus a fixed header, so a row under that raw bound cannot exceed it compressed by more than a rounding error. Decision 2's objection to row bounds — the measured 2.8x to 34x ratio spread — is an argument about the *aggregate* roll bound, where a raw figure really is meaningless, and does not apply to a per-row backstop.
+
+### Rolling needs a periodic flush, not just a counting writer
+
+Decision 2 says "a counting writer wraps the gzip stream and the writer starts a new shard when the output crosses 768 KiB". A counting writer alone does not work: flate buffers, and 387 KB of rows compressing to 8.5 KB were measured emitting **nothing** through the counter until `Close`. The roll never fires and the whole set lands in one object too large to write.
+
+The writer therefore flushes the stream every 64 KiB of input, which makes the count accurate at that granularity. The cost is real and accepted: the block boundaries cost about 11% of compressed size on a 1,920-row fixture. No corpus that exists is near the bound, so the ratio buys nothing back — a two hour per-GPU soak is 343 KiB against a 768 KiB roll.
+
+This is also what the shard-size arithmetic rests on. The roll fires at 768 KiB on an accurate count; at most 64 KiB of buffered input and one further 128 KiB row can still land; so the worst shard is 960 KiB, leaving 64 KiB for the `data` block. `NewBuilder` refuses option sets whose arithmetic does not close, so the backstop assertion in the writer is unreachable by construction.
+
+### Rows are sorted in memory under a 16 MiB budget; there is no spool
+
+The Implementation section says "the rows are spooled to a temporary file and sorted there, so the resident set stays proportional to the sort buffer rather than the row count". That is not implementable. The manager runs with `readOnlyRootFilesystem: true` and no volumes at all (`helm/cluster-readiness-engine/templates/deployment.yaml`), so there is no writable path, including `/tmp`, and `os.CreateTemp` fails with `EROFS`.
+
+Rows are sorted in memory under a budget instead, and a producer that exceeds it stops and records a `RowBudgetExceeded` truncation rather than growing without bound.
+
+**The budget is 16 MiB, and it is sized against the process rather than the Job.** It counts only the encoded lines, while a Builder also retains its rows with their own copies of every string: measured retention is 2.0x what the budget counts. And the budget is per-Builder while the limit is shared — `MaxConcurrentReconciles` defaults to 10, so ten Builders can be live against one 1Gi limit. An earlier 64 MiB figure measured **2,222 MiB of peak heap, 217% of the limit**: the guard that exists to contain a runaway producer was itself the OOM.
+
+**This has a consequence worth stating plainly, because it is a limit on this record's own sizing table.** The last row of that table, "1000 nodes, 8 GPU, 1 Hz for 1 min" at 480,000 rows, is the corpus whose 5.32x order gain justifies the normative emission order. It does not fit. A single Builder stores roughly 65,000 of those rows and records the rest as truncated. The producer that would emit it — a per-link NCCL producer — does not exist; today's parser extracts a message size and two bandwidths per line and produces no per-link rows at all, as the table's own surrounding text says. If such a producer is written, this budget is the first thing it meets, and either the spool arrives with a writable volume or the Job is partitioned so no single Builder sees the whole fleet.
+
+### The emission order is the normative key plus a byte comparison
+
+The normative order is `(node, componentID, index, name)`, justified on compression and on making shard bytes deterministic. Determinism is the load-bearing half, because the bundle manifest's per-file sha256 and the rewrite-on-retry path both rest on it, and those four fields do not deliver it. A 30 minute soak at 1 Hz produces 1,800 rows sharing all four, and the sort is not stable.
+
+The implemented order appends the sample ordinal, then breaks any remaining tie with a byte comparison of the two rows' encoded lines. Comparing the stored bytes is exact, allocation-free, total by construction, and stays correct if a field is ever added to the row. Two field-by-field attempts at the same thing both leaked: a numeric value comparison ties `-0.0` with `+0.0` while the encoder renders `-0.00` and `0.00`, and formatting the value to compare it allocated two strings across roughly 920,000 comparisons.
+
+### A superseded attempt's seal is retired with its shards
+
+Decision 3 seals per Job and per attempt but does not say what happens to a superseded attempt's seal. Leaving every attempt's seal on the group makes the list grow with `retryFailedGroups`, which has no maximum, and the Workflow's total then falls at an iteration boundary — a reader cannot distinguish a total that fell from one that was never complete.
+
+A superseded attempt's seal is therefore dropped where `retirePreviousAttempts` deletes that attempt's Job and its shards, so at most two are ever held. This is the only bound the existing control flow supports: retirement already enumerates earlier attempts from durable state and already blocks the next launch until every one is confirmed gone, so retries cannot advance past an unretired seal. Bounding `retryFailedGroups` instead would bound the wrong axis and impose a user-visible spec restriction to fix an internal accounting choice.
+
+This makes retirement load bearing on an invariant the type system does not enforce: `retireComponentSeals` runs where `retirePreviousAttempts` already deletes an earlier attempt's Job. If a superseded seal is ever left behind, the bound is `MaxItems=4` and the Workflow stalls on a refused status write rather than silently miscounting.
+
+Corrected while building it, on two points. The shards are addressed in the **Workflow's own namespace**, not `status.namespace`: nothing in the controller writes that field on a Workflow, so reading it sent every delete to namespace `""` and the shards survived.
+
+And the delete is **not** best effort, though it is also not unconditional. The seal is kept when its delete fails, which is the opposite of how `retirePreviousMeasurements` treats a leaked measurement, because the two leaks are not comparable. A leaked measurement is inert. A leaked shard is still resolved: the reader walks namespace and label selector alone, with no Job-name filter, so a shard that outlives its seal is still counted, the resolved count exceeds what the total admits, and the category is refused permanently for a run whose evidence is intact. Holding the seal keeps the total honest about what is still on the cluster and lets the next pass retry. It does not hold up the next launch, which gates on the superseded Job being gone rather than on its seal.
+
+Retention is capped at two, and the cap is the whole reason this is safe. Holding a failed seal indefinitely reintroduces the unbounded growth the paragraph above exists to prevent, by a route that is worse than the original: the ceiling is `MaxItems=4` on a served field, and overrunning it is a 422 on the status write that no retry can clear, so the Workflow stops making progress at all. Weighed against each other, a category whose bundle is refused is a degraded export and a Workflow that cannot write its status is a dead run, so past the cap the seal is dropped anyway and the orphaned shard stem is logged at error level. By that point the delete has failed repeatedly and the shard is far more likely to be genuinely unreachable than transiently so.
+
+### A group's seal carries a truncated-row count, not the per-reason detail
+
+Decision 3 does not distinguish the two places a seal lives, and the distinction turns out to decide whether the status is writable at fleet scale. A Job's seal sits on its own object, one per Job, so eight truncations with explanatory messages cost nothing. A group's seal sits on the Workflow, where a thousand-node fleet puts a thousand of them on **one** object.
+
+Measured on a 1000-group Workflow status, serialised:
+
+| Status | Bytes | Share of a 1 MiB object |
+|---|---|---|
+| Today, no seals | 240,637 | 22.9% |
+| One seal per group | 357,637 | 34.1% |
+| Two seals per group, mid-retry | 455,637 | 43.5% |
+| Two seals plus eight truncations each | 505,637 | 48.2% |
+
+The last row was **25,929,637 bytes, 2473% of the budget**, while the group seal carried a `Truncations` list. One reason per group across a fleet-wide condition added roughly 300 KB, and about three made the status unwritable — a cluster-wide log problem together with a budget overrun and a seal timeout is three, so this was reachable rather than theoretical.
+
+The group seal therefore carries only `truncatedRowCount`. The reasons and their messages live on each Job's own seal and in the truncation ConfigMap, which has no per-object constraint.
+
+For contrast with this record's own objection to a reference list: the Certification mirror carries the per-category totals and not the seals, and eight categories measure **1,846 bytes**, against the 539 KiB that a mirrored reference list was rejected for.
+
+### The truncation ledger is keyed on the component, not on arrival
+
+Decision 2 requires a dropped row to be "counted in `truncation.json` with its component reference". Keeping the first N records in arrival order does not deliver that. The reason that fires at scale is recorded as rows arrive, so the kept records are contiguous in the producer's emission order and all come from the few components straddling the budget boundary. Measured on the 480,000-row corpus: 416 nodes lost rows and an arrival-ordered ledger named **3** of them, 17 components out of 3,328.
+
+The ledger holds one record per component with a count, bounded at 1,000 components, alongside an exact total. Every affected component is named in the same object budget.
+
+### The ConfigMap informer scoping is already done
+
+The Implementation section calls for scoping a cluster-wide ConfigMap informer with a `ByObject` label selector, and warns that the existing node-result ConfigMaps must be labelled first or their cached reads start returning `NotFound`. Both are obsolete. ADR-092 disabled ConfigMap caching outright — `ClientOptions()` sets `DisableFor: [ConfigMap, PersistentVolumeClaim]` — so there is no informer to scope and no ordering hazard. Labels are still added, for `nvcrectl`'s selector walk rather than the controller's.
+
+### An oversized object is rejected as 422, not 413
+
+`ValidateConfigMap` returns a `field.TooLong` error, which the API server surfaces as `StatusReasonInvalid` — HTTP 422. A handler keyed on `IsRequestEntityTooLargeError` would never fire.
+
+### Nothing owed is recorded by an absent field, not by a phase
+
+Decision 3 seals per Job, and the phase enum includes `None` for a Job that declares no component results. Writing that phase is the obvious reading and it is wrong at this repository's scale: every Job in every certification would take an extra status write, and store a field, to record that a feature none of them uses owes them nothing. It also changed 22 integration goldens to say so.
+
+A Job that declares nothing therefore writes nothing. The absent field is the answer, because a Job that owed rows always has a seal. `None` stays in the enum so that a seal found carrying it reads as terminal rather than as an unfinished write, which is what keeps the group wait from hanging on one; the controller never writes it.
+
+The same rule applies one tier up. The Workflow publishes its totals when there is something to say — any shard, any row, or any row dropped — and leaves the field absent otherwise. Keying that on the run being finished instead, which the first implementation did, put a zero-valued block and a live label selector on every Workflow that reached a terminal condition. A reader cannot tell that block from a run that genuinely finished with an empty result, so it is worse than absent: it invites a bundle for a run that never had a producer.
+
+Truncation is in that test deliberately. A run that dropped every row it produced has no shards and no rows, and suppressing it on counts alone would hide exactly the evidence this mechanism exists to surface.
+
+Counts are not sufficient for that test, though, which the first implementation got wrong. The two reasons that matter most here carry a count of **zero**, because they are the ones a count cannot describe: a log page that could not be fetched gives no way to know how many rows were on it, and a producer that never came up produced nothing to count. Gating on counts alone therefore suppressed exactly the cases the exemption exists for, the category resolved with no `componentResults` block at all, and a run that failed to deliver its evidence went missing from the bundle instead of reporting that it failed. A seal that is `Partial` is now something to say in its own right, whatever its numbers.
+
+### Finality comes from the phase being applied, not from the object
+
+Decision 3's `final` marker is the reader's only way to tell "complete so far" from "missing", and the first implementation could never set it.
+
+The totals are recomputed inside a status-mutation closure, which is correct: it is what makes the value survive a 409 refetch. But every such closure runs **before** `applyExclusiveConditions` writes the new phase, so a closure that derives finality by reading the conditions off the object sees the phase being replaced. On the single write that makes a Workflow terminal it read `InProgress` and returned false. Every run published a non-final total, every `manifest.json` recorded `"final": false`, and the bundle writer warned that complete bundles were incomplete.
+
+Finality is therefore passed down from the condition being applied, in the Workflow's `setExclusiveCondition`, and the helper that read it from status is deleted rather than left available. Deriving it from the phase also keeps a future terminal call site correct by construction, since all three phases go through that one function.
+
+### A loss the controller finds reaches truncation.json, not only the status
+
+"Bundle integrity" requires that rows lost to log pagination are recorded as a partial read. The encoder's own drops satisfied this; the controller's did not. A `LogUnpageable` or `ProducerUnavailable` record was added to the Job's status seal and never to the truncation shard, so `truncation.json` was written as an empty list for a run that had explicitly failed to read its evidence. The shard builder's doc comment already described a caller appending its own records to that set, and no caller did.
+
+Both sets now come from one function, so the status and the bundle cannot disagree, and `shard.Dropped` carries a message because the reason alone does not tell a bundle reader why a read came back short. The branch where nothing could be read at all writes a truncation shard with no row shards beside it, which is the case where this matters most: there is nothing else in the bundle for that category, so without the record it resolves as a run that produced nothing rather than one whose evidence could not be read.
+
+That branch seals `Writing` before the shard write and the terminal phase after, exactly as the main path does, and the ordering is load bearing rather than cosmetic. `Partial` is terminal, and the pass short-circuits on a terminal seal, so sealing it first means the `RequeueAfter` the branch returns on a failed write has nothing left to do when it fires. The first implementation did that, and it discarded the truncation record permanently on the first transient failure to write it: the one artifact that said the evidence could not be read was itself lost to a retry that could not run.
+
+### The group waits for the Job's seal, and waits ahead of the workload delete
+
+Decision 3's finality marker assumes the Workflow's total can be summed once its groups are done. The two controllers are independent, so a group can be finalized on the same status write that made its Job terminal, before the Job tier has produced a row. The group is never revisited, so the total is permanently short of shards that exist and `nvcrectl` refuses the bundle. On the retry path it is worse than short: the attempt's shards are written and labelled, but no seal names them, so retirement cannot delete them and the selector resolves more shards than the total admits.
+
+`completeTerminalGroup` therefore holds the group while a declared seal is non-terminal, bounded by a two-minute grace period measured from the same persisted anchor the pod-drain barrier uses.
+
+**The placement matters more than the wait.** The hold is ahead of `deleteWorkloadForJob`, not after it. That call cascade-deletes the pods whose logs are the only source these rows have, so freeing the GPUs before the Job tier has read them does not make the rows late, it makes them unrecoverable. `captureTimeoutLog` guards the same hazard one tier up for the same reason. A Job that declares no component results is already terminal by this measure and never waits, which is every Job in the repository today.
+
+### Rows come from worker pods through the cache, or from a named replicatedJob live
+
+This record does not say where a producer's output is read from, and ADR-102 makes the choice consequential. The manager's Pod cache holds only pods carrying the job label. Worker pods carry it; MPI launchers do not, and a cached read for a launcher returns no pods **and no error** — the rows would come back empty from a Job that produced them perfectly well.
+
+`Job.spec.componentResults.replicatedJobName` therefore selects the read. Empty means worker pods and the cached read, which is correct and costs no API call for the single-worker-per-node shape ADR-091's GEMM entry uses. Set means `WorkloadPods`, a live read on the JobSet labels every pod in the workload carries. This is the same split the bandwidth controller already makes, because NCCL's output is on the launcher rather than the workers.
+
+### A row is declared by the marker plus a leading brace, and a broken one is counted
+
+The declaration vocabulary is deferred by this record, so the controller needs a minimum: a harness opts a line in by printing `NVCRE_ROW ` followed by a JSON object. Two details are load bearing.
+
+The marker is matched anywhere in the line, because MPI tags every line it relays with a rank prefix and anchoring at column zero would drop every row from a launcher. That means prose can contain the marker too — `could not emit NVCRE_ROW for device 3` is a plausible line from a harness's own error path — so the leading brace is what separates a declared row from a mention of one. Without it, a log message fails the Job's entire result set.
+
+And a line that does open a JSON object and will not parse is **counted, not fatal**. The first implementation returned an error and discarded every row from that pod, which inverts this record's own rule that rows lost to pagination are never collapsed to zero: the decisive case is mundane, since a pod killed mid-write leaves a truncated final line, and that would throw away a thirty-minute soak because its last line was cut short. The rows that parsed are kept, the rejects are counted under `RowUnencodable`, and the first offending line goes into the seal's message so the harness bug is findable.
+
+### A component file name carries the run it came from
+
+Decision 4 gives the bundle `components/*.ndjson` without saying what names those files take. The obvious choice, one file per category, breaks on a command this repository already has: `nvcrectl certification report a b` accepts several certifications and writes one bundle, and two certifications that ran the same category both claim `components/compute-cutlass-gemm.ndjson`. One silently replaces the other and the manifest certifies a bundle missing half its evidence.
+
+The name is therefore `<run>-<domain>-<variant>-<workflow>.ndjson`, and the manifest records the run alongside the domain and variant. The Workflow name is what carries uniqueness, and it is there because domain and variant do not: two categories can name the same pair and differ only in their options, which is what `categoryOptionsSuffix` exists for, and two `compute/cutlass-gemm` categories at different floors is its headline use. Under a name built from domain and variant alone those collided, and because the check below runs before anything is written it refused the whole bundle rather than one category. Domain and variant stay ahead of the Workflow name because they are what a human scans the directory for. A WorkloadRun has no catalog category, so its file is `<run>.ndjson` rather than one carrying two empty segments. `ComponentFileNamesUnique` still checks for a collision before anything is written, because a silent overwrite is the one outcome that must not be possible here.
+
+### The shard namespace is resolved per category, not per Certification
+
+`WorkflowStatus.Namespace` is the resolved namespace where a Workflow's Jobs and their shards live, and the controller auto-generates it when the spec leaves it unset. Two categories of one Certification can therefore sit in two namespaces, and a bundle that listed one namespace for all of them would find no shards for the rest.
+
+That failure would not be silent, which is what makes it dangerous: the walk would report a sealed-count mismatch, which is the correct diagnosis for a genuinely missing shard and a misleading one for a bundle looking in the wrong place. So each category's namespace is read from its own Workflow. A Workflow that cannot be read is an error rather than a fallback to the Certification's namespace, for the same reason.
+
+### The bundle carries a row schema, and the writer verifies its own output
+
+Decision 4 lists `schema/` without saying what is in it. It holds a JSON Schema for one NDJSON line. The bundle is meant to be self-describing: a consumer handed a directory can validate its rows without knowing which NVCRE version wrote them, and an archived bundle stays readable after this repository has moved on.
+
+The writer then runs the three reader rules against what it just wrote, before reporting success. Not belt and braces: the rules are normative, so a writer that cannot produce a bundle its own reader accepts has produced something no consumer should trust, and the alternative is that a digest or file-count disagreement surfaces weeks later when whatever caused it is no longer reproducible.
+
+### A manifest path is checked before it is read
+
+The three reader rules say to hash every file the manifest lists. A bundle travels, so that manifest is attacker-controlled input: an entry of `../../etc/passwd` would send the digest read outside the directory the user named, and the comparison would answer whether that file matches a hash the bundle's author chose.
+
+Rule 2 happens to reject such an entry today, because a traversing path cannot appear in a walk of the bundle and the paths-versus-disk comparison runs first. That is an accident of rule ordering rather than a guarantee, so the path is checked where it is first trusted: absolute paths, volume names, unnormalised paths and any `..` segment are refused by name.
+
+`truncation.json` is also always written, including when nothing was lost, and carries its own `formatVersion`. An absent file and an empty one are different claims, and a consumer asking whether evidence is complete must be able to tell "nothing was lost" from "this bundle predates truncation reporting".
+
+### The sizing generator is not committed
+
+The Measured sizing section says "the generator for this table is committed with the implementation, under `pkg/controller/shard/testdata/`". The package is `pkg/shard`, chosen so the encoder carries no controller dependency and `nvcrectl` can read what the controller writes, and no generator is committed. The figures above that were re-measured during implementation are cited where they are used; the table's own figures are not re-derivable from this repository.
 
 ## Notes
 

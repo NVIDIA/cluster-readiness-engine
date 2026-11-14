@@ -1,0 +1,16 @@
+# The unreadable-log branch when its one truncation shard cannot be written.
+#
+# The seal must stay non-terminal. Partial is terminal, so the short-circuit at
+# the top of the pass returns before doing anything once it is set: sealing
+# Partial before the write would make the requeue a no-op and lose the
+# truncation record permanently on the first transient failure. The normal path
+# seals Writing first for the same reason, and this branch has to match it.
+# Backdated past componentSealGracePeriod, so the read is no longer
+# retried and this exercises the sealing path rather than the retry.
+terminalAge: 5m
+producer: structured-rows
+containerName: node
+truncated: true
+shardWriteFails: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

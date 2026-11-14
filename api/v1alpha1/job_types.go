@@ -331,6 +331,42 @@ type JobSpec struct {
 	// When nil, the Job controller uses its default (5m).
 	// +optional
 	MeasurementTimeout *metav1.Duration `json:"measurementTimeout,omitempty"`
+
+	// componentResults declares that this Job's workload produces per-component
+	// result rows, and names the producer that turns its output into them.
+	//
+	// Absent means it does not, and the Job seals a phase of None as soon as it
+	// reaches a terminal state. That positive "nothing owed" is load bearing:
+	// the Workflow waits for a terminal seal before finalizing a group, so an
+	// absent declaration has to resolve to an answer rather than to silence.
+	//
+	// The declaration vocabulary proper, which lets a spec describe what a
+	// workload emits rather than naming a built-in producer, is the ADR-090
+	// follow-on. This is the minimum the storage path needs to exist.
+	// +optional
+	ComponentResults *ComponentResultSpec `json:"componentResults,omitempty"`
+}
+
+// ComponentResultSpec names the producer that turns a workload's output into
+// per-component result rows.
+type ComponentResultSpec struct {
+	// producer selects a registered row producer by name.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	Producer string `json:"producer"`
+
+	// containerName is the container whose logs the producer reads. When
+	// empty the workload's primary container is used.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	ContainerName string `json:"containerName,omitempty"`
+
+	// replicatedJobName selects which replicated job's pod to read on a
+	// multi-pod workload. When empty the workload's default is used.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	ReplicatedJobName string `json:"replicatedJobName,omitempty"`
 }
 
 // BandwidthMeasurementConfig configures automatic creation of a BandwidthMeasurement
@@ -433,6 +469,188 @@ type JobStatus struct {
 	// record why rather than leaving the field unset.
 	// +optional
 	FailureLog *FailureLog `json:"failureLog,omitempty"`
+
+	// componentResults seals the per-component result rows this Job attempt
+	// produced. It is written before the first shard ConfigMap is created, so
+	// a reader can always tell a Job that owed rows and failed to write them
+	// from a Job that owed none: the first is a seal with a count and no
+	// shards, the second is a seal of zero (ADR-090).
+	// +optional
+	ComponentResults *ComponentResultSeal `json:"componentResults,omitempty"`
+}
+
+// DegradedComponent names one component whose results fell below the floor at
+// some point during a run, with what it reached and what it fell to.
+//
+// This exists because the verdict is DCGM's and DCGM's comparison is on the
+// maximum achieved value (ADR-091). A GPU that peaks above the floor and
+// decays through the soak therefore passes, and without this the report of a
+// passing run says nothing about it: the evidence would live only in the
+// result bundle, for whoever thought to ask for one, and in pod logs that do
+// not outlive the pod.
+//
+// Derived from the rows alone. A producer marks a sample below the floor with
+// outcome "below", so the Job tier needs no knowledge of the floor to build
+// this, and a producer that enforces no floor simply yields none.
+type DegradedComponent struct {
+	// node is the Kubernetes node the component is attached to.
+	// +kubebuilder:validation:MaxLength=253
+	Node string `json:"node"`
+
+	// componentID is the component's stable identity, such as a GPU UUID.
+	// +kubebuilder:validation:MaxLength=128
+	ComponentID string `json:"componentID"`
+
+	// index is the component's device index within its node.
+	// +kubebuilder:validation:Minimum=0
+	Index int32 `json:"index"`
+
+	// maxValue is the highest value the component reached, as the producer
+	// rendered it. This is what the verdict compared, which is why a component
+	// listed here can still have passed.
+	// +kubebuilder:validation:MaxLength=32
+	MaxValue string `json:"maxValue,omitempty"`
+
+	// minValue is the lowest value the component reached. The gap between this
+	// and maxValue is the decay the verdict did not act on.
+	// +kubebuilder:validation:MaxLength=32
+	MinValue string `json:"minValue,omitempty"`
+
+	// belowSamples is how many of the component's samples were under the
+	// floor.
+	// +kubebuilder:validation:Minimum=0
+	BelowSamples int64 `json:"belowSamples"`
+
+	// erroredSamples is how many of the component's samples could not be taken
+	// at all: the kernel would not run, the device returned an error, the tool
+	// exited non-zero.
+	//
+	// Separate from belowSamples because it is a different finding and, for a
+	// burn-in, the stronger one. A component returning a low number is slow; a
+	// component that intermittently cannot run the work is faulty. Summing
+	// them into one count would let an operator read a device fault as a
+	// performance shortfall.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ErroredSamples int64 `json:"erroredSamples,omitempty"`
+}
+
+// ComponentResultPhase is how far a Job attempt got in storing its rows.
+//
+// None, Complete and Partial are terminal; the Workflow waits while a Job sits
+// in Writing, because a Workflow total summed over an unfinished Job would
+// under-count and the bundle would then be refused as short.
+// +kubebuilder:validation:Enum=None;Writing;Complete;Partial
+type ComponentResultPhase string
+
+const (
+	// ComponentResultsNone means the Job declared no component results.
+	//
+	// Not written by the controller: a Job that declares none leaves the whole
+	// field absent rather than spending a status write per Job to say so, and
+	// an absent field carries the same meaning because a Job that owed rows
+	// always has a seal. The phase stays in the enum so a None found in status
+	// reads as terminal rather than as an unfinished write, which is what keeps
+	// the group wait from hanging on one.
+	ComponentResultsNone ComponentResultPhase = "None"
+	// ComponentResultsWriting means the seal is written and shards are not
+	// all created yet. A Job left here by a crash is re-driven.
+	ComponentResultsWriting ComponentResultPhase = "Writing"
+	// ComponentResultsComplete means every row the Job produced was stored.
+	ComponentResultsComplete ComponentResultPhase = "Complete"
+	// ComponentResultsPartial means some evidence could not be stored, and
+	// truncations says what.
+	ComponentResultsPartial ComponentResultPhase = "Partial"
+)
+
+// ComponentTruncation records evidence a Job could not store.
+//
+// A run that lost rows says so rather than reporting a smaller result as if it
+// were whole. The reason values mirror the constants in pkg/shard; changing
+// one means changing both.
+type ComponentTruncation struct {
+	// reason names what could not be stored.
+	//
+	// The MaxItems bound on every Truncations field must equal the number of
+	// values in this enum — there are eight of each, and the list is a
+	// listType=map keyed on reason, so eight distinct reasons is the most that
+	// can ever appear. Adding a ninth value here without raising those bounds
+	// makes a Job that legitimately hits nine loss reasons unable to write its
+	// seal at all: the API server refuses with "truncations: Too many: 9", and
+	// because the seal is written before the first shard, the whole status
+	// write fails rather than just the truncation list. Verified against a
+	// real API server: eight accepted, nine refused.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=LogUnpageable;RowTooLarge;RowBudgetExceeded;RowUnencodable;ShardLimitExceeded;ShardWritePartial;ProducerUnavailable;SealTimedOut
+	Reason string `json:"reason"`
+
+	// count is how many rows were lost for this reason.
+	// +kubebuilder:validation:Minimum=0
+	Count int64 `json:"count"`
+
+	// message explains the loss for a reader who cannot see the shards.
+	//
+	// Bounded at 256 rather than 512 because this field is the dominant term
+	// in the status cost of a seal: eight truncations at 512 made one seal
+	// 4.5 KB, and seals are per group. It is an explanatory sentence, not a
+	// log excerpt — the per-component detail lives in the truncation
+	// ConfigMap, which has no such constraint.
+	// +optional
+	// +kubebuilder:validation:MaxLength=256
+	Message string `json:"message,omitempty"`
+}
+
+// ComponentResultSeal is one Job attempt's accounting of the rows it produced.
+//
+// The counts are written before the first shard exists. That ordering is the
+// whole point: if they were written afterwards, a Job whose every shard write
+// failed would leave nothing behind saying it owed anything, and a partial
+// shard set would be indistinguishable from a complete one.
+type ComponentResultSeal struct {
+	// phase is how far this attempt got.
+	// +kubebuilder:validation:Required
+	Phase ComponentResultPhase `json:"phase"`
+
+	// shardCount is how many shard ConfigMaps this attempt owes.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=9999
+	ShardCount int32 `json:"shardCount"`
+
+	// rowCount is how many rows those shards hold in total.
+	// +kubebuilder:validation:Minimum=0
+	RowCount int64 `json:"rowCount"`
+
+	// sealedAt is when the counts were written.
+	// +optional
+	SealedAt *metav1.Time `json:"sealedAt,omitempty"`
+
+	// truncations records evidence that could not be stored.
+	// +optional
+	// +listType=map
+	// +listMapKey=reason
+	// +kubebuilder:validation:MaxItems=8
+	Truncations []ComponentTruncation `json:"truncations,omitempty"`
+
+	// degradedComponentCount is how many of this Job's components had at least
+	// one sample below the floor. Exact, and kept beside the bounded list
+	// below so a reader can tell a truncated list from a short one.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DegradedComponentCount int32 `json:"degradedComponentCount,omitempty"`
+
+	// degradedComponents is the worst of those, by lowest value reached.
+	//
+	// Bounded, and the bound is the point. One Job is one node here, so eight
+	// GPUs is the realistic ceiling and the cap is never reached in practice;
+	// it exists because a Job that partitions many nodes would otherwise put
+	// one entry per GPU on its status, and the Workflow above it aggregates
+	// these across every group. An earlier unbounded per-group field measured
+	// 25.9 MB of Workflow status against a 1 MiB object limit (ADR-090
+	// amendments), which is the mistake this cap avoids repeating. The
+	// complete set is always in the result bundle.
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	DegradedComponents []DegradedComponent `json:"degradedComponents,omitempty"`
 }
 
 // FailureLog captures diagnostic information from a failed workload pod.

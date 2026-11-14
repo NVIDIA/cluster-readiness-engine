@@ -65,9 +65,90 @@ jobs:
           fi
           echo "value=${value}" >> "$GITHUB_OUTPUT"
 
+  verify-pins:
+    name: Verify version pins match the tag
+    needs: [release-tag]
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Nothing in CI rewrites a pinned version, and until this job existed
+      # nothing read one back either. A forgotten bump shipped artifacts that
+      # name a release other than the one being cut, and the first symptom was
+      # on a user's cluster. Runs ahead of every build so a mismatch costs a
+      # failed check rather than a published release.
+      - name: Check pinned versions
+        env:
+          TAG: ${{ needs.release-tag.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          status=0
+
+          # The admission-policy samples tell a user which release to verify
+          # against. Pinned to the previous one, they instruct the user to
+          # check a signature that does not cover what they installed.
+          for f in \
+            config/samples/policy/kyverno-verify-images.yaml \
+            config/samples/policy/policy-controller-verify-images.yaml
+          do
+            if [[ ! -f "${f}" ]]; then
+              echo "::error::${f} is missing; this guard names it explicitly, so update the guard if the file moved"
+              status=1
+              continue
+            fi
+            # Only the pinned signing identity, not every version-shaped string
+            # in the file. These samples also name a tested cosign version and
+            # a tested policy-controller version in their comments, so matching
+            # bare vN.N.N finds three values and fails a correct release.
+            #
+            # The tag pattern is deliberately looser than vMAJOR.MINOR.PATCH:
+            # this repository releases prereleases such as v0.2.0-rc.2, and the
+            # identity carries the whole tag.
+            #
+            # `|| true` because grep exits 1 on no match, and under `set -e`
+            # with pipefail that would abort the step instead of reporting the
+            # unpinned file below.
+            found=$(grep -oE 'attest\.yml@refs/tags/v[0-9A-Za-z.-]+' "${f}" \
+              | sed 's#.*refs/tags/##' | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
+            if [[ -z "${found}" ]]; then
+              echo "::error::${f} pins no release identity; it must pin attest.yml@refs/tags/<TAG>"
+              status=1
+            elif [[ "${found}" != "${TAG}" ]]; then
+              echo "::error::${f} pins '${found}' but this release is ${TAG}; bump it on main before tagging"
+              status=1
+            fi
+          done
+
+          # The catalog derives its harness image tag from the binary's own
+          # version, so a literal here is a regression back to a pin that
+          # nothing keeps in step with the release.
+          # The directory is named explicitly, so confirm it is there. grep -r
+          # on a missing path exits 2, `|| true` would swallow that, and the
+          # job would report green having checked nothing.
+          if [[ ! -d pkg/catalog/entries ]]; then
+            echo "::error::pkg/catalog/entries is missing; update this guard if the catalog moved"
+            status=1
+          fi
+          literals=$(grep -rnE 'image: .*/(cutlass-gemm|manager):v[0-9][0-9A-Za-z.-]*' \
+            pkg/catalog/entries/ || true)
+          if [[ -n "${literals}" ]]; then
+            echo "::error::a catalog entry pins a literal image version; derive it from the build version instead"
+            echo "${literals}"
+            status=1
+          fi
+
+          if [[ "${status}" -eq 0 ]]; then
+            echo "every pinned version matches ${TAG}"
+          fi
+          exit "${status}"
+
   build-image:
     name: Build release image
-    needs: [release-tag]
+    needs: [release-tag, verify-pins]
     permissions:
       contents: read
       packages: write
@@ -127,9 +208,96 @@ jobs:
       predicate_type: cyclonedx
       emit_provenance: false
 
+  # The CUTLASS GEMM harness image (ADR-091), built and signed exactly as the
+  # controller image is. compute/cutlass-gemm pins this image, so a release
+  # that published the chart without it would ship a catalog entry whose pods
+  # cannot start.
+  gemm-build-image:
+    name: Build release GEMM harness image
+    needs: [release-tag, verify-pins]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image_tag: ${{ needs.release-tag.outputs.value }}
+      image_name: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
+      dockerfile: images/cutlass-gemm/Dockerfile
+      build_context: images/cutlass-gemm
+      # nvcc compiles for the host, so each architecture is built on a runner
+      # of that architecture and the two are assembled into one index. Without
+      # this the arm64 image would hold x86-64 binaries, which is a GB200 or
+      # GB300 node whose GPUs report nothing.
+      native_per_arch: true
+      # The amd64 CUTLASS compile was measured at 1h14m; the default 40 would
+      # kill it, and a skipped or failed build turns into a red release through
+      # image-attested. The arm64 leg compiles two GPU architecture families
+      # instead of six but on a smaller runner, so it gets the same budget.
+      build_timeout_minutes: 330
+
+  gemm-attest-image-index:
+    name: Attest GEMM index (signature + provenance)
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      expected_digest: ${{ needs.gemm-build-image.outputs.index_digest }}
+
+  gemm-attest-image-amd64-sbom:
+    name: Attest GEMM linux/amd64 SBOM
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/amd64
+      expected_digest: ${{ needs.gemm-build-image.outputs.amd64_digest }}
+      artifact_name: ${{ needs.gemm-build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-amd64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
+  gemm-attest-image-arm64-sbom:
+    name: Attest GEMM linux/arm64 SBOM
+    needs: [release-tag, gemm-build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.gemm-build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/arm64
+      expected_digest: ${{ needs.gemm-build-image.outputs.arm64_digest }}
+      artifact_name: ${{ needs.gemm-build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-arm64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
   image-attested:
     name: Confirm the release image was signed
-    needs: [build-image, attest-image-index, attest-image-amd64-sbom, attest-image-arm64-sbom]
+    needs:
+      - build-image
+      - attest-image-index
+      - attest-image-amd64-sbom
+      - attest-image-arm64-sbom
+      - gemm-build-image
+      - gemm-attest-image-index
+      - gemm-attest-image-amd64-sbom
+      - gemm-attest-image-arm64-sbom
     if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -141,15 +309,25 @@ jobs:
           INDEX: ${{ needs.attest-image-index.result }}
           AMD64: ${{ needs.attest-image-amd64-sbom.result }}
           ARM64: ${{ needs.attest-image-arm64-sbom.result }}
+          GEMM_BUILD: ${{ needs.gemm-build-image.result }}
+          GEMM_INDEX: ${{ needs.gemm-attest-image-index.result }}
+          GEMM_AMD64: ${{ needs.gemm-attest-image-amd64-sbom.result }}
+          GEMM_ARM64: ${{ needs.gemm-attest-image-arm64-sbom.result }}
         run: |
           set -euo pipefail
           echo "build=${BUILD} index=${INDEX} amd64=${AMD64} arm64=${ARM64}"
+          echo "gemm-build=${GEMM_BUILD} gemm-index=${GEMM_INDEX} gemm-amd64=${GEMM_AMD64} gemm-arm64=${GEMM_ARM64}"
           if [[ "${BUILD}" != "success" ]]; then
             echo "::error::the release image build did not succeed (${BUILD}); no image was published."
             exit 1
           fi
+          if [[ "${GEMM_BUILD}" != "success" ]]; then
+            echo "::error::the GEMM harness image build did not succeed (${GEMM_BUILD}); compute/cutlass-gemm would ship pinned to an image that does not exist."
+            exit 1
+          fi
           failed=0
-          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}"; do
+          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}" \
+                      "gemm-index:${GEMM_INDEX}" "gemm-amd64-sbom:${GEMM_AMD64}" "gemm-arm64-sbom:${GEMM_ARM64}"; do
             name="${pair%%:*}"; result="${pair#*:}"
             case "${result}" in
               success) ;;
@@ -335,7 +513,7 @@ jobs:
 
   build-cli:
     name: Build CLI Binaries
-    needs: [release-tag]
+    needs: [release-tag, verify-pins]
     runs-on: linux-amd64-cpu16
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15

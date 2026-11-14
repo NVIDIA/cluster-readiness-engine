@@ -1,0 +1,11 @@
+# The other side of the same rule. This payload DOES open a JSON object, so the
+# line has declared itself a result, and a broken one is reported rather than
+# dropped: silently skipping it would turn a harness defect into missing
+# evidence, which is what this mechanism exists to prevent.
+#
+# Sealed Partial with the reason recorded, never Complete.
+producer: structured-rows
+containerName: node
+log: |
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

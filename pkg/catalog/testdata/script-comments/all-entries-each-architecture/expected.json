@@ -121,6 +121,30 @@
       "scripts": []
     },
     {
+      "entry": "compute/cutlass-gemm@NVIDIA-A100-SXM4-80GB",
+      "scripts": []
+    },
+    {
+      "entry": "compute/cutlass-gemm@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
+      "entry": "compute/cutlass-gemm@NVIDIA-GB300",
+      "scripts": []
+    },
+    {
+      "entry": "compute/cutlass-gemm@NVIDIA-H100-80GB-HBM3",
+      "scripts": []
+    },
+    {
+      "entry": "compute/cutlass-gemm@NVIDIA-L40S",
+      "scripts": []
+    },
+    {
+      "entry": "compute/cutlass-gemm@NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition",
+      "scripts": []
+    },
+    {
       "entry": "diagnostics/dcgm-level4@NVIDIA-A100-SXM4-80GB",
       "scripts": []
     },

@@ -1,0 +1,28 @@
+{
+  "manifest": {
+    "formatVersion": 1,
+    "fileCount": 3,
+    "files": [
+      {
+        "path": "results.json",
+        "sha256": "68d4c1e6c4f57dfa80e255f960d84a874df5fd1f872dc6e0d986b6675973ea51",
+        "bytes": 150
+      },
+      {
+        "path": "schema/component-row.schema.json",
+        "sha256": "14909023c961f5c7dca7167003c5aedd10accc1d15cd59a3c836a284566f946d",
+        "bytes": 1689
+      },
+      {
+        "path": "truncation.json",
+        "sha256": "34c5e03f3b664051fd27259a2d27bfdf290c92422d8daa11fe745f338d42a103",
+        "bytes": 46
+      }
+    ]
+  },
+  "filesOnDisk": [
+    "results.json",
+    "schema/component-row.schema.json",
+    "truncation.json"
+  ]
+}

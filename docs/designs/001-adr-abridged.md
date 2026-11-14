@@ -181,7 +181,7 @@ The controller's catalog and adapter architecture supports all four ClusterMAXâ„
 | --- | --- | --- |
 | Provisioning & Cold-Start Efficiency | Catalog entries for package install latency, container pull timing, and storage-to-GPU bandwidth benchmarks | Supported |
 | Networking & Fabric Validation | `communication/nccl-*` categories for collective benchmarks; GPUDirect RDMA checks via CEL or dedicated catalog entries | Supported |
-| Raw Compute & Thermal Stress | GEMM benchmarks via TrainJob; thermal/power monitoring via CEL-evaluated node conditions from NVSentinel/gpud | Supported |
+| Raw Compute & Thermal Stress | `compute/cutlass-gemm` for per-GPU GEMM burn-in, reporting a result row per GPU per sample; thermal/power monitoring via CEL-evaluated node conditions from NVSentinel/gpud | Supported |
 | Real-World Workload Simulation | Multi-node pretraining (with GoodputMeasurement). Single-node RL, multi-node inference, and finetuning planned | Partial â€” RL, inference, and finetuning planned |
 
 ## Notes

@@ -90,6 +90,40 @@ spec:
                 required:
                 - pvcName
                 type: object
+              componentResults:
+                description: |-
+                  componentResults declares that this Job's workload produces per-component
+                  result rows, and names the producer that turns its output into them.
+
+                  Absent means it does not, and the Job seals a phase of None as soon as it
+                  reaches a terminal state. That positive "nothing owed" is load bearing:
+                  the Workflow waits for a terminal seal before finalizing a group, so an
+                  absent declaration has to resolve to an answer rather than to silence.
+
+                  The declaration vocabulary proper, which lets a spec describe what a
+                  workload emits rather than naming a built-in producer, is the ADR-090
+                  follow-on. This is the minimum the storage path needs to exist.
+                properties:
+                  containerName:
+                    description: |-
+                      containerName is the container whose logs the producer reads. When
+                      empty the workload's primary container is used.
+                    maxLength: 63
+                    type: string
+                  producer:
+                    description: producer selects a registered row producer by name.
+                    maxLength: 63
+                    minLength: 1
+                    type: string
+                  replicatedJobName:
+                    description: |-
+                      replicatedJobName selects which replicated job's pod to read on a
+                      multi-pod workload. When empty the workload's default is used.
+                    maxLength: 63
+                    type: string
+                required:
+                - producer
+                type: object
               goodputMeasurement:
                 description: |-
                   goodputMeasurement configures automatic creation of a GoodputMeasurement
@@ -6464,6 +6498,195 @@ spec:
           status:
             description: status defines the observed state of Job
             properties:
+              componentResults:
+                description: |-
+                  componentResults seals the per-component result rows this Job attempt
+                  produced. It is written before the first shard ConfigMap is created, so
+                  a reader can always tell a Job that owed rows and failed to write them
+                  from a Job that owed none: the first is a seal with a count and no
+                  shards, the second is a seal of zero (ADR-090).
+                properties:
+                  degradedComponentCount:
+                    description: |-
+                      degradedComponentCount is how many of this Job's components had at least
+                      one sample below the floor. Exact, and kept beside the bounded list
+                      below so a reader can tell a truncated list from a short one.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  degradedComponents:
+                    description: |-
+                      degradedComponents is the worst of those, by lowest value reached.
+
+                      Bounded, and the bound is the point. One Job is one node here, so eight
+                      GPUs is the realistic ceiling and the cap is never reached in practice;
+                      it exists because a Job that partitions many nodes would otherwise put
+                      one entry per GPU on its status, and the Workflow above it aggregates
+                      these across every group. An earlier unbounded per-group field measured
+                      25.9 MB of Workflow status against a 1 MiB object limit (ADR-090
+                      amendments), which is the mistake this cap avoids repeating. The
+                      complete set is always in the result bundle.
+                    items:
+                      description: |-
+                        DegradedComponent names one component whose results fell below the floor at
+                        some point during a run, with what it reached and what it fell to.
+
+                        This exists because the verdict is DCGM's and DCGM's comparison is on the
+                        maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                        decays through the soak therefore passes, and without this the report of a
+                        passing run says nothing about it: the evidence would live only in the
+                        result bundle, for whoever thought to ask for one, and in pod logs that do
+                        not outlive the pod.
+
+                        Derived from the rows alone. A producer marks a sample below the floor with
+                        outcome "below", so the Job tier needs no knowledge of the floor to build
+                        this, and a producer that enforces no floor simply yields none.
+                      properties:
+                        belowSamples:
+                          description: |-
+                            belowSamples is how many of the component's samples were under the
+                            floor.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        componentID:
+                          description: componentID is the component's stable identity,
+                            such as a GPU UUID.
+                          maxLength: 128
+                          type: string
+                        erroredSamples:
+                          description: |-
+                            erroredSamples is how many of the component's samples could not be taken
+                            at all: the kernel would not run, the device returned an error, the tool
+                            exited non-zero.
+
+                            Separate from belowSamples because it is a different finding and, for a
+                            burn-in, the stronger one. A component returning a low number is slow; a
+                            component that intermittently cannot run the work is faulty. Summing
+                            them into one count would let an operator read a device fault as a
+                            performance shortfall.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        index:
+                          description: index is the component's device index within
+                            its node.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        maxValue:
+                          description: |-
+                            maxValue is the highest value the component reached, as the producer
+                            rendered it. This is what the verdict compared, which is why a component
+                            listed here can still have passed.
+                          maxLength: 32
+                          type: string
+                        minValue:
+                          description: |-
+                            minValue is the lowest value the component reached. The gap between this
+                            and maxValue is the decay the verdict did not act on.
+                          maxLength: 32
+                          type: string
+                        node:
+                          description: node is the Kubernetes node the component is
+                            attached to.
+                          maxLength: 253
+                          type: string
+                      required:
+                      - belowSamples
+                      - componentID
+                      - index
+                      - node
+                      type: object
+                    maxItems: 16
+                    type: array
+                  phase:
+                    description: phase is how far this attempt got.
+                    enum:
+                    - None
+                    - Writing
+                    - Complete
+                    - Partial
+                    type: string
+                  rowCount:
+                    description: rowCount is how many rows those shards hold in total.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  sealedAt:
+                    description: sealedAt is when the counts were written.
+                    format: date-time
+                    type: string
+                  shardCount:
+                    description: shardCount is how many shard ConfigMaps this attempt
+                      owes.
+                    format: int32
+                    maximum: 9999
+                    minimum: 0
+                    type: integer
+                  truncations:
+                    description: truncations records evidence that could not be stored.
+                    items:
+                      description: |-
+                        ComponentTruncation records evidence a Job could not store.
+
+                        A run that lost rows says so rather than reporting a smaller result as if it
+                        were whole. The reason values mirror the constants in pkg/shard; changing
+                        one means changing both.
+                      properties:
+                        count:
+                          description: count is how many rows were lost for this reason.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        message:
+                          description: |-
+                            message explains the loss for a reader who cannot see the shards.
+
+                            Bounded at 256 rather than 512 because this field is the dominant term
+                            in the status cost of a seal: eight truncations at 512 made one seal
+                            4.5 KB, and seals are per group. It is an explanatory sentence, not a
+                            log excerpt — the per-component detail lives in the truncation
+                            ConfigMap, which has no such constraint.
+                          maxLength: 256
+                          type: string
+                        reason:
+                          description: |-
+                            reason names what could not be stored.
+
+                            The MaxItems bound on every Truncations field must equal the number of
+                            values in this enum — there are eight of each, and the list is a
+                            listType=map keyed on reason, so eight distinct reasons is the most that
+                            can ever appear. Adding a ninth value here without raising those bounds
+                            makes a Job that legitimately hits nine loss reasons unable to write its
+                            seal at all: the API server refuses with "truncations: Too many: 9", and
+                            because the seal is written before the first shard, the whole status
+                            write fails rather than just the truncation list. Verified against a
+                            real API server: eight accepted, nine refused.
+                          enum:
+                          - LogUnpageable
+                          - RowTooLarge
+                          - RowBudgetExceeded
+                          - RowUnencodable
+                          - ShardLimitExceeded
+                          - ShardWritePartial
+                          - ProducerUnavailable
+                          - SealTimedOut
+                          type: string
+                      required:
+                      - count
+                      - reason
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - reason
+                    x-kubernetes-list-type: map
+                required:
+                - phase
+                - rowCount
+                - shardCount
+                type: object
               conditions:
                 description: |-
                   conditions represent the current state of the Job.

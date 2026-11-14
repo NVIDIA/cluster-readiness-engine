@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A row that cannot be written to an empty shard either, so retrying it would
+# hold the Workflow open forever (ADR-090 decision 2). It is dropped, recorded
+# with the component it belongs to, and the rows around it are kept.
+#
+# maxRowRawBytes is lowered to 256 so the case needs one long name rather than
+# a 128 KiB fixture.
+options:
+  maxRowRawBytes: 256
+rows:
+  - node: node-000
+    componentID: GPU-a000
+    index: 0
+    name: achievedTFLOPS
+    value: 1200.5
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a000
+    index: 0
+    name: thisMetricNameIsLongEnoughThatTheEncodedRowExceedsTheConfiguredPerRowCapAndMustBeDroppedRatherThanRetriedBecauseNoShardHoweverEmptyCouldEverHoldItAndAWorkflowHeldOpenOnAnUnwritableRowIsTheOutcomeTheCapExistsToPreventEntirelyAndCompletely
+    value: 999.99
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass
+  - node: node-000
+    componentID: GPU-a001
+    index: 1
+    name: achievedTFLOPS
+    value: 1198.25
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass

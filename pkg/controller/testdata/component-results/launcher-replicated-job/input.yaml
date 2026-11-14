@@ -1,0 +1,12 @@
+# Rows that come from an MPI launcher. Launchers carry no job label, so the
+# manager's Pod cache cannot hold them (ADR-102) and a cached read would return
+# no pods and no error — the rows would come back empty from a Job that
+# produced them. Declaring replicatedJobName sends the read live instead.
+#
+# The node on the row is the launcher's, which is the honest answer: the caller
+# supplies the pod's node because a harness cannot know its own.
+producer: structured-rows
+containerName: launcher
+replicatedJobName: launcher
+log: |
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"busBandwidth","value":362.5,"unit":"GB/s","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}

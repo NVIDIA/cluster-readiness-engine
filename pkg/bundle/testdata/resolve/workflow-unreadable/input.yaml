@@ -1,0 +1,11 @@
+# The category sealed component results and its Workflow is gone, so the
+# namespace its shards live in is unknown. An error, not a fallback to the
+# Certification's own namespace: guessing would list the wrong namespace, find
+# nothing, and report the result set as incomplete.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    workflowMissing: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

@@ -300,6 +300,37 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        gemmFloorTFLOPS:
+                          description: |-
+                            gemmFloorTFLOPS is the per-GPU throughput, in whole TFLOPS, below which
+                            compute/cutlass-gemm fails a node. The harness compares each GPU's
+                            highest sample against it and exits non-zero when any GPU is under,
+                            which fails the Job and records the node (ADR-091). When unset, the
+                            floor is the catalog entry's per-architecture reference target times its
+                            minimum ratio, which is DCGM's Targeted Stress rule
+                            (target_perf_min_ratio * target_stress) applied to its own per-SKU
+                            table.
+
+                            The highest sample, not the lowest, because that is the statistic DCGM
+                            compares. A GPU that peaks above the floor and degrades through the soak
+                            therefore passes, as it does under DCGM; the per-GPU result rows record
+                            every sample, so the decay is reported even though the verdict does not
+                            act on it.
+
+                            Whole TFLOPS rather than a fractional quantity, for two reasons. The
+                            value is tokenised into the Workflow name so that two categories
+                            differing only in their floor do not collide (issue #430), and every
+                            token has to stay a DNS-1035 label: a fractional value puts a dot in the
+                            Workflow name, which becomes the Job name and then the pod names. And a
+                            floor is a coarse accept/reject line, so the precision a fraction would
+                            buy has no use.
+
+                            This is not a performance threshold key. The threshold registry is a
+                            closed vocabulary of per-Job scalars, and a per-Job average is the thing
+                            a per-GPU burn-in exists to improve on (ADR-091 decision 4).
+                          format: int32
+                          minimum: 1
+                          type: integer
                         gpusPerNode:
                           description: |-
                             gpusPerNode optionally overrides the number of GPUs per node used by catalog
@@ -1139,6 +1170,37 @@ spec:
                 required:
                 - schedulerName
                 type: object
+              gemmFloorTFLOPS:
+                description: |-
+                  gemmFloorTFLOPS is the per-GPU throughput, in whole TFLOPS, below which
+                  compute/cutlass-gemm fails a node. The harness compares each GPU's
+                  highest sample against it and exits non-zero when any GPU is under,
+                  which fails the Job and records the node (ADR-091). When unset, the
+                  floor is the catalog entry's per-architecture reference target times its
+                  minimum ratio, which is DCGM's Targeted Stress rule
+                  (target_perf_min_ratio * target_stress) applied to its own per-SKU
+                  table.
+
+                  The highest sample, not the lowest, because that is the statistic DCGM
+                  compares. A GPU that peaks above the floor and degrades through the soak
+                  therefore passes, as it does under DCGM; the per-GPU result rows record
+                  every sample, so the decay is reported even though the verdict does not
+                  act on it.
+
+                  Whole TFLOPS rather than a fractional quantity, for two reasons. The
+                  value is tokenised into the Workflow name so that two categories
+                  differing only in their floor do not collide (issue #430), and every
+                  token has to stay a DNS-1035 label: a fractional value puts a dot in the
+                  Workflow name, which becomes the Job name and then the pod names. And a
+                  floor is a coarse accept/reject line, so the precision a fraction would
+                  buy has no use.
+
+                  This is not a performance threshold key. The threshold registry is a
+                  closed vocabulary of per-Job scalars, and a per-Job average is the thing
+                  a per-GPU burn-in exists to improve on (ADR-091 decision 4).
+                format: int32
+                minimum: 1
+                type: integer
               gpusPerNode:
                 description: |-
                   gpusPerNode optionally overrides the number of GPUs per node used by catalog
@@ -1745,6 +1807,147 @@ spec:
                   description: CertificationCategoryStatus tracks the status of a
                     single certification category.
                   properties:
+                    componentResults:
+                      description: |-
+                        componentResults mirrors this category's Workflow totals for
+                        per-component result rows. Copied rather than summed, because one
+                        category is one Workflow.
+                      properties:
+                        degradedComponentCount:
+                          description: |-
+                            degradedComponentCount is how many components across this Workflow had
+                            at least one sample below the floor, summed over its groups. Exact.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        degradedComponents:
+                          description: |-
+                            degradedComponents is the worst of those across the whole Workflow, by
+                            lowest value reached, so a reader of one category's status sees the
+                            hardware most worth looking at without resolving a single shard.
+
+                            Capped at 16. The count above is exact, so a cap cannot hide how many
+                            there were, only which ones are named. The complete set is in the
+                            bundle.
+                          items:
+                            description: |-
+                              DegradedComponent names one component whose results fell below the floor at
+                              some point during a run, with what it reached and what it fell to.
+
+                              This exists because the verdict is DCGM's and DCGM's comparison is on the
+                              maximum achieved value (ADR-091). A GPU that peaks above the floor and
+                              decays through the soak therefore passes, and without this the report of a
+                              passing run says nothing about it: the evidence would live only in the
+                              result bundle, for whoever thought to ask for one, and in pod logs that do
+                              not outlive the pod.
+
+                              Derived from the rows alone. A producer marks a sample below the floor with
+                              outcome "below", so the Job tier needs no knowledge of the floor to build
+                              this, and a producer that enforces no floor simply yields none.
+                            properties:
+                              belowSamples:
+                                description: |-
+                                  belowSamples is how many of the component's samples were under the
+                                  floor.
+                                format: int64
+                                minimum: 0
+                                type: integer
+                              componentID:
+                                description: componentID is the component's stable
+                                  identity, such as a GPU UUID.
+                                maxLength: 128
+                                type: string
+                              erroredSamples:
+                                description: |-
+                                  erroredSamples is how many of the component's samples could not be taken
+                                  at all: the kernel would not run, the device returned an error, the tool
+                                  exited non-zero.
+
+                                  Separate from belowSamples because it is a different finding and, for a
+                                  burn-in, the stronger one. A component returning a low number is slow; a
+                                  component that intermittently cannot run the work is faulty. Summing
+                                  them into one count would let an operator read a device fault as a
+                                  performance shortfall.
+                                format: int64
+                                minimum: 0
+                                type: integer
+                              index:
+                                description: index is the component's device index
+                                  within its node.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              maxValue:
+                                description: |-
+                                  maxValue is the highest value the component reached, as the producer
+                                  rendered it. This is what the verdict compared, which is why a component
+                                  listed here can still have passed.
+                                maxLength: 32
+                                type: string
+                              minValue:
+                                description: |-
+                                  minValue is the lowest value the component reached. The gap between this
+                                  and maxValue is the decay the verdict did not act on.
+                                maxLength: 32
+                                type: string
+                              node:
+                                description: node is the Kubernetes node the component
+                                  is attached to.
+                                maxLength: 253
+                                type: string
+                            required:
+                            - belowSamples
+                            - componentID
+                            - index
+                            - node
+                            type: object
+                          maxItems: 16
+                          type: array
+                        final:
+                          description: |-
+                            final reports whether the totals are complete.
+
+                            Shards are produced per Job and Jobs finish at different times, so a
+                            total alone cannot distinguish "complete so far" from "missing": a
+                            reader polling mid-run sees a smaller number either way. It becomes true
+                            only once the Workflow itself is terminal, at which point the count can
+                            be checked against what is actually in the cluster.
+                          type: boolean
+                        rowCount:
+                          description: rowCount is the total number of rows those
+                            shards hold.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        selector:
+                          description: selector resolves every shard ConfigMap belonging
+                            to this Workflow.
+                          maxLength: 253
+                          type: string
+                        shardCount:
+                          description: |-
+                            shardCount is the total number of shard ConfigMaps across this
+                            Workflow's Jobs. Recomputed from the orchestration status on every
+                            write rather than incremented, so a reconcile that runs twice over the
+                            same terminal Job cannot double-count.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        truncated:
+                          description: truncated reports whether any Job lost evidence.
+                          type: boolean
+                        truncatedRowCount:
+                          description: truncatedRowCount is how many rows were lost
+                            in total.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                      required:
+                      - final
+                      - rowCount
+                      - selector
+                      - shardCount
+                      type: object
                     domain:
                       description: domain is the category domain.
                       type: string

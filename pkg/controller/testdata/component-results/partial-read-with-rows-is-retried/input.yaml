@@ -1,0 +1,13 @@
+# Two worker pods: one read fine, the other failed transiently. So rows exist
+# AND the read was incomplete.
+#
+# This is the case the first version of the retry missed. It only retried when
+# NOTHING had been read, so a node whose eighth pod failed while seven
+# succeeded took the sealing path, the result set was finalised one pod short,
+# and the terminal phase then blocked any later read.
+producer: structured-rows
+containerName: node
+secondWorker: true
+logReadFailsForPod: worker-1
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

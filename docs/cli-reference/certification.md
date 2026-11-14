@@ -42,6 +42,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
 | `--results-file` | — | Write the certification report as JSON to this path (requires `--wait`) |
+| `--results-bundle` | — | Write a verifiable result bundle to this directory, including per-component result rows as NDJSON (requires `--wait`) |
 | `--junit-file` | — | Write the certification report as JUnit XML to this path (requires `--wait`) |
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
@@ -117,9 +118,29 @@ nvcrectl certification report <name> [<name>...] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
+| `--results-bundle` | — | Write a verifiable result bundle to this directory, including per-component result rows as NDJSON |
 | `--junit-file` | — | Write the report as JUnit XML to this file path |
 
-`--results-file` and `--junit-file` must name different files. `run` rejects either flag without `--wait`, and on both `run --wait` and `report`, failing to write a requested file fails the command, so a zero exit means every requested file was written.
+`--results-file` and `--junit-file` must name different files. `run` rejects any of the three export flags without `--wait`, and on both `run --wait` and `report`, failing to write a requested file fails the command, so a zero exit means every requested file was written.
+
+#### `--results-bundle`
+
+A bundle is a directory, not a single document, and it exists so that per-component results can leave the cluster. Those rows are stored as gzipped NDJSON inside ConfigMaps, sharded to stay under the API server's object size limit; `nvcrectl` resolves them, decompresses them, and writes plain files, so nothing downstream has to know that shape.
+
+```
+<dir>/
+  results.json                      the same document --results-file writes
+  components/<run>-<domain>-<variant>-<workflow>.ndjson   one result row per line
+  truncation.json                   anything that was lost, and why
+  schema/component-row.schema.json  a JSON Schema for one row
+  manifest.json                     written last: a sha256 per file, and a file count
+```
+
+`manifest.json` is what makes the directory verifiable, and it is written last so its presence means the write finished. A reader must refuse a bundle with no manifest rather than reading the directory anyway, must treat a manifest that does not parse or that disagrees with what is on disk as an error rather than a degraded read, and must hash every file it lists. The file count alone cannot catch a value edited in place, which is what the digests are for.
+
+The command refuses to write a bundle at all when the shards it resolves do not match the counts the run sealed. A bundle short of its rows would still carry a manifest certifying it as whole, so a short result set has to fail the command rather than produce a smaller artifact. `nvcrectl` verifies the bundle it has just written before reporting success.
+
+A `final: false` entry in the manifest means that category was still producing rows when the bundle was taken, and a non-zero `truncatedRowCount` means rows were lost before reaching a shard. Both are legitimate and both are reported on the command's output, because neither is visible in a row count.
 
 The JUnit file has one suite per certification and one test case per category. A succeeded category passes and a failed one is a `<failure>` with its reason. An unfinished category is an `<error>` while the certification runs, and a `<failure>` carrying the certification's own failure reason once it has failed. A suite gets one extra `certification` case only when its categories do not show the result: a certification that failed before any category did, or one still finalizing after every category finished. An `INCOMPLETE` run, which exits 0, has no failures or errors; its suite lists `excludedNodes` and `exclusionReason` under `<properties>`. See [ADR-108](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/108-junit-certification-reports.md).
 

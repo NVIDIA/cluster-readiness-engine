@@ -1,0 +1,10 @@
+[0] Initializing CUTLASS profiler, 2 devices visible
+[0] Warmup complete, entering sustained loop
+NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":1,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
+[0] iteration 1 done
+NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1455.5,"unit":"TFLOPS","sample":1,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
+not a row: NVCRE_ROW appears in prose but this line has no JSON payload after the marker
+NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1398.125,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}
+[0] iteration 0 summary written
+NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}
+[0] All devices above floor; exiting 0

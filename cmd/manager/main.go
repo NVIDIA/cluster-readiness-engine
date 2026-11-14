@@ -114,6 +114,10 @@ func init() {
 }
 
 func main() {
+	// Before any reconcile: catalog entries that pull an image this repository
+	// publishes for itself derive its tag from this, so there is no pinned
+	// version in the catalog to bump at release time.
+	catalog.SetBuildVersion(version)
 	if err := newRootCommand().Execute(); err != nil {
 		os.Exit(1)
 	}

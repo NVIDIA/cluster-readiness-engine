@@ -449,6 +449,13 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 			if workflow.Status.FailedNodesRef != nil {
 				cs.FailedNodesRef = workflow.Status.FailedNodesRef.DeepCopy()
 			}
+			// Mirror the component-result totals, which are copied rather than
+			// summed because one category is one Workflow. The totals only, not
+			// the per-group seals: this object carries one entry per category,
+			// and a thousand-group fleet's seals would be megabytes here.
+			if workflow.Status.ComponentResults != nil {
+				cs.ComponentResults = workflow.Status.ComponentResults.DeepCopy()
+			}
 			if status != "" {
 				cs.Status = status
 			}
@@ -875,6 +882,7 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
 		MaxSteps:                   derefInt32(opts.MaxSteps),
 		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
+		GemmFloorTFLOPS:            derefInt32(opts.GemmFloorTFLOPS),
 		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
 		GPUArchitecture:            gpuArch,
 		SaveInterval:               derefInt32(opts.SaveInterval),
@@ -1136,6 +1144,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.ExitDurationMins != nil {
 		resolved.ExitDurationMins = override.ExitDurationMins
+	}
+	if override.GemmFloorTFLOPS != nil {
+		resolved.GemmFloorTFLOPS = override.GemmFloorTFLOPS
 	}
 	// A non-nil override wins, including a pointer to zero.
 	resolved.StartupStallTimeoutSeconds = cmp.Or(override.StartupStallTimeoutSeconds, resolved.StartupStallTimeoutSeconds)
@@ -1572,6 +1583,11 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	}
 	if opts.GpusPerNode != nil {
 		parts = append(parts, fmt.Sprintf("g%d", *opts.GpusPerNode))
+	}
+	// "gf", not "g": g is already GpusPerNode above, and two tokens sharing a
+	// prefix would make g8 and gf8 collide on a truncating hash boundary.
+	if opts.GemmFloorTFLOPS != nil {
+		parts = append(parts, fmt.Sprintf("gf%d", *opts.GemmFloorTFLOPS))
 	}
 	// Two categories of one domain and variant differing only in
 	// rdmaDeviceAccess run genuinely different pods: one privileged with

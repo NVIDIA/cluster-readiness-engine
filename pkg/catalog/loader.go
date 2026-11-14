@@ -229,6 +229,33 @@ type TemplateData struct {
 	// Templates use: {{ .MaxSteps }}
 	MaxSteps int32
 
+	// GemmFloorTFLOPS is an operator-set absolute per-GPU floor in whole
+	// TFLOPS, which overrides the target-times-ratio product when set. Zero
+	// means the product applies.
+	// Templates use: {{ .GemmFloorTFLOPS }}
+	GemmFloorTFLOPS int32
+
+	// HarnessImageTag is the tag of a harness image this repository publishes
+	// for itself, derived from the rendering binary's own version so that no
+	// entry carries a literal version to bump.
+	// Templates use: {{ .HarnessImageTag }}
+	HarnessImageTag string
+
+	// GemmTargetGFLOPS is the per-architecture reference target, DCGM's
+	// target_stress. Zero means the entry declares none for this
+	// architecture, which leaves the harness reporting without a verdict.
+	// Templates use: {{ .GemmTargetGFLOPS }}
+	GemmTargetGFLOPS int32
+
+	// GemmMinRatioPercent is the minimum fraction of the target a GPU must
+	// sustain, DCGM's target_perf_min_ratio expressed as whole percent.
+	//
+	// Percent rather than a float: a float64 here renders through Go's %v,
+	// which switches to scientific notation at some magnitudes, and this value
+	// lands in a shell environment variable. An integer cannot do that.
+	// Templates use: {{ .GemmMinRatioPercent }}
+	GemmMinRatioPercent int32
+
 	// ExitDurationMins is the training duration in minutes (always non-zero after defaults).
 	// Templates use: {{ .ExitDurationMins }}
 	ExitDurationMins int32
@@ -566,6 +593,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		EnableMNNVL:                config.EnableMNNVL,
 		EnableCheckpoint:           config.EnableCheckpoint,
 		MaxSteps:                   config.MaxSteps,
+		GemmFloorTFLOPS:            config.GemmFloorTFLOPS,
 		ExitDurationMins:           config.ExitDurationMins,
 		StartupStallTimeoutSeconds: config.StartupStallTimeoutSeconds,
 		GPUArchitecture:            config.GPUArchitecture,
@@ -597,6 +625,24 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
 	}
+	// DCGM's two knobs, resolved per architecture from the entry's own meta.
+	// Resolved here rather than in the template because the table belongs with
+	// the entry, and a chain of template conditionals over every known
+	// architecture would be unreadable and would silently fall through for an
+	// architecture nobody added a branch for.
+	//
+	// An operator's gemmFloorTFLOPS is left exactly as given: it is an
+	// absolute override of the product, not an input to it.
+	// The RAW architecture, not configArch. ConfigArch collapses gb300 into
+	// gb200, which is right for parallelism, where the two share a GPU count
+	// and therefore a tp/pp/ep shape, and wrong here: GB300 is materially
+	// faster than GB200, DCGM's table gives them different targets, and under
+	// the collapse a "gb300" key would be dead while looking armed. The lookup
+	// below is the only consumer that needs them distinguished, so the
+	// collapse stays where it belongs rather than being widened.
+	td.GemmTargetGFLOPS = meta.getGemmTarget(config.GPUArchitecture)
+	td.GemmMinRatioPercent = meta.GemmMinRatioPercent
+	td.HarnessImageTag = HarnessImageTag(buildVersion)
 	if td.ExitDurationMins == 0 {
 		td.ExitDurationMins = DefaultExitDurationMins
 	}
@@ -814,6 +860,29 @@ type entryMeta struct {
 	MinGPUs     int32                   `yaml:"minGPUs"`
 	Parallelism map[string]archParallel `yaml:"parallelism"`
 
+	// GemmTargetGFLOPS and GemmMinRatioPercent are DCGM's two Targeted Stress
+	// knobs, carried over unchanged: a per-architecture reference target and a
+	// minimum ratio of it. The effective floor is their product, exactly as
+	// DCGM computes target_perf_min_ratio * target_stress.
+	//
+	// GemmTargetGFLOPS is keyed by GPU architecture with a "default" fallback,
+	// as Parallelism is, and is DCGM's per-SKU target_stress table in this
+	// catalog's idiom. GFLOPS rather than TFLOPS because that is the unit
+	// DCGM's table uses, so the numbers transfer without conversion and a
+	// reviewer can compare them to their source.
+	//
+	// The statistic is DCGM's as well: the maximum achieved value. A GPU that
+	// peaks above the floor and degrades through the soak passes, as it does
+	// under DCGM, and the per-GPU rows are what report the decay (ADR-091).
+	//
+	// An architecture absent from the table with no "default" resolves to 0,
+	// which leaves the harness reporting rows without a verdict. That is a
+	// deliberate fail-open: a target guessed for hardware nobody measured
+	// would fail healthy nodes, and a burn-in that rejects good hardware is
+	// worse than one that only reports.
+	GemmTargetGFLOPS    map[string]int32 `yaml:"gemmTargetGFLOPS"`
+	GemmMinRatioPercent int32            `yaml:"gemmMinRatioPercent"`
+
 	// TimeoutPerJob is the entry's default job timeout (e.g., "2h"). It wins
 	// over the global defaults (DefaultTimeoutPerJob / DiagnoseTimeoutPerJob)
 	// in every test scale — an entry that declares its runtime knows it better
@@ -880,6 +949,19 @@ func (m entryMeta) getParallel(arch string) (tp, pp, ep int32) {
 		return p.TP, p.PP, p.EP
 	}
 	return 0, 0, 0
+}
+
+// getGemmTarget returns the per-GPU reference target in GFLOPS for the given
+// architecture, falling back to the "default" key, then to 0 when the entry
+// declares no table.
+func (m entryMeta) getGemmTarget(arch string) int32 {
+	if m.GemmTargetGFLOPS == nil {
+		return 0
+	}
+	if v, ok := m.GemmTargetGFLOPS[arch]; ok {
+		return v
+	}
+	return m.GemmTargetGFLOPS["default"]
 }
 
 // maxNodesBelow returns the largest node count <= current where totalGPUs is divisible by tppp.
