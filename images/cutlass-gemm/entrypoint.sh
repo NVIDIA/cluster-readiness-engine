@@ -4,10 +4,10 @@
 #
 # Sustained per-GPU GEMM burn-in (ADR-091).
 #
-# cutlass_profiler is single-device and has no soak mode: it takes --device=<n>
-# and runs for a duration or an iteration count, once. This drives it into a
-# burn-in by launching one process per GPU CONCURRENTLY and looping each for the
-# configured duration.
+# cutlass_profiler has no soak mode: it takes --devices=<list> and runs for a
+# duration or an iteration count, once. This drives it into a burn-in by
+# launching one process per GPU CONCURRENTLY, each naming a single device, and
+# looping them for the configured duration.
 #
 # Concurrency is a requirement of the design, not a speed optimisation. A
 # harness that walks the devices one at a time reports eight per-GPU numbers

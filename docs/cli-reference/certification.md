@@ -130,7 +130,7 @@ A bundle is a directory, not a single document, and it exists so that per-compon
 ```
 <dir>/
   results.json                      the same document --results-file writes
-  components/<run>-<domain>-<variant>.ndjson   one result row per line
+  components/<run>-<domain>-<variant>-<workflow>.ndjson   one result row per line
   truncation.json                   anything that was lost, and why
   schema/component-row.schema.json  a JSON Schema for one row
   manifest.json                     written last: a sha256 per file, and a file count

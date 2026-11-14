@@ -82,6 +82,19 @@ func shardName(stem string, index int) string {
 // that failed for a reason that might clear.
 const componentResultsRequeue = 10 * time.Second
 
+// componentReadRetryBudget is how long a failing log read is retried.
+//
+// Deliberately SHORTER than componentSealGracePeriod, which is how long
+// completeTerminalGroup waits for this seal. Both are measured from the same
+// drainStart, so retrying for the full grace period meant a read that failed
+// throughout it produced its seal at the moment the group stopped waiting: the
+// retry would have been for nothing, and the group would record a Job that
+// owed rows as having never sealed.
+//
+// The margin is three requeues, which leaves time for the final attempt to
+// fail, the seal to be written, and the group to observe it on its next pass.
+const componentReadRetryBudget = componentSealGracePeriod - 3*componentResultsRequeue
+
 // reconcileComponentResults produces a terminal Job's per-component rows and
 // writes them as shards.
 //
@@ -164,16 +177,16 @@ func (r *JobReconciler) reconcileComponentResults(
 	// fails the same way on every attempt, so retrying it only delays the
 	// group for the whole grace period before recording the same thing.
 	//
-	// Bounded by componentSealGracePeriod from the Job going terminal, which is
-	// exactly how long completeTerminalGroup waits for this seal, so the retry
-	// cannot outlive the thing waiting on it. A Job with no terminal timestamp
-	// to measure from is sealed rather than retried: an unbounded retry here
-	// would hold the group open indefinitely.
+	// Bounded by componentReadRetryBudget from the Job going terminal, which is
+	// deliberately shorter than the group's wait so the seal always lands while
+	// something is still listening for it. A Job with no terminal timestamp to
+	// measure from is sealed rather than retried: an unbounded retry here would
+	// hold the group open indefinitely.
 	if produceErr != nil && !errors.Is(produceErr, podlogs.ErrLogUnpageable) {
 		if start := drainStart(job); start != nil &&
-			time.Since(start.Time) <= componentSealGracePeriod {
+			time.Since(start.Time) <= componentReadRetryBudget {
 			log.Error(produceErr, "A component result log could not be read; will retry",
-				"within", componentSealGracePeriod, "rowsSoFar", len(result.rows))
+				"within", componentReadRetryBudget, "rowsSoFar", len(result.rows))
 			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 		}
 	}

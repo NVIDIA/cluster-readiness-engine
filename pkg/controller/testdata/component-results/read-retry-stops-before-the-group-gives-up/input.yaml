@@ -1,0 +1,15 @@
+# A read that has been failing for 100 seconds: past componentReadRetryBudget
+# (90s) but still inside the group's componentSealGracePeriod (120s).
+#
+# It seals here rather than retrying again, and the gap between those two
+# numbers is the whole point. Both are measured from the same drainStart, so
+# retrying for the full grace period meant a read that failed throughout it
+# produced its seal at the moment completeTerminalGroup stopped waiting: the
+# retry would have been for nothing and the group would record a Job that owed
+# rows as having never sealed.
+terminalAge: 100s
+producer: structured-rows
+containerName: node
+logReadFails: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
