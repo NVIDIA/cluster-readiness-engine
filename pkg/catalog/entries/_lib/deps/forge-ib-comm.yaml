@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Only the two nvidia.com/mlnxnics lines are gated on mlnxPerNode. limits and
+# The NIC resource name is nicResourceName when set, else nvidia.com/mlnxnics,
+# the name the Mellanox host-device plugin advertises; the name is not
+# auto-detected on this platform (issue #583).
+#
+# Only the two NIC request lines are gated on mlnxPerNode. limits and
 # requests also carry nvidia.com/gpu, so the parent keys must survive at 0: an
 # empty resources block unmarshals to nil, and the override merge deletes
 # nil-valued keys, which would drop the GPU request too. See ADR-087.
@@ -27,10 +31,10 @@
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
 {{- if gt (int .MlnxPerNode) 0 }}
-                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                        {{ or .NicResourceName "nvidia.com/mlnxnics" }}: "{{ .MlnxPerNode }}"
 {{- end }}
                       requests:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
 {{- if gt (int .MlnxPerNode) 0 }}
-                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                        {{ or .NicResourceName "nvidia.com/mlnxnics" }}: "{{ .MlnxPerNode }}"
 {{- end }}

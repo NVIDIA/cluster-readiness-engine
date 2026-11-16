@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName on deps/togetherai-ib-runtime-patch.yaml (issue #583): the
+# patch merges into the base runtime and requests the configured name instead
+# of nvidia.com/mlnxnics, at the h100 default count of 8.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: togetherai-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

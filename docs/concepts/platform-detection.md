@@ -92,13 +92,13 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | Architecture | Platform | Interconnect | Key resources |
 |-------------|---------|-------------|--------------|
 | GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, ComputeDomain |
-| GB200 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
+| GB200 | Azure | InfiniBand | NIC request (`nvidia.com/mlnxnics`, or `nicResourceName` when set), topo ConfigMap, ComputeDomain |
 | GB300 | AWS | RoCE (default; see [Network fabric](#network-fabric)) | `roce-channel` resource claim (DRA), no hugepages, no EFA |
 | GB300 | AWS | EFA (`fabric: efa`, or detected on stock EKS) | `vpc.amazonaws.com/efa` at the allocatable count (1 or 2 on p6e-gb300r), no hugepages, no RoCE claim, aws-ofi-nccl kept |
-| GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
+| GB300 | Azure | InfiniBand | NIC request (`nvidia.com/mlnxnics`, or `nicResourceName` when set), topo ConfigMap, ComputeDomain |
 | B300 | AWS | EFA | `vpc.amazonaws.com/efa: 16` (p6-b300.48xlarge: card 0 is ENA-only), no hugepages, same EFA env as H100 |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
-| H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| H100 | Azure | InfiniBand | NIC request (`nvidia.com/mlnxnics`, or `nicResourceName` when set), topo ConfigMap |
 | H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, workload and `tcpxo-daemon` images chosen from the TCPXO plugin version detected on the nodes (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
@@ -118,6 +118,26 @@ fail [detection](#oci-rdma-network) or, with a NetworkAttachmentDefinition in
 place, leave every worker pod Pending on `Insufficient nvidia.com/mlnxnics`.
 Sites running the SR-IOV device plugin set `mlnxPerNode` to their own per-node
 count.
+
+**NIC resource name on Azure, Forge and TogetherAI.** On these platforms the
+catalog requests `mlnxPerNode` RDMA NICs per worker under `nvidia.com/mlnxnics`,
+the name the Mellanox host-device plugin advertises (on Forge, only the L40 NCCL
+collectives request NICs, and a WorkloadRun requests none). A cluster whose device
+plugin advertises its NICs under another name, such as AKS with the NVIDIA
+Network Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), sets
+`nicResourceName` to that name, and every category that requests NICs on these
+platforms requests it in place of `nvidia.com/mlnxnics`
+([issue #583](https://github.com/NVIDIA/cluster-readiness-engine/issues/583)).
+These platforms do not auto-detect the name, so leaving the field unset keeps
+`nvidia.com/mlnxnics`. OCI is the exception among the `nvidia.com/mlnxnics`
+platforms: its request stays `nvidia.com/mlnxnics`, because the
+[detected RDMA network](#oci-rdma-network) is found by that resource name.
+
+The count still comes from `mlnxPerNode`. Sites running a shared RDMA device
+plugin (one pooled resource such as `rdma/hca_shared_devices_a` advertised at a
+large count) should set `mlnxPerNode: 1`; a higher count schedules, but consumes
+that many quota units for the same device access. A plugin that advertises one
+unit per NIC needs `mlnxPerNode` at or below its per-node count.
 
 Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
 templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at

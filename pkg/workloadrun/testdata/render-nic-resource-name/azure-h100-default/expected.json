@@ -1,0 +1,26 @@
+[
+  {
+    "dependency": "wr-nic-runtime",
+    "replicatedJob": "node",
+    "networks": "",
+    "resources": {
+      "node": [
+        "limits/nvidia.com/gpu=8",
+        "limits/nvidia.com/mlnxnics=8",
+        "requests/nvidia.com/gpu=8",
+        "requests/nvidia.com/mlnxnics=8"
+      ]
+    }
+  },
+  {
+    "dependency": "wr-nic-runtime",
+    "replicatedJob": "launcher",
+    "networks": "",
+    "resources": {
+      "node": [
+        "limits/cpu=2",
+        "limits/memory=1Gi"
+      ]
+    }
+  }
+]
