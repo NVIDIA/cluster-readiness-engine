@@ -1,0 +1,23 @@
+# A seal claiming three shards of which 0 and 2 survive, re-driven onto the
+# read-failure branch so the counts are reconciled against the cluster.
+#
+# A gap is what a delete that failed partway leaves. The usual failure
+# truncates the tail, so the survivors are a prefix and one count describes
+# them; a partial delete leaves a hole, and then the number that exists and the
+# index bound are different numbers. The seal carries one field for both.
+#
+# Lowering the count to the two that exist would put shard 2 above the bound
+# every delete path enumerates, so neither a later retirement nor teardown
+# could name it while nvcrectl's selector walk still resolved it, and the
+# category's bundle would be refused for the life of the Workflow. So the wider
+# bound is kept. The count then overstates what exists, which is also refused,
+# but recoverably: the shards stay reachable and the next retirement clears
+# them. An unreachable shard never recovers.
+priorSealShards: 3
+priorShardIndices: [0, 2]
+terminalAge: 5m
+logReadFails: true
+producer: structured-rows
+containerName: node
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

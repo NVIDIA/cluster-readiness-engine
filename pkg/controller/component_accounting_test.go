@@ -116,6 +116,14 @@ func TestComponentAccounting(t *testing.T) {
 				r.retireComponentSeals(ctx, live, &live.Status.Orchestration.Groups[i])
 			}
 		}
+		// Then the unverified-claim reconciliation, which handleIterationComplete
+		// runs once awaitingComponentSeals stops holding the verdict.
+		if input.ReconcileUnverified {
+			for i := range live.Status.Orchestration.Groups {
+				reconcileUnverifiedSeal(ctx, c, workflowUID, componentShardNamespace(live),
+					&live.Status.Orchestration.Groups[i])
+			}
+		}
 
 		var err error
 		switch input.Phase {
@@ -193,6 +201,10 @@ type accountingInput struct {
 	// DeleteFails makes every delete fail, so the test can pin that a seal
 	// whose shards survived is kept rather than dropped.
 	DeleteFails bool `json:"deleteFails"`
+	// ReconcileUnverified runs reconcileUnverifiedSeal over every group, as
+	// handleIterationComplete does once the verdict wait has run out. Only
+	// meaningful with a non-terminal seal, which is the state it exists for.
+	ReconcileUnverified bool `json:"reconcileUnverified"`
 }
 
 type accountingGroup struct {

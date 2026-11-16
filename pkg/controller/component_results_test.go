@@ -100,6 +100,13 @@ func TestReconcileComponentResults(t *testing.T) {
 			// their reason and cannot hold that identity, so this is the only
 			// fixture state that can tell a rewrite from a merge.
 			PriorTruncationRecords bool `yaml:"priorTruncationRecords"`
+			// PriorShardIndices names exactly which of the claimed indices are
+			// on the cluster, for the case PriorSealShardsWritten cannot
+			// express: a gap. A failed write truncates the tail, so survivors
+			// are a prefix and a count describes them; a delete that failed
+			// partway leaves a hole, and then the count and the index bound are
+			// different numbers.
+			PriorShardIndices []int `yaml:"priorShardIndices"`
 			// LogReadFails makes every log read fail with an ordinary error
 			// rather than a pagination failure. That distinction decides
 			// whether the read is retried: an unpageable log fails the same
@@ -243,7 +250,14 @@ func TestReconcileComponentResults(t *testing.T) {
 		if input.PriorSealShardsWritten != nil {
 			written = *input.PriorSealShardsWritten
 		}
+		indices := make([]int, 0, int(written))
 		for i := range int(written) {
+			indices = append(indices, i)
+		}
+		if len(input.PriorShardIndices) > 0 {
+			indices = input.PriorShardIndices
+		}
+		for _, i := range indices {
 			cm := &corev1.ConfigMap{}
 			cm.Name = shardName(shardNameStem(workflowUID, jobName), i)
 			cm.Namespace = ns

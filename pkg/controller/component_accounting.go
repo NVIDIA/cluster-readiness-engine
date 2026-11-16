@@ -119,6 +119,63 @@ func (r *WorkflowReconciler) refreshComponentSeal(
 	return observeComponentSeal(g, job, g.Retries)
 }
 
+// reconcileUnverifiedSeal replaces a group's unverified shard claim with the
+// shards that actually exist.
+//
+// Reached only when the verdict wait has run out and the Job's seal is still
+// non-terminal, which means its ShardCount is a claim written before the first
+// shard and never confirmed. Publishing that claim is the one thing this path
+// must not do: the total would exceed what nvcrectl's selector walk resolves,
+// and the category's bundle would be refused for a run whose evidence is
+// whatever it is. Refusing to publish is not an option either, since the
+// Workflow has to reach a verdict.
+//
+// So the Workflow asks the same question the Job tier asks, by Getting the
+// derived shard names. It cannot list, but it does not need to: the stem is a
+// pure function of the Workflow UID and the Job name the seal carries.
+//
+// Marked Partial, because that is what it is. The attempt owed rows, the Job
+// never confirmed what it stored, and the count now describes the cluster
+// rather than the claim. A reader needs to know the difference.
+// Returns nothing: the caller writes the status either way, so a "changed"
+// signal would only invite a caller to skip a write it has to make anyway.
+func reconcileUnverifiedSeal(
+	ctx context.Context, c client.Client, workflowUID, namespace string,
+	g *nvcrev1alpha1.GroupStatus,
+) {
+	seal := liveSeal(*g)
+	if seal == nil || componentResultsSealed(seal.Phase) || seal.ShardCount == 0 {
+		return
+	}
+	log := logf.FromContext(ctx)
+	stem := shardNameStem(workflowUID, seal.JobName)
+	shards, rows, bound, err := probeShards(ctx, c, namespace, stem, seal.ShardCount)
+	if err != nil {
+		// The claim stands for this pass. Nothing is published from here, so a
+		// failed probe costs a pass rather than a wrong number, and the caller
+		// requeues.
+		log.V(1).Info("Could not confirm which shards a group's unsealed attempt wrote",
+			"group", g.Name, "job", seal.JobName, "error", err)
+		return
+	}
+	// Never below the highest surviving index, for the reason the Job tier
+	// keeps the same floor: the count is also the range every delete
+	// enumerates, so a live shard above it can never be named again.
+	if shards < bound {
+		shards = bound
+	}
+	if seal.ShardCount == shards && seal.RowCount == rows &&
+		seal.Phase == nvcrev1alpha1.ComponentResultsPartial {
+		return
+	}
+	log.Info("Sealing a group's component results from the shards that exist, "+
+		"because its Job did not confirm them within the grace period",
+		"group", g.Name, "job", seal.JobName,
+		"claimed", seal.ShardCount, "existing", shards)
+	seal.ShardCount, seal.RowCount = shards, rows
+	seal.Phase = nvcrev1alpha1.ComponentResultsPartial
+}
+
 // awaitingComponentSeals names a group whose seal the Job tier may still
 // change, or "" when every group's is settled.
 //

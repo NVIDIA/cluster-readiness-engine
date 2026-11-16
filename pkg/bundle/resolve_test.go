@@ -90,6 +90,13 @@ func TestResolveCertification(t *testing.T) {
 				// sealed count still records the loss, which is what removing
 				// that one ConfigMap out of band leaves behind.
 				TruncationDeleted bool `yaml:"truncationDeleted"`
+				// SealTruncated overrides the sealed truncated-row count, for
+				// the case the reader cannot see directly: two Jobs recorded
+				// losses and one Job's sibling is gone. The reader only ever
+				// holds the category total summed across Jobs, so a total that
+				// exceeds what the surviving records account for IS that state
+				// as far as the walk is concerned.
+				SealTruncated *int64 `yaml:"sealTruncated"`
 			} `yaml:"categories"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
@@ -192,6 +199,10 @@ func TestResolveCertification(t *testing.T) {
 			if cat.SealRows != nil {
 				sealRows = *cat.SealRows
 			}
+			sealTruncated := built.DroppedTotal
+			if cat.SealTruncated != nil {
+				sealTruncated = *cat.SealTruncated
+			}
 
 			cs := nvcrev1alpha1.CertificationCategoryStatus{
 				Domain:  cat.Domain,
@@ -201,8 +212,8 @@ func TestResolveCertification(t *testing.T) {
 					RowCount:          sealRows,
 					Selector:          selector,
 					Final:             cat.Final,
-					TruncatedRowCount: built.DroppedTotal,
-					Truncated:         built.DroppedTotal > 0,
+					TruncatedRowCount: sealTruncated,
+					Truncated:         sealTruncated > 0,
 				},
 			}
 			if !cat.NoWorkflowRef {

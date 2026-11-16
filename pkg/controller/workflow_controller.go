@@ -2551,6 +2551,14 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			"group", waiting)
 		return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 	}
+	// The wait is over and any seal still non-terminal is an unconfirmed claim.
+	// Publishing it would put the total above what the selector walk resolves
+	// and refuse the category, so the claim is replaced by the shards that
+	// actually exist and the seal is marked Partial.
+	for i := range orch.Groups {
+		reconcileUnverifiedSeal(ctx, r.Client, string(workflow.UID),
+			componentShardNamespace(workflow), &orch.Groups[i])
+	}
 
 	orch.CompletedIterations++
 	log.Info("Iteration completed", "iteration", orch.CompletedIterations,

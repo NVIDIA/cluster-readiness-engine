@@ -276,14 +276,34 @@ func resolveOne(
 	//     by this selector while its seal is no longer in the total, so the sum
 	//     read can exceed the sum sealed.
 	//
-	// What does hold is that TruncatedRowCount is summed from the very records
-	// the sibling carries, so a positive total means some Job wrote one.
-	if totals.TruncatedRowCount > 0 && len(comp.Truncations) == 0 {
+	// What does hold is a lower bound on the magnitude. TruncatedRowCount is
+	// summed from the very records the siblings carry, and the one place the
+	// two could drift, a ledger capped at maxDroppedRecords, is reconciled onto
+	// both sides by the same call, so the counts a Job writes sum to the count
+	// its seal reports. Across Jobs, then, the resolved records cannot sum
+	// below what the run sealed unless some Job's sibling is missing.
+	//
+	// A bound rather than equality, because the sum can legitimately EXCEED.
+	// A seal dropped past the retained-failure cap leaves its records behind
+	// while its count is no longer in the total, and a re-drive that lost
+	// nothing leaves an earlier attempt's sibling in place. Both already fail
+	// the shard counts above, so refusing them here would only restate it,
+	// while refusing on equality would also refuse runs whose evidence is whole.
+	//
+	// Presence alone was not enough, which is what this replaces: with two Jobs
+	// recording losses, one surviving record satisfied a category-wide presence
+	// check while the other Job's identities and reasons were gone, and neither
+	// count moved because a dropped row was never in a shard.
+	var resolvedDropped int64
+	for _, tr := range comp.Truncations {
+		resolvedDropped += tr.Count
+	}
+	if resolvedDropped < totals.TruncatedRowCount {
 		return comp, fmt.Errorf(
-			"%s/%s: the run sealed %d truncated rows and no truncation record resolved;"+
-				" refusing to write a bundle whose truncation.json would report no loss"+
-				" while its manifest records one",
-			domain, variant, totals.TruncatedRowCount)
+			"%s/%s: the run sealed %d truncated row(s) and the truncation records that"+
+				" resolved account for only %d; refusing to write a bundle whose"+
+				" truncation.json understates the loss its manifest records",
+			domain, variant, totals.TruncatedRowCount, resolvedDropped)
 	}
 	return comp, nil
 }

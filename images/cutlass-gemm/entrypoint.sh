@@ -195,14 +195,12 @@ run_device() {
   # any one of them is.
   #
   # --kernels pins the one kernel GEMM_KERNEL named, so the sample window is
-  # spent once rather than once per kernel in the library. It is empty only
-  # when selection failed, and the unpinned form is then the deliberate
-  # fallback the selection block describes.
-  local -a pin=()
-  [[ -n "${GEMM_KERNEL}" ]] && pin=(--kernels="${GEMM_KERNEL}")
+  # spent once rather than once per kernel in the library. Never empty: the
+  # selection block above exits 2 rather than leaving it unset, because an
+  # unpinned sweep is the defect that block exists to remove.
   "${CUTLASS_PROFILER}" \
     --operation="${NVCRE_GEMM_OPERATION}" \
-    "${pin[@]}" \
+    --kernels="${GEMM_KERNEL}" \
     --devices="${dev}" \
     --m="${NVCRE_GEMM_M}" --n="${NVCRE_GEMM_N}" --k="${NVCRE_GEMM_K}" \
     --A="${NVCRE_GEMM_DTYPE}":column --B="${NVCRE_GEMM_DTYPE}":column \
@@ -291,7 +289,9 @@ run_device() {
 # ---------------------------------------------------------------------------
 
 GEMM_KERNEL="${NVCRE_GEMM_KERNEL}"
-if [[ -z "${GEMM_KERNEL}" ]]; then
+for attempt in 1 2; do
+  [[ -n "${GEMM_KERNEL}" ]] && break
+  [[ "${attempt}" -eq 2 ]] && log "Retrying kernel selection"
   "${CUTLASS_PROFILER}" \
     --operation="${NVCRE_GEMM_OPERATION}" \
     --devices=0 \
@@ -324,15 +324,33 @@ if [[ -z "${GEMM_KERNEL}" ]]; then
       END { gsub(/^[ \t"]+|[ \t"\r]+$/, "", winner); print winner }
     ' "${select_csv}")"
   fi
+done
+if [[ -z "${GEMM_KERNEL}" ]]; then
+  # Exit 2, not a fallback to the unpinned sweep.
+  #
+  # The first version fell back, and that was wrong for the reason this block
+  # exists: an unpinned sweep spends one sample window per matching kernel, so
+  # it returns the whole defect. A 30s sample becomes about nine minutes, the
+  # soak collects a handful of samples instead of sixty, and off the shipped
+  # values it overruns timeoutPerJob and the Job dies on a timeout rather than
+  # on a verdict. Degrading quietly into the behaviour being fixed is worse
+  # than stopping, because the rows still arrive and still look like a result.
+  #
+  # Exit 2 is this script's "the test could not run", the same code the missing
+  # GPU and unwritable scratch paths use, and it is deliberately not exit 1.
+  # The distinction is the whole point: a selection failure is a harness or
+  # driver problem, and reporting it as a GPU below its floor would fail
+  # healthy hardware and send an operator hunting a fault that does not exist.
+  log "FATAL: could not select a kernel to measure after two attempts;" \
+      "the profiler wrote no usable result for ${NVCRE_GEMM_OPERATION} on device 0." \
+      "Not falling back to an unpinned sweep: that profiles every matching kernel" \
+      "per sample window, which overruns the configured cadence and can exceed" \
+      "the Job timeout. Set NVCRE_GEMM_KERNEL to pin one explicitly. Last 20" \
+      "lines of the selection log:"
+  tail -20 "${WORK}/select.log" 2>/dev/null || true
+  exit 2
 fi
-if [[ -n "${GEMM_KERNEL}" ]]; then
-  log "Measuring ${GEMM_KERNEL}, one kernel per sweep"
-else
-  log "WARNING: no single kernel could be selected; every matching kernel will be" \
-      "profiled on every sweep, so a sweep will run past ${NVCRE_GEMM_SAMPLE_SECONDS}s" \
-      "and the soak will collect fewer samples than ${NVCRE_GEMM_DURATION_SECONDS}s of" \
-      "${NVCRE_GEMM_SAMPLE_SECONDS}s sweeps. The per-GPU numbers and the verdict are unaffected."
-fi
+log "Measuring ${GEMM_KERNEL}, one kernel per sweep"
 
 # ---------------------------------------------------------------------------
 # The soak. Sweeps run back to back until the duration is spent; within a
