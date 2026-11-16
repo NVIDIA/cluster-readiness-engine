@@ -145,6 +145,14 @@ jobs:
   gemm-changed:
     runs-on: linux-amd64-cpu8
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    # actions: read is for the baseline below, which reads this workflow's own
+    # run history. It is the narrowest scope that answers "what did we last
+    # publish from": a git tag marker would need contents: write and would
+    # mutate the repository on every push, and reading the registry instead
+    # would need packages: read and a probe per candidate commit.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       gemm: ${{ steps.changes.outputs.gemm }}
     steps:
@@ -157,6 +165,8 @@ jobs:
         id: changes
         env:
           EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          RUNS_API: /repos/${{ github.repository }}/actions/workflows/publish.yml/runs
         run: |
           set -uo pipefail
 
@@ -171,9 +181,42 @@ jobs:
             exit 0
           fi
 
-          base="$(git merge-base FETCH_HEAD HEAD~1 || true)"
+          # The baseline is the last commit this workflow published from, not
+          # HEAD~1.
+          #
+          # HEAD~1 asks "did this one commit touch the harness", and that
+          # question forgets. A run that answered "build" and then did not
+          # finish, cancelled to clear the queue, a lost runner, or a 5xx from
+          # GHCR on push, leaves its harness change unpublished. Every later
+          # push diffs against its own parent, so that change never appears in a
+          # diff again and nothing goes red: the gate answers false forever and
+          # the harness image stays older than the branch it is named after,
+          # which is the one outcome the comment above says it must not produce.
+          #
+          # The last successful run of this workflow on main is a watermark for
+          # "sources that were published", because a push to main only reaches
+          # success once `attested` has agreed that the harness question was
+          # answered and acted on at that sha. Reading it costs one API call and
+          # actions: read. Reading the registry instead, the newest
+          # cutlass-gemm main-<sha> that still resolves, the way
+          # vuln-scan-images.yml walks for its scan set, says the same thing
+          # about the artifact rather than about the run, at the cost of
+          # packages: read and a probe per candidate commit.
+          last="$(gh api "${RUNS_API}?branch=main&event=push&status=success&per_page=1" \
+                    --jq '.workflow_runs[0].head_sha // empty' || true)"
+          if [ -z "${last}" ]; then
+            echo "no successful publish run on main to compare against; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # merge-base rather than the sha itself: a sha main has since moved
+          # away from resolves to an older common ancestor, which only widens
+          # the diff, and one that is not in the clone at all leaves this empty
+          # and takes the fail-open branch.
+          base="$(git merge-base FETCH_HEAD "${last}" || true)"
           if [ -z "${base}" ]; then
-            echo "no merge base for the previous commit; building rather than guessing"
+            echo "no merge base with ${last}; building rather than guessing"
             echo "gemm=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -201,12 +244,16 @@ jobs:
   # The CUTLASS GEMM harness image (ADR-091), built and signed exactly as the
   # controller image is.
   #
-  # Unconditional on main, not path-gated. The pull-request gate in
-  # container-build.yml is where a path filter earns its keep, because that
-  # trigger fires on every Go change; a main merge is rare enough, and a dev
-  # image that silently lags the branch it is named after is worse than the
-  # build minutes. The compile is long, which is why the Dockerfile's
-  # CUTLASS_LIBRARY_KERNELS filter is narrow.
+  # Path-gated on main, by gemm-changed above. The compile is long, which is
+  # why the Dockerfile's CUTLASS_LIBRARY_KERNELS filter is narrow and why a
+  # merge that cannot have changed the harness should not pay for it.
+  #
+  # What makes the gate safe to have is that it fails open and that its
+  # baseline is the last sha this workflow published from rather than HEAD~1.
+  # Both matter for the same reason: a dev image that silently lags the branch
+  # it is named after is worse than the build minutes, so every path that
+  # cannot answer the question has to answer "build it", and a question asked
+  # only of the newest commit forgets a change no run ever published.
   gemm-build:
     name: Build GEMM harness image
     needs: [tag, gemm-changed]

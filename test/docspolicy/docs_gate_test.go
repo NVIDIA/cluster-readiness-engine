@@ -41,10 +41,25 @@ const (
 
 type gate struct {
 	workflow string
+	// job is the gate job's name. The fern workflows and container-build.yml
+	// call it changed-files; publish.yml calls it gemm-changed.
+	job string
 	// key is the output name, so a gate writing "gemm=true" is checked the
 	// same way as one writing "docs=true".
 	key string
 }
+
+// jobChangedFiles is the gate job name every workflow but publish.yml uses.
+const jobChangedFiles = "changed-files"
+
+// The fail-open states every gate shares, named once so the two tables below
+// cannot drift into describing the same case differently.
+const (
+	caseDiffFails  = "the diff itself fails"
+	caseFetchFails = "main cannot be fetched"
+	stubDiffFails  = `return 1`
+	stubUnrelated  = `echo "docs/typo.md"; return 0`
+)
 
 // run and skip are the two answers a gate can give, as it writes them to
 // GITHUB_OUTPUT. The whole trimmed file is compared against these, so a gate
@@ -58,8 +73,8 @@ func (g gate) String() string { return g.workflow + "[" + g.key + "]" }
 // docsGates are the workflows whose `changed-files` job decides whether
 // documentation validation runs. Both must answer the question the same way.
 var docsGates = []gate{
-	{workflow: "fern-docs-ci.yml", key: "docs"},
-	{workflow: "fern-docs-preview-build.yml", key: "docs"},
+	{workflow: "fern-docs-ci.yml", job: jobChangedFiles, key: "docs"},
+	{workflow: "fern-docs-preview-build.yml", job: jobChangedFiles, key: "docs"},
 }
 
 // imageGate decides whether the CUTLASS GEMM harness image is rebuilt on a
@@ -67,7 +82,16 @@ var docsGates = []gate{
 // already fires on every Go change, which it must for the manager image, so
 // this is the only thing standing between a Go-only pull request and a
 // multi-hour kernel compile.
-var imageGate = gate{workflow: "container-build.yml", key: "gemm"}
+var imageGate = gate{workflow: "container-build.yml", job: jobChangedFiles, key: "gemm"}
+
+// publishImageGate decides whether a merge to main rebuilds the harness image.
+//
+// Separate from imageGate because it answers a different question against a
+// different baseline. container-build.yml asks "does this pull request touch
+// the harness"; this one asks "has the harness changed since we last published
+// one", and it has to, because a run that answered "build" and then did not
+// finish leaves a change no later diff against HEAD~1 would ever see again.
+var publishImageGate = gate{workflow: "publish.yml", job: "gemm-changed", key: "gemm"}
 
 // gateStep returns the body of the `changes` step from a workflow's
 // changed-files job. Extracted from the workflow rather than copied, so the
@@ -92,13 +116,13 @@ func gateStep(t *testing.T, g gate) string {
 		t.Fatalf("parse %s: %v", g.workflow, err)
 	}
 
-	for _, step := range doc.Jobs["changed-files"].Steps {
+	for _, step := range doc.Jobs[g.job].Steps {
 		if step.ID == "changes" {
 			return step.Run
 		}
 	}
-	t.Fatalf("%s: no step with id 'changes' in the changed-files job; "+
-		"if the gate moved, update this test rather than deleting it", g.workflow)
+	t.Fatalf("%s: no step with id 'changes' in the %s job; "+
+		"if the gate moved, update this test rather than deleting it", g.workflow, g.job)
 	return ""
 }
 
@@ -108,10 +132,19 @@ const harness = `
 git() {
   case "$1 $2" in
     "fetch --no-tags") return %d ;;
-    "merge-base FETCH_HEAD") echo "deadbeef"; return 0 ;;
+    # Echo back the revision the gate chose, so the diff stub can tell one
+    # baseline from another. Which revision a gate compares against is the
+    # thing under test, and a fixed sha here cannot express it. The existing
+    # gates pass HEAD, which is non-empty exactly as a fixed sha was.
+    "merge-base FETCH_HEAD") echo "$3"; return 0 ;;
     "diff --name-only") %s ;;
   esac
 }
+
+# The run-history lookup publish.yml's baseline uses. Returns a sha unlike any
+# revision a gate could name lexically, so a diff stub asserting on the base
+# cannot pass by accident.
+gh() { echo "${STUB_LAST_SHA-lastpublishedsha}"; }
 
 %s
 `
@@ -132,7 +165,16 @@ func runGate(t *testing.T, step, diff string, fetchRC int) string {
 	}
 
 	cmd := exec.Command("bash", script)
-	cmd.Env = append(os.Environ(), "GITHUB_OUTPUT="+output, "EVENT_NAME=push")
+	// RUNS_API and GH_TOKEN are publish.yml's; the other gates do not read
+	// them. Supplied unconditionally because the step runs under `set -u`, so
+	// an absent one aborts the lookup and the gate fails open, which would make
+	// every fail-open case here pass for the wrong reason.
+	cmd.Env = append(os.Environ(),
+		"GITHUB_OUTPUT="+output,
+		"EVENT_NAME=push",
+		"RUNS_API=/repos/o/r/actions/workflows/publish.yml/runs",
+		"GH_TOKEN=stub",
+	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("gate exited non-zero: %v\n%s", err, out)
 	}
@@ -218,12 +260,12 @@ func TestDocsGateAnswersHonestly(t *testing.T) {
 			want: skipSentinel,
 		},
 		{
-			name: "the diff itself fails",
-			diff: `return 1`,
+			name: caseDiffFails,
+			diff: stubDiffFails,
 			want: runSentinel,
 		},
 		{
-			name:    "main cannot be fetched",
+			name:    caseFetchFails,
 			diff:    `echo "pkg/controller/job.go"; return 0`,
 			fetchRC: 1,
 			want:    runSentinel,
@@ -293,12 +335,12 @@ func TestImageGateAnswersHonestly(t *testing.T) {
 			want: skipSentinel,
 		},
 		{
-			name: "the diff itself fails",
-			diff: `return 1`,
+			name: caseDiffFails,
+			diff: stubDiffFails,
 			want: runSentinel,
 		},
 		{
-			name:    "main cannot be fetched",
+			name:    caseFetchFails,
 			diff:    `echo "pkg/controller/job.go"; return 0`,
 			fetchRC: 1,
 			want:    runSentinel,
@@ -315,5 +357,96 @@ func TestImageGateAnswersHonestly(t *testing.T) {
 				t.Errorf("gate answered wrongly\n got: %s\nwant: %s", got, want)
 			}
 		})
+	}
+}
+
+// TestPublishGateComparesAgainstTheLastPublishedCommit pins the baseline
+// publish.yml's harness gate measures from.
+//
+// The first version diffed against HEAD~1, which asks "did the single newest
+// commit touch the harness". That question forgets. A run that answered "build"
+// and then did not finish, cancelled to clear the queue, a lost runner, or a
+// 5xx from GHCR on push, leaves its harness change unpublished; every later
+// push then diffs against its own parent, so the change is never in a diff
+// again, no run rebuilds it and no run goes red about it. The gate answers
+// false forever and the image stays older than the branch it is named after,
+// which is the one outcome the gate's own comment says it must not produce.
+//
+// Asserted by making the diff report a harness change only for the right
+// baseline, so the two candidate revisions give opposite answers. Nothing
+// covered this gate before: docsGates lists only the fern workflows, imageGate
+// only container-build.yml, and releasepolicy's gate table is hardcoded to
+// release.yml. That gap is how the HEAD~1 baseline got in.
+func TestPublishGateComparesAgainstTheLastPublishedCommit(t *testing.T) {
+	// The harness echoes back whichever revision the gate hands merge-base, so
+	// $3 here is the base the gate chose.
+	onlyForLastPublished := `case "$3" in
+    lastpublishedsha) echo "images/cutlass-gemm/Dockerfile" ;;
+  esac
+  return 0`
+
+	got := runGate(t, gateStep(t, publishImageGate), onlyForLastPublished, 0)
+	if got != publishImageGate.run() {
+		t.Errorf("the gate did not diff against the last published commit;"+
+			" a harness change that no run published would be forgotten\n got: %s\nwant: %s",
+			got, publishImageGate.run())
+	}
+}
+
+// TestPublishGateFailsOpen pins that every path which cannot answer the
+// question answers "build it".
+//
+// The gate's own comment commits to that, and it is the property that makes a
+// path filter safe on a publishing workflow: a wrong skip leaves a dev image
+// silently lagging the branch it is named after, while a wrong build costs
+// minutes.
+func TestPublishGateFailsOpen(t *testing.T) {
+	cases := []struct {
+		name    string
+		diff    string
+		fetchRC int
+		noLast  bool
+	}{
+		{
+			name: caseDiffFails,
+			diff: stubDiffFails,
+		},
+		{
+			name:    caseFetchFails,
+			diff:    stubUnrelated,
+			fetchRC: 1,
+		},
+		{
+			// No successful publish run to measure from: a fresh fork, a
+			// renamed workflow, or a run-history lookup that failed. There is
+			// no baseline, so there is no basis for a skip.
+			name:   "no successful publish run to compare against",
+			diff:   stubUnrelated,
+			noLast: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.noLast {
+				t.Setenv("STUB_LAST_SHA", "")
+			}
+			got := runGate(t, gateStep(t, publishImageGate), c.diff, c.fetchRC)
+			if got != publishImageGate.run() {
+				t.Errorf("the gate skipped the build on a path that cannot answer"+
+					" the question\n got: %s\nwant: %s", got, publishImageGate.run())
+			}
+		})
+	}
+}
+
+// TestPublishGateSkipsWhenTheHarnessIsUntouched pins the other direction, so
+// the fail-open cases above cannot be satisfied by a gate that always builds.
+func TestPublishGateSkipsWhenTheHarnessIsUntouched(t *testing.T) {
+	got := runGate(t, gateStep(t, publishImageGate),
+		`echo "docs/typo.md"; echo "pkg/controller/job.go"; return 0`, 0)
+	if got != publishImageGate.skip() {
+		t.Errorf("the gate rebuilt the harness for a diff that does not touch it\n got: %s\nwant: %s",
+			got, publishImageGate.skip())
 	}
 }
