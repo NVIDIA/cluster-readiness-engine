@@ -1,0 +1,4 @@
+{
+  "error": "compute/cutlass-gemm: resolved 2 shards holding 3 rows, but the run sealed 1 shards holding 2 rows; refusing to write a bundle that would certify an incomplete result set",
+  "components": []
+}

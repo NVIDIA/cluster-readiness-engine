@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -260,6 +261,41 @@ type walkedRows struct {
 	ndjson bytes.Buffer
 }
 
+// labelShardJob is the Job a shard was written for, stamped by the controller
+// in writeShardConfigMap.
+//
+// Used to group shard indices by Job, nothing more. It deliberately does not
+// gate which shards are read. The obvious use would be to admit only shards
+// whose Job the Workflow lists as sealed, which would exclude a superseded
+// attempt whose shard delete failed, but the Workflow does not retain a Job
+// name for every row it counts: diagnoseSetGroups folds a round's seals into
+// RetiredComponentResults, a bare totals struct, and then replaces the group
+// list those names lived on without deleting the shards. Gating on
+// attributability would therefore refuse a bundle for every run that entered
+// fault isolation, which is the mode these rows are most worth having in. An
+// orphaned attempt is caught by the count gate in resolveOne instead.
+const labelShardJob = "nvcre.nvidia.com/job"
+
+// shardIndexOf reads a row shard's position within its Job.
+//
+// From the data block rather than the name, because the name is derived and the
+// block is what the encoder wrote. A shard with no readable index cannot be
+// placed, and a set whose order is unknown cannot be concatenated into rows in
+// emission order, so this is an error rather than a default.
+func shardIndexOf(cm *corev1.ConfigMap) (int, error) {
+	raw, ok := cm.Data[shard.ShardIndexKey]
+	if !ok {
+		return 0, fmt.Errorf("shard %s carries no %s, so its position in the set is unknown",
+			cm.Name, shard.ShardIndexKey)
+	}
+	idx, err := strconv.Atoi(raw)
+	if err != nil || idx < 0 {
+		return 0, fmt.Errorf("shard %s has %s=%q, which is not a position", cm.Name,
+			shard.ShardIndexKey, raw)
+	}
+	return idx, nil
+}
+
 // walkShards pages through the shards a selector resolves and decodes them.
 //
 // Shards are gathered then sorted by name before decoding, rather than decoded
@@ -281,6 +317,9 @@ func walkShards(
 		rowShards   []string
 		truncShards []string
 	)
+	// Shard index per Job, so a duplicate index cannot double-count rows.
+	// shard.DecodeRows deliberately leaves this to bundle assembly.
+	indexByJob := map[string]map[int]string{}
 
 	token := ""
 	for {
@@ -300,6 +339,26 @@ func walkShards(
 			cm := &page.Items[i]
 			switch {
 			case cm.BinaryData[shard.RowsKey] != nil:
+				idx, err := shardIndexOf(cm)
+				if err != nil {
+					return out, nil, err
+				}
+				job := cm.Labels[labelShardJob]
+				if indexByJob[job] == nil {
+					indexByJob[job] = map[int]string{}
+				}
+				if prev, dup := indexByJob[job][idx]; dup {
+					// Named in lexical order, not the order the List happened
+					// to return them in. A List is unordered, so without this
+					// the same cluster state produces either of two messages.
+					first, second := min(prev, cm.Name), max(prev, cm.Name)
+					return out, nil, fmt.Errorf(
+						"shards %s and %s both claim index %d for job %s: two shards at one "+
+							"index means the set is not the one that was sealed, and taking "+
+							"both would count a component's rows twice",
+						first, second, idx, job)
+				}
+				indexByJob[job][idx] = cm.Name
 				rowShards = append(rowShards, cm.Name)
 			case cm.BinaryData[shard.TruncationKey] != nil:
 				truncShards = append(truncShards, cm.Name)

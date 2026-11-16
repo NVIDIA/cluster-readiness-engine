@@ -75,6 +75,17 @@ func TestResolveCertification(t *testing.T) {
 				Final      bool   `yaml:"final"`
 				// DroppedRows writes a truncation sibling.
 				DroppedRows int64 `yaml:"droppedRows"`
+				// OrphanRows are written as a second Job's shards, which is
+				// what a superseded retry whose shard delete failed leaves on
+				// the cluster. They carry the same workflow-uid label, so the
+				// selector returns them and nothing in the run's totals
+				// accounts for them.
+				OrphanRows []string `yaml:"orphanRows"`
+				// DuplicateIndex writes every shard a second time under a
+				// different name carrying the same declared index, which is
+				// what a rebuild under a changed name leaves behind when the
+				// shard it supersedes is not deleted.
+				DuplicateIndex bool `yaml:"duplicateIndex"`
 			} `yaml:"categories"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
@@ -98,6 +109,7 @@ func TestResolveCertification(t *testing.T) {
 		for i, cat := range in.Categories {
 			wfName := fmt.Sprintf("wf-%d", i)
 			wfUID := fmt.Sprintf("uid-%04d", i)
+			jobName := wfName + "-job"
 			shardNS := in.Namespace
 			if cat.WorkflowNamespace != "" {
 				shardNS = cat.WorkflowNamespace
@@ -107,23 +119,59 @@ func TestResolveCertification(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			// Labelled as the controller labels them: the workflow-uid the
+			// selector matches, plus the Job the shard was written for. The
+			// walk groups shard indices by that Job label, so a fixture
+			// missing it would collapse two Jobs' indices together.
+			shardLabels := func() map[string]string {
+				return map[string]string{labelWorkflowUID: wfUID, labelShardJob: jobName}
+			}
 			for _, s := range built.Shards {
 				cm := &corev1.ConfigMap{
-					Name:      fmt.Sprintf("shard-%s-job-%04d", wfUID, s.Index),
+					Name:      fmt.Sprintf("shard-%s-%s-%04d", wfUID, jobName, s.Index),
 					Namespace: shardNS,
-					Labels:    map[string]string{labelWorkflowUID: wfUID},
+					Labels:    shardLabels(),
 				}
 				cm.Data = s.Data()
 				cm.BinaryData = s.BinaryData()
 				objs = append(objs, cm)
+				if cat.DuplicateIndex {
+					dup := cm.DeepCopy()
+					dup.Name = fmt.Sprintf("shard-%s-%s-%04d-stale", wfUID, jobName, s.Index)
+					dup.ResourceVersion = ""
+					objs = append(objs, dup)
+				}
+			}
+
+			// A superseded attempt's shards: same selector, a different Job.
+			// Written after the sealed ones so List order does not decide the
+			// outcome.
+			if len(cat.OrphanRows) > 0 {
+				orphan, err := buildShards(cat.OrphanRows, 0)
+				if err != nil {
+					return err
+				}
+				for _, s := range orphan.Shards {
+					cm := &corev1.ConfigMap{
+						Name:      fmt.Sprintf("shard-%s-%s-retry-1-%04d", wfUID, jobName, s.Index),
+						Namespace: shardNS,
+						Labels: map[string]string{
+							labelWorkflowUID: wfUID,
+							labelShardJob:    jobName + "-retry-1",
+						},
+					}
+					cm.Data = s.Data()
+					cm.BinaryData = s.BinaryData()
+					objs = append(objs, cm)
+				}
 			}
 			if payload, err := shard.EncodeTruncation(built.Dropped); err != nil {
 				return err
 			} else if payload != nil {
 				objs = append(objs, &corev1.ConfigMap{
-					Name:       fmt.Sprintf("shard-%s-job-truncation", wfUID),
+					Name:       fmt.Sprintf("shard-%s-%s-truncation", wfUID, jobName),
 					Namespace:  shardNS,
-					Labels:     map[string]string{labelWorkflowUID: wfUID},
+					Labels:     shardLabels(),
 					BinaryData: map[string][]byte{shard.TruncationKey: payload},
 				})
 			}
