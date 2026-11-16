@@ -1868,10 +1868,10 @@ func certificationIsTerminal(cert *nvcrev1alpha1.Certification) bool {
 }
 
 // handleReport builds and prints the certification report, optionally writing
-// JSON and JUnit files. Failing to write either file fails the command, as it
-// does for certification report, so a zero exit means every requested file is
-// there. A failed JSON write does not stop the JUnit write. Caller must pass a
-// non-nil cert.
+// a JSON file, a results bundle and a JUnit file. Failing to write any of them
+// fails the command, as it does for certification report, so a zero exit means
+// every requested artifact is there. No export failure stops the others.
+// Caller must pass a non-nil cert.
 func handleReport(
 	ctx context.Context, wc client.WithWatch,
 	cert *nvcrev1alpha1.Certification, targets reportTargets,
@@ -1896,21 +1896,27 @@ func handleReport(
 			_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
 		}
 	}
+	// A bundle failure is kept rather than returned, for the same reason the
+	// JSON failure above is. The JUnit file is what a CI system reads, and
+	// under --cleanup the deferred cleanup deletes the Certification whichever
+	// way the export went, so returning here left the pipeline with no result
+	// at all and the evidence to regenerate one from already gone. The
+	// commonest trigger is a --results-bundle directory that is not empty,
+	// which bundle.Write refuses, and that is only reachable after the run.
+	var bundleErr error
 	if targets.resultsBundle != "" {
-		if err := writeResultsBundle(ctx, wc, cert, r, targets.resultsBundle, out); err != nil {
-			return errors.Join(jsonErr, err)
-		}
+		bundleErr = writeResultsBundle(ctx, wc, cert, r, targets.resultsBundle, out)
 	}
 	if junitFile != "" {
 		if err := validateReportPaths(resultsFile, junitFile); err != nil {
-			return errors.Join(jsonErr, err)
+			return errors.Join(jsonErr, bundleErr, err)
 		}
 		if err := report.WriteJUnit(junitFile, []*report.CertReport{r}); err != nil {
-			return errors.Join(jsonErr, fmt.Errorf("write JUnit file: %w", err))
+			return errors.Join(jsonErr, bundleErr, fmt.Errorf("write JUnit file: %w", err))
 		}
 		_, _ = fmt.Fprintf(out, "JUnit results written to %s\n", junitFile)
 	}
-	return jsonErr
+	return errors.Join(jsonErr, bundleErr)
 }
 
 // validateReportPaths prevents JSON and JUnit output from overwriting the same path.

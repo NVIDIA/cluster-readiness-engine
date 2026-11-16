@@ -1419,3 +1419,25 @@ func TestHandleReportJSONWriteErrorFails(t *testing.T) {
 	_, statErr := os.Stat(junitPath)
 	require.NoError(t, statErr, "JUnit file must still be written")
 }
+
+// TestHandleReportBundleErrorStillWritesJUnit checks that a failed
+// --results-bundle export does not skip the JUnit file, as a failed
+// --results-file write does not. Under --cleanup the deferred cleanup deletes
+// the Certification whichever way the export went, so a skipped JUnit file
+// leaves CI with no result and nothing left to regenerate one from.
+func TestHandleReportBundleErrorStillWritesJUnit(t *testing.T) {
+	dir := t.TempDir()
+	bundleDir := filepath.Join(dir, "bundle")
+	require.NoError(t, os.MkdirAll(bundleDir, 0o750))
+	// A leftover file is what a CI job re-running into its artifacts
+	// directory hits, and bundle.Write refuses it.
+	require.NoError(t, os.WriteFile(filepath.Join(bundleDir, "leftover.json"), []byte("{}"), 0o600))
+	junitPath := filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert,
+		reportTargets{junitFile: junitPath, resultsBundle: bundleDir}, nil, &bytes.Buffer{})
+	require.ErrorContains(t, err, "is not empty")
+	_, statErr := os.Stat(junitPath)
+	require.NoError(t, statErr, "JUnit file must still be written")
+}

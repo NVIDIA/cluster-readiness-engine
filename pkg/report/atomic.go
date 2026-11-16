@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // reportFilePerm is the mode a report file is left with. Reports are output
@@ -213,8 +214,8 @@ const maxSymlinkHops = 32
 // report while the command reports success. A symlinked results path is
 // ordinary in CI, so the link has to be followed rather than clobbered.
 //
-// Two earlier attempts got this wrong, both in ways that wrote to the wrong
-// file silently, and the fixes for both are visible here:
+// Three earlier attempts got this wrong, all in ways that wrote to the wrong
+// file silently, and the fixes for all three are visible here:
 //
 //   - A relative target such as "../out/x.json" must be joined against the
 //     directory the link RESOLVES THROUGH, not against its lexical parent.
@@ -225,6 +226,12 @@ const maxSymlinkHops = 32
 //   - A chain must be followed to its end. Resolving one hop returned a path
 //     that was itself a symlink, and the rename then destroyed the
 //     intermediate link while never creating the file the chain names.
+//   - A ".." anywhere in a path, as in "hop/../x.json" where "hop" is a link
+//     to another directory, has to be resolved by the filesystem too. Both
+//     filepath.Join and filepath.Dir clean it lexically, which drops the hop
+//     the kernel would have taken: the write landed beside the link instead
+//     of beside hop's real parent, overwriting whatever report was already
+//     there. That is what rawDir and the raw append below are for.
 //
 // EvalSymlinks alone cannot do this, because it stats the whole path and so
 // fails on a DANGLING link — precisely the case of a link whose target the
@@ -273,7 +280,7 @@ func resolveDestination(path string) (string, error) {
 			// Not a link, or does not exist: the common case of writing a
 			// brand new file. Resolve the directory so the temporary file and
 			// the rename land on the same real filesystem, and keep the name.
-			if dir, dirErr := filepath.EvalSymlinks(filepath.Dir(path)); dirErr == nil {
+			if dir, dirErr := filepath.EvalSymlinks(rawDir(path)); dirErr == nil {
 				return filepath.Join(dir, filepath.Base(path)), nil
 			}
 			return path, nil
@@ -285,11 +292,14 @@ func resolveDestination(path string) (string, error) {
 		}
 		if !filepath.IsAbs(target) {
 			// Against the link's RESOLVED directory, which is the whole point.
-			dir, dirErr := filepath.EvalSymlinks(filepath.Dir(path))
+			dir, dirErr := filepath.EvalSymlinks(rawDir(path))
 			if dirErr != nil {
 				return "", fmt.Errorf("resolve the directory of symbolic link %s: %w", path, dirErr)
 			}
-			target = filepath.Join(dir, target)
+			// Appended raw rather than joined, because Join cleans and the
+			// target's own ".." has to reach the filesystem as well. The next
+			// iteration resolves it: both branches above resolve rawDir(path).
+			target = dir + string(filepath.Separator) + target
 		}
 		path = target
 	}
@@ -297,6 +307,30 @@ func resolveDestination(path string) (string, error) {
 	return "", fmt.Errorf(
 		"destination is a chain of more than %d symbolic links, or a cycle; name the file it points at instead",
 		maxSymlinkHops)
+}
+
+// rawDir is the part of path before its last separator: filepath.Dir without
+// the cleaning.
+//
+// filepath.Dir calls Clean, and Clean resolves ".." lexically. Dir of
+// "/out/hop/../x.json" is "/out", but if "hop" is a link to "/archive/nested"
+// the kernel reads that path as "/archive/x.json". Keeping the ".." and
+// handing it to EvalSymlinks gives the kernel's answer, because EvalSymlinks
+// trims a component it has ALREADY resolved rather than a lexical one.
+//
+// Every case Clean handles identically is left identical: no separator is the
+// working directory, and a path directly under the root is the root.
+func rawDir(path string) string {
+	sep := string(filepath.Separator)
+	i := strings.LastIndex(path, sep)
+	switch {
+	case i < 0:
+		return "."
+	case i == 0:
+		return sep
+	default:
+		return path[:i]
+	}
 }
 
 // tempPermFor is the mode a replacement is created with.

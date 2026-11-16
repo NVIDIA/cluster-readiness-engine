@@ -454,6 +454,51 @@ func assertTargetAndLink(t *testing.T, target, link, want string) {
 	}
 }
 
+// TestWriteFileAtomicResolvesDotDotThroughALink covers the one resolution
+// failure the subtests above cannot: a ".." that crosses a symlinked
+// component.
+//
+// Its own function rather than a sixth subtest because the two mechanisms are
+// different. Those cases are about following a link to its end; this one is
+// about who resolves the path, since filepath.Join and filepath.Dir both clean
+// ".." lexically and the kernel does not. "out/hop" points into "archive", so
+// the kernel reads "hop/../results.json" as "archive/results.json" while a
+// lexical clean reads it as "out/results.json".
+//
+// The decoy is the assertion. A lexical clean does not error, it writes to a
+// real and plausible path, so the evidence has to be an unrelated report that
+// survives rather than a failure.
+func TestWriteFileAtomicResolvesDotDotThroughALink(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"out", "archive/nested"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dir, "archive", "nested"),
+		filepath.Join(dir, "out", "hop")); err != nil {
+		t.Fatalf("symlink hop: %v", err)
+	}
+	link := filepath.Join(dir, "out", "link.json")
+	if err := os.Symlink("hop/../results.json", link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	decoy := filepath.Join(dir, "out", "results.json")
+	if err := os.WriteFile(decoy, []byte("unrelated"), reportFilePerm); err != nil {
+		t.Fatalf("seed decoy: %v", err)
+	}
+
+	if err := writeFileAtomic(link, []byte(replacement)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := string(readFile(t, filepath.Join(dir, "archive", "results.json"))); got != replacement {
+		t.Fatalf("archive holds %q, want the new content", got)
+	}
+	if got := string(readFile(t, decoy)); got != "unrelated" {
+		t.Fatalf("the unrelated report beside the link was overwritten with %q", got)
+	}
+}
+
 func readFile(t *testing.T, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path) // #nosec G304 -- path is built by the test
