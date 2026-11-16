@@ -751,20 +751,26 @@ type GroupStatus struct {
 	// Workflow total is recomputed from these entries instead.
 	//
 	// A superseded attempt's entry is dropped where retirePreviousAttempts
-	// deletes that attempt's Job and its shards, so at most two are ever held
-	// however large retryFailedGroups is. That is what bounds this list, and
-	// it is the only bound the existing control flow supports: retirement
-	// already enumerates attempts from durable state and already blocks the
-	// next launch until every one is confirmed gone, so retries cannot advance
-	// past an unretired seal. Bounding retryFailedGroups instead would bound
-	// the wrong axis — the problem is aggregate size across groups, not the
-	// count within one — and would impose a user-visible spec restriction to
-	// fix an internal accounting choice.
+	// deletes that attempt's Job and its shards. A failed shard delete keeps
+	// the entry instead, and retirement does NOT hold the next launch for it,
+	// so entries can accumulate across retries: that is why the retained set
+	// is capped rather than merely bounded by the control flow, and why the
+	// cap is what keeps this list inside MaxItems however large
+	// retryFailedGroups is. Bounding retryFailedGroups instead would bound the
+	// wrong axis, since the problem is aggregate size across groups rather
+	// than the count within one, and would impose a user-visible spec
+	// restriction to fix an internal accounting choice.
 	//
-	// Retiring the entry with the shards is also what keeps the Workflow total
-	// monotonic. Dropping a seal while its shards survived would make the
-	// total fall at an iteration boundary, and a reader cannot tell a total
-	// that fell from one that was never complete.
+	// Every entry here is counted in the Workflow total, not just the live
+	// attempt's. An entry is present precisely because its shards were not
+	// deleted, so the two are the same fact, and counting the live attempt
+	// alone left the total short of shards the selector still resolves, which
+	// is the refusal the retention exists to prevent.
+	//
+	// The total is therefore not monotonic, and nothing here promises it is.
+	// An entry dropped past the cap lowers it, by the deliberate trade that
+	// cap documents, and a live Writing entry can be lowered to the shards
+	// that were actually written once the Job reconciles its own claim.
 	//
 	// Cleared at the iteration boundary alongside retries, or iteration N+1
 	// would inherit N's seals and count them in both places.

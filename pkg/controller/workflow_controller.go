@@ -2525,6 +2525,33 @@ func isJobTimedOutFailure(job *nvcrev1alpha1.Job) bool {
 func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
+	// Freeze the component totals only once the Job tier has stopped changing
+	// them. Both paths out of this function are destructive to a group's seal:
+	// the terminal one publishes the final total from it, and the rollover
+	// snapshots it and clears the list. A group that finalized on an expired
+	// grace period copied a Writing seal, whose ShardCount is a claim written
+	// before the first shard, and the Job tier lowers that claim to the shards
+	// that exist as soon as it is re-driven. Freezing the claim instead leaves
+	// the Workflow total above what the selector resolves, and nvcrectl refuses
+	// the category for a run whose evidence is intact (ADR-090).
+	//
+	// Here rather than in updateStatusFromJobs, which is the obvious place and
+	// the wrong one: reconcileJob branches on hasRunningGroups first, so once
+	// every group is terminal that function is never called again, and the pass
+	// that publishes the final total is this one.
+	//
+	// The refresh is not persisted on the waiting path. It is a pure read of the
+	// Job, so the pass that proceeds re-derives it and writes it with the
+	// orchestration state it belongs to.
+	for i := range orch.Groups {
+		r.refreshComponentSeal(ctx, &orch.Groups[i])
+	}
+	if waiting := awaitingComponentSeals(orch); waiting != "" {
+		log.V(1).Info("Holding the iteration's verdict until the Job tier has sealed its component results",
+			"group", waiting)
+		return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+	}
+
 	orch.CompletedIterations++
 	log.Info("Iteration completed", "iteration", orch.CompletedIterations,
 		"total", effectiveIterations(workflow.Spec.Orchestration))
@@ -2537,6 +2564,15 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 	if orch.CompletedIterations < effectiveIterations(workflow.Spec.Orchestration) {
 		// Snapshot iteration results before resetting groups.
 		orch.IterationHistory = append(orch.IterationHistory, snapshotIteration(orch))
+
+		// The snapshot above has one seal slot per group, so a superseded
+		// attempt whose shard delete failed does not fit in it. Fold it into the
+		// retired totals before the reset below clears the list, or the total
+		// loses shards that are still on the cluster and the category's bundle
+		// is refused for the rest of the run. Before the reset for a second
+		// reason: the reset zeroes Retries, which is what tells the superseded
+		// seals from the live one.
+		foldSupersededComponentSeals(orch)
 
 		// Delete completed Jobs BEFORE cleaning up iteration-scoped deps.
 		// Dependencies (ComputeDomain, ResourceClaimTemplate) provide DRA allocations

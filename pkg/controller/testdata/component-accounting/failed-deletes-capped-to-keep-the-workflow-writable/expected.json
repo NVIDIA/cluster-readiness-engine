@@ -1,7 +1,7 @@
 {
   "published": {
-    "shardCount": 1,
-    "rowCount": 40,
+    "shardCount": 3,
+    "rowCount": 70,
     "truncatedRowCount": 0,
     "degradedComponentCount": 0,
     "selector": "nvcre.nvidia.com/workflow-uid=0123456789abcdef-fixed-for-the-golden",

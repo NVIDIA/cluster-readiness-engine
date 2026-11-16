@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -80,6 +81,73 @@ func observeComponentSeal(g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job, 
 	return true
 }
 
+// refreshComponentSeal re-observes a finished group's seal while the Job tier
+// may still be changing it.
+//
+// completeTerminalGroup copies the seal once, and past componentSealGracePeriod
+// that copy can be of a Writing seal: a positive ShardCount written before the
+// first shard, which a Job whose writes keep failing never backed. The Job tier
+// reconciles that claim against the shards that actually exist (observedShards
+// in reconcileComponentResults) and lowers it, and nothing was reading the
+// result. The group is no longer Running, so observeRunningGroup skips it;
+// updateStatusFromJobs is not reached at all once every group is terminal; and
+// reconcileJob returns early once the Workflow is. So the total went on
+// claiming shards the selector walk cannot find, and nvcrectl refused the
+// category for a run whose evidence is intact.
+//
+// Gated on the copied seal being non-terminal, so it costs nothing for a group
+// that sealed normally, which is every group that did not exhaust the grace
+// period. Only that group pays a Get, and only until its Job settles.
+func (r *WorkflowReconciler) refreshComponentSeal(
+	ctx context.Context, g *nvcrev1alpha1.GroupStatus,
+) bool {
+	seal := liveSeal(*g)
+	if seal == nil || componentResultsSealed(seal.Phase) || g.JobRef == nil {
+		return false
+	}
+	job := &nvcrev1alpha1.Job{}
+	key := client.ObjectKey{Namespace: g.JobRef.Namespace, Name: g.JobRef.Name}
+	if err := r.jobReader().Get(ctx, key, job); err != nil {
+		// Nothing to correct from, and no reason to fail the pass: the copy
+		// stands and the wait retries. A Job that is gone cannot change its
+		// seal again, so the copy is already as final as it will get.
+		logf.FromContext(ctx).V(1).Info(
+			"Could not re-read a finished group's Job to refresh its component seal",
+			"group", g.Name, "job", g.JobRef.Name, "error", err)
+		return false
+	}
+	return observeComponentSeal(g, job, g.Retries)
+}
+
+// awaitingComponentSeals names a group whose seal the Job tier may still
+// change, or "" when every group's is settled.
+//
+// Bounded by the same grace period and measured from the group's own persisted
+// CompletionTime, for the reason drainStart is persisted: the bound has to
+// survive a controller restart rather than reset. A group with no
+// CompletionTime is not waited on, because there is nothing to bound the wait
+// with.
+//
+// This wait is affordable where the group's own is not. completeTerminalGroup's
+// wait holds the delete that frees the GPUs, so it has to expire; by the time
+// this one is consulted the workload is gone and the nodes are free, so it
+// holds the verdict open rather than the cluster.
+func awaitingComponentSeals(orch *nvcrev1alpha1.OrchestrationStatus) string {
+	for i := range orch.Groups {
+		g := &orch.Groups[i]
+		seal := liveSeal(*g)
+		if seal == nil || componentResultsSealed(seal.Phase) {
+			continue
+		}
+		if g.CompletionTime == nil ||
+			time.Since(g.CompletionTime.Time) > componentSealGracePeriod {
+			continue
+		}
+		return g.Name
+	}
+	return ""
+}
+
 // recomputeComponentResults derives the Workflow's totals from its own status.
 //
 // Recomputed, never incremented, and that is the whole point. The function
@@ -122,10 +190,26 @@ func recomputeComponentResults(
 		}
 	}
 	for _, g := range orch.Groups {
-		// The live attempt only. A superseded attempt's seal is still present
-		// until retirement drops it, and counting both would double its rows.
-		if seal := liveSeal(g); seal != nil {
-			addSealToTotals(&totals, *seal)
+		// Every seal the group still holds, not only the live attempt's. A seal
+		// on a group and a shard set on the cluster are the same fact:
+		// retireComponentSeals drops a seal when its delete succeeds and keeps
+		// it when the delete fails, so a superseded seal is present precisely
+		// because its shards are not gone. Counting both cannot double anything
+		// for that reason, and counting the live attempt alone was what left the
+		// total short of the leaked shards: nvcrectl resolves by namespace and
+		// selector with no Job filter (pkg/bundle/resolve.go), so the walk found
+		// them, the resolved count exceeded what the total admitted, and
+		// ShardMismatchError refused the category for a run whose evidence was
+		// intact. That is the outcome the retention was added to prevent, and
+		// holding the seal did not prevent it on its own.
+		//
+		// A seal dropped past maxRetainedFailedSeals is still outside the total,
+		// which is the deliberate trade documented on retireComponentSeals: a
+		// refused bundle for one category beats a Workflow that cannot write its
+		// status.
+		for i := range g.ComponentSeals {
+			seal := g.ComponentSeals[i]
+			addSealToTotals(&totals, seal)
 			partial = partial || seal.Phase == nvcrev1alpha1.ComponentResultsPartial
 		}
 	}
@@ -219,12 +303,57 @@ func foldRetiredComponentResults(orch *nvcrev1alpha1.OrchestrationStatus) {
 	}
 	var any bool
 	for _, g := range orch.Groups {
-		if seal := liveSeal(g); seal != nil {
-			addSealToTotals(&folded, *seal)
+		// Every seal, not only the live attempt's. This list is discarded
+		// outright, so a superseded attempt retirement could not delete has
+		// nowhere else to go, and its shards are still on the cluster: the
+		// delete that failed is never retried once the group leaves Pending.
+		// Folding only the live seal left those shards outside the total and
+		// nvcrectl refused the category, in the mode these rows are most worth
+		// having in.
+		for _, seal := range g.ComponentSeals {
+			addSealToTotals(&folded, seal)
 			any = true
 		}
 	}
 	if !any && orch.RetiredComponentResults == nil {
+		return
+	}
+	orch.RetiredComponentResults = &folded
+}
+
+// foldSupersededComponentSeals folds the seals an iteration boundary is about
+// to discard into the retired totals.
+//
+// The boundary is not the clean sibling of fault isolation's: snapshotIteration
+// carries the live attempt's seal into IterationHistory, and only that one,
+// because GroupIterationResult holds a single seal. So a superseded attempt
+// whose shard delete failed is dropped by the reset with nothing carrying it,
+// while its shards are still there, and the total falls below what the selector
+// walk resolves for the rest of the run. Worse than a wrong number: the seal
+// held the Job name those shards are derived from, so after the reset neither a
+// later retirement pass nor deleteWorkflowComponentShards at teardown can even
+// name them.
+//
+// The live seal is skipped because snapshotIteration already took it; folding
+// it here too would count the iteration twice. Which is why this must run
+// before the reset loop zeroes Retries, since that is what identifies the live
+// one.
+func foldSupersededComponentSeals(orch *nvcrev1alpha1.OrchestrationStatus) {
+	var folded nvcrev1alpha1.ComponentResultTotals
+	if orch.RetiredComponentResults != nil {
+		folded = *orch.RetiredComponentResults
+	}
+	var any bool
+	for _, g := range orch.Groups {
+		for _, seal := range g.ComponentSeals {
+			if int(seal.Attempt) == g.Retries {
+				continue
+			}
+			addSealToTotals(&folded, seal)
+			any = true
+		}
+	}
+	if !any {
 		return
 	}
 	orch.RetiredComponentResults = &folded
