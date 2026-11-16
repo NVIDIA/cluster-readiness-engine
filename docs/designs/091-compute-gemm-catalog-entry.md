@@ -180,9 +180,13 @@ So there is no figure for GB200 that is both sourced and credible. A GB200 fleet
 
 Decision 5 corrects ADR-001's capability table to mark GEMM as "reachable through `WorkloadRun` and planned as a catalog entry", because the unqualified **Supported** was false. Implementing the entry makes it true, so downgrading the row would replace one wrong claim with another. The row instead names `compute/cutlass-gemm` and what it reports, which is the specific claim the table was missing.
 
-### The harness owns three failure modes the record does not mention
+### The harness owns four failure modes the record does not mention
 
-Building it surfaced three ways a burn-in reports the wrong thing, each fixed:
+Building it surfaced four ways a burn-in reports the wrong thing, each fixed:
+
+`--profiling-duration` is spent per kernel, not per invocation. CUTLASS's own help text calls it "time to spend profiling each kernel", and the profiler walks every operation in its library that satisfies the problem. The image builds the whole `cutlass_simt_sgemm_*` set, which in v4.2.0 is six tiles at two stages from the SM50 generator and eleven more at four and five stages from the SM80 one; the column-column layout this entry pins leaves seventeen matching. An unpinned sweep therefore spent seventeen sample windows, so the configured 30 second sample took about nine minutes and a 30 minute soak collected four samples per GPU instead of sixty, which is the trend the rows exist to show. Sixteen of those seventeen windows also ran a narrower tile than the device can fill, so most of the soak applied less power than a burn-in is supposed to apply. The harness now profiles one kernel, chosen on device 0 before the soak starts and pinned with `--kernels` on every sweep, so a sample is one named kernel rather than the best of the library. Discovered rather than hardcoded: a name baked in is one CUTLASS bump away from matching nothing, and naming a tile merely slower than the best one is quieter and worse, because the verdict is a floor against the achieved maximum and under-measuring reports healthy GPUs as below it.
+
+That also makes the claim below true. It was not before: the row count was duration divided by sample and by the matching kernel count, so the cadence guard never fired and the bound was never reached from the direction that mattered.
 
 A scratch directory that cannot be created made every path absolute, every sweep fail, and every GPU report `outcome: error`, so the run exited claiming no GPU sustained the floor. A tooling failure presented as a hardware failure on every GPU in the node is the worst answer available: it fails a healthy node and sends an operator hunting a fault that does not exist. The harness now exits 2 for "could not run the test", distinct from exit 1 for "the test ran and a GPU was below the floor".
 

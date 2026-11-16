@@ -94,6 +94,10 @@ set -uo pipefail
 : "${NVCRE_GEMM_N:=8192}"
 : "${NVCRE_GEMM_K:=8192}"
 : "${NVCRE_GEMM_DTYPE:=f32}"               # profiler --A/--B element type
+# Which kernel to measure, by name. Empty is the default and means "pick the
+# fastest one on device 0 before the soak starts"; a name here pins it and
+# skips that pass. The selection block below says why there has to be one.
+: "${NVCRE_GEMM_KERNEL:=}"
 : "${CUTLASS_PROFILER:=cutlass_profiler}"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
@@ -189,8 +193,16 @@ run_device() {
   # for a wall-clock window instead of a fixed iteration count, which is what
   # keeps every device under load for the whole sweep regardless of how fast
   # any one of them is.
+  #
+  # --kernels pins the one kernel GEMM_KERNEL named, so the sample window is
+  # spent once rather than once per kernel in the library. It is empty only
+  # when selection failed, and the unpinned form is then the deliberate
+  # fallback the selection block describes.
+  local -a pin=()
+  [[ -n "${GEMM_KERNEL}" ]] && pin=(--kernels="${GEMM_KERNEL}")
   "${CUTLASS_PROFILER}" \
     --operation="${NVCRE_GEMM_OPERATION}" \
+    "${pin[@]}" \
     --devices="${dev}" \
     --m="${NVCRE_GEMM_M}" --n="${NVCRE_GEMM_N}" --k="${NVCRE_GEMM_K}" \
     --A="${NVCRE_GEMM_DTYPE}":column --B="${NVCRE_GEMM_DTYPE}":column \
@@ -239,6 +251,88 @@ run_device() {
   fi
   printf '%s %s\n' "${rc}" "${gflops:-0}" >"${out}.result"
 }
+
+# ---------------------------------------------------------------------------
+# ONE kernel, chosen before the soak starts.
+#
+# --profiling-duration is per KERNEL, not per invocation: CUTLASS's own help
+# text calls it "Time to spend profiling each kernel (ms)" (options.cu), and
+# the profiler walks every operation in its library that satisfies the
+# problem. This image builds the whole cutlass_simt_sgemm_* set, which in
+# CUTLASS v4.2.0 is six tiles at two stages from its SM50 generator and eleven
+# more at four and five stages from its SM80 one. --A and --B pin the layout to
+# column-column, so seventeen of them match and an unpinned sweep spends
+# seventeen sample windows: the 30s sample became about nine minutes and a 30
+# minute soak collected four samples per GPU instead of sixty, which is the
+# trend the rows exist to show. Sixteen of those seventeen windows also ran a
+# narrower tile than the device can fill, so most of the soak applied less
+# power than the burn-in is supposed to apply.
+#
+# Chosen at startup rather than hardcoded. A name baked in here is one CUTLASS
+# bump away from matching nothing, and naming the wrong tile is worse than the
+# cadence it fixes: the verdict is DCGM's floor against the best achieved
+# result, so measuring a tile slower than the device can run reports healthy
+# hardware as BELOW FLOOR. The winner of a short pass is exactly the number the
+# verdict already rests on, so pinning it changes the cadence, not the
+# measurement.
+#
+# Device 0 chooses for every device. The rows have to be comparable across a
+# node, and a per-device choice would measure one GPU on one tile and judge it
+# against a floor another GPU met on a different one.
+#
+# Bounded by iterations, not by a duration: a duration is the thing that
+# multiplies by the kernel count, so an iteration count keeps this pass
+# proportional to the number of kernels and nothing else.
+#
+# A failed selection falls back to the unpinned sweep instead of exiting. That
+# is the slow cadence this block exists to fix, but it still measures and still
+# reaches a verdict, and a harness that refuses to run presents as dead
+# hardware, which is the failure most of this script's comments are about.
+# ---------------------------------------------------------------------------
+
+GEMM_KERNEL="${NVCRE_GEMM_KERNEL}"
+if [[ -z "${GEMM_KERNEL}" ]]; then
+  "${CUTLASS_PROFILER}" \
+    --operation="${NVCRE_GEMM_OPERATION}" \
+    --devices=0 \
+    --m="${NVCRE_GEMM_M}" --n="${NVCRE_GEMM_N}" --k="${NVCRE_GEMM_K}" \
+    --A="${NVCRE_GEMM_DTYPE}":column --B="${NVCRE_GEMM_DTYPE}":column \
+    --profiling-iterations=5 \
+    --verification-enabled=false \
+    --output="${WORK}/select.csv" \
+    >"${WORK}/select.log" 2>&1
+  # Same ".<operation>.csv" rule the sweep reads, and the same fallback.
+  select_csv="${WORK}/select.${NVCRE_GEMM_OPERATION}.csv"
+  [[ -s "${select_csv}" ]] || select_csv="${WORK}/select.csv"
+  if [[ -s "${select_csv}" ]]; then
+    # Columns by header name, not by position. The profiler emits one column
+    # per problem-space argument between Status and Bytes, so the index of
+    # GFLOPs moves with the arguments this script passes. Operation carries
+    # the kernel's own name, and only CUTLASS operations are profiled here
+    # (cuBLAS is a verification provider for this operation kind, and
+    # verification is off), so the winner is always a name --kernels can pin.
+    GEMM_KERNEL="$(awk -F, '
+      NR == 1 {
+        for (i = 1; i <= NF; i++) {
+          gsub(/^[ \t"]+|[ \t"\r]+$/, "", $i)
+          if ($i == "Operation") op = i
+          if ($i == "GFLOPs" || $i == "GFLOPs/s" || $i == "gflops") col = i
+        }
+        next
+      }
+      op && col && ($col + 0) > best { best = $col + 0; winner = $op }
+      END { gsub(/^[ \t"]+|[ \t"\r]+$/, "", winner); print winner }
+    ' "${select_csv}")"
+  fi
+fi
+if [[ -n "${GEMM_KERNEL}" ]]; then
+  log "Measuring ${GEMM_KERNEL}, one kernel per sweep"
+else
+  log "WARNING: no single kernel could be selected; every matching kernel will be" \
+      "profiled on every sweep, so a sweep will run past ${NVCRE_GEMM_SAMPLE_SECONDS}s" \
+      "and the soak will collect fewer samples than ${NVCRE_GEMM_DURATION_SECONDS}s of" \
+      "${NVCRE_GEMM_SAMPLE_SECONDS}s sweeps. The per-GPU numbers and the verdict are unaffected."
+fi
 
 # ---------------------------------------------------------------------------
 # The soak. Sweeps run back to back until the duration is spent; within a

@@ -14,7 +14,7 @@ set -uo pipefail
 # shellcheck disable=SC1091
 . /opt/stub/mode
 
-dev="" out="" duration_ms=1000 operation="gemm"
+dev="" out="" duration_ms=1000 operation="gemm" pinned=""
 for a in "$@"; do
   case "${a}" in
     # --devices, plural, is the real option name. The singular --device is
@@ -30,6 +30,7 @@ for a in "$@"; do
     --operation=*)           operation="${a#*=}" ;;
     --output=*)              out="${a#*=}" ;;
     --profiling-duration=*)  duration_ms="${a#*=}" ;;
+    --kernels=*)             pinned="${a#*=}" ;;
   esac
 done
 
@@ -41,6 +42,47 @@ fi
 # loaded at once; a list here would mean it had started walking them instead.
 if [[ "${dev}" == *,* ]]; then
   echo "stub: --devices=${dev} names more than one device; the harness runs one per process" >&2
+  exit 64
+fi
+
+# The kernels this stub pretends its library holds, best first, with the share
+# of the device's throughput each reaches.
+#
+# More than one, because --profiling-duration applies to EACH matching kernel
+# and the real library holds the whole cutlass_simt_sgemm_* set. A stub with a
+# single row cannot tell a harness that pins one kernel from one that pins
+# none, which is how the per-kernel cost went unnoticed: the lane was green
+# while every real sweep cost seventeen sample windows instead of one.
+kernels=(cutlass_simt_sgemm_256x128_8x5_nn_align1 cutlass_simt_sgemm_128x128_8x2_nn_align1 cutlass_simt_sgemm_32x128_8x5_nn_align1)
+shares=(1.0 0.78 0.29)
+
+# CUTLASS's --kernels rule, reproduced: every '*'-separated token has to appear
+# in the name, in order (find_string_matches_, tools/profiler/src/operation
+# _profiler.cu). It is NOT an exact-name match, so a lazy value like "gemm"
+# selects the whole library and costs a sample window per kernel. Treating it
+# as an exact match here would pass a harness whose pin selects everything.
+matches() {
+  local filter="$2" tok rest="$1"
+  [[ -z "${filter}" ]] && return 0
+  local -a toks=()
+  IFS='*' read -r -a toks <<<"${filter}"
+  for tok in "${toks[@]}"; do
+    [[ -z "${tok}" ]] && continue
+    [[ "${rest}" == *"${tok}"* ]] || return 1
+    rest="${rest#*"${tok}"}"
+  done
+  return 0
+}
+
+selected=() selected_shares=()
+for i in "${!kernels[@]}"; do
+  if matches "${kernels[i]}" "${pinned}"; then
+    selected+=("${kernels[i]}")
+    selected_shares+=("${shares[i]}")
+  fi
+done
+if [[ ${#selected[@]} -eq 0 ]]; then
+  echo "stub: --kernels=${pinned} matches none of the kernels this stub simulates" >&2
   exit 64
 fi
 
@@ -86,7 +128,11 @@ case "${STUB_MODE}" in
     ;;
 esac
 
-sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
+# Once per SELECTED kernel, which is what the real profiler does: the duration
+# is "time to spend profiling each kernel". An unpinned sweep therefore runs
+# long here too, so a harness that stops pinning shows up in the Mokka lane as
+# a sample count that falls instead of as a lane that stays green.
+sleep "$(awk -v ms="${duration_ms}" -v n="${#selected[@]}" 'BEGIN { printf "%.3f", n * ms / 1000.0 }')"
 
 # The real profiler does NOT write the path given to --output. It strips a
 # trailing ".csv" and appends ".<operation>.csv", so --output=X.csv lands at
@@ -95,5 +141,20 @@ sleep "$(awk -v ms="${duration_ms}" 'BEGIN { printf "%.3f", ms / 1000.0 }')"
 # real sweep found nothing and reported outcome=error. Reproduced here, derived
 # the same way, so the harness's own path derivation is what gets exercised.
 csv="${out%.csv}.${operation}.csv"
-printf 'Operation,GFLOPs\n%s,%s\n' "${operation}" "${gflops}" >"${csv}"
-echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs (wrote ${csv})"
+# One row per selected kernel, under the real column header. The Operation
+# column carries the kernel's own name, which is what the harness reads to
+# decide what to pin; a stub that wrote the operation kind there ("gemm")
+# handed it a value that selects every kernel in a real library.
+#
+# The best kernel carries the device's full throughput, so the maximum the
+# harness takes from this file, and with it every verdict the modes above
+# drive, is unchanged.
+{
+  printf 'Problem,Provider,OperationKind,Operation,Disposition,Status,Bytes,Flops,Runtime,GB/s,GFLOPs\n'
+  for i in "${!selected[@]}"; do
+    printf '1,CUTLASS,%s,%s,passed,success,805306368,1099511627776,35.5,22684,%s\n' \
+      "${operation}" "${selected[i]}" \
+      "$(awk -v g="${gflops}" -v s="${selected_shares[i]}" 'BEGIN { printf "%.1f", g * s }')"
+  done
+} >"${csv}"
+echo "stub: device ${dev} sweep ${sweep} -> ${gflops} GFLOPs over ${#selected[@]} kernel(s) (wrote ${csv})"
