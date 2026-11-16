@@ -1,0 +1,1 @@
+manifest.json disagrees with the bundle contents (listed but absent: components/cert-a-compute-cutlass-gemm.ndjson)

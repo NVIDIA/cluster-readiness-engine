@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A corpus large enough to cross the roll bound several times.
+#
+# rollBytes is lowered to 2 KiB of compressed output so the case needs a few
+# thousand rows rather than the hundreds of thousands the real 768 KiB bound
+# would take. What it pins is that rolling happens on compressed bytes and
+# that every row lands in exactly one shard: the total row count across shards
+# has to equal what went in.
+#
+# padBytes widens each row so the corpus compresses less uniformly than a
+# minimal one would, which is the realistic shape rather than the best case.
+options:
+  rollBytes: 2048
+generate:
+  nodes: 4
+  components: 8
+  samples: 60
+  padBytes: 24

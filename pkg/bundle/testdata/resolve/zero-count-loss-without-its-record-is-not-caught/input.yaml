@@ -1,0 +1,28 @@
+# A known gap, pinned so it stays visible: a loss whose only record carries
+# Count 0, with that record gone, is NOT caught.
+#
+# An unfetchable log page gives no way to know how many rows were on it, so the
+# record is the finding and its count is zero. The sealed truncated-row count is
+# then zero too, the shard and row counts are untouched because a dropped row
+# was never in a shard, and every number a reader can compare still agrees.
+# Deleting that one ConfigMap is therefore invisible here, and this case
+# resolves successfully.
+#
+# An earlier attempt closed it by treating a Partial seal as proof a record
+# existed, since a Job seals Partial if and only if it holds truncation
+# records. That inference broke as soon as reconcileUnverifiedSeal began
+# sealing Partial for an unconfirmed Writing claim, with no record anywhere:
+# the flag went on and intact bundles whose counts agreed were refused.
+# Refusing good evidence is worse than missing this, so the inference is gone.
+#
+# Closing it properly needs a per-seal record of whether truncation records
+# exist, carried like the counts are, rather than inferred from a phase that
+# now has two sources. Until then the magnitude bound in
+# sealed-truncation-without-records covers every loss that has rows behind it.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    sealTruncatedFlag: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

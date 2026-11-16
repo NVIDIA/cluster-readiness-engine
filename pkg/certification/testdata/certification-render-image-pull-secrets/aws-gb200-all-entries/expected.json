@@ -55,6 +55,18 @@
       ]
     },
     {
+      "workflow": "aws-gb200-pull-secrets-ce-9ad45",
+      "category": "compute/cutlass-gemm",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
       "workflow": "aws-gb200-pull-secrets-ce-a034b",
       "category": "communication/nccl-loopback-nvswitch",
       "replicatedJobs": [

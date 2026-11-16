@@ -1,0 +1,14 @@
+# The ordinary case. Two categories, each with its own selector, each resolving
+# exactly what it sealed. Rows come back gunzipped and in emission order.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'
+      - '{"node":"gpu-node-1","componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0}'
+  - domain: diagnostics
+    variant: dcgm-level4
+    final: true
+    rows:
+      - '{"node":"gpu-node-2","componentID":"GPU-beef","index":0,"name":"eccErrors","value":0,"unit":"count","sample":0}'

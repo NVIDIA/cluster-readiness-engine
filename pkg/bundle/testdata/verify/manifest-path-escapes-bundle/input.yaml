@@ -1,0 +1,9 @@
+# A bundle travels: it is handed over, archived, and opened by whoever receives
+# it, so the manifest is attacker-controlled input to this reader. An entry
+# pointing outside the directory would send the digest read somewhere the user
+# did not name, and the comparison would answer whether that file matches a
+# hash the bundle's author chose.
+#
+# Rejected where the path is first trusted, rather than left to the
+# listed-versus-on-disk comparison that happens to reject it today.
+tamper: manifest-path-escape

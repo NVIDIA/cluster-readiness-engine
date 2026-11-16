@@ -1,0 +1,22 @@
+# A re-drive onto the read-failure branch when an earlier attempt already wrote
+# a truncation shard.
+#
+# Its records name the GPU that lost the row. The seal's set is that same loss
+# folded onto its reason, and the CRD field is keyed on reason, so it cannot
+# hold the identity. Rebuilding the payload from the seal replaces the first
+# with the second, and writeShardConfigMap assigns binaryData outright, so
+# there is no merge to fall back on: the attribution is gone and index 0 on an
+# empty node reads as GPU 0.
+#
+# So the rewrite starts from the records already stored and appends only a
+# reason they do not already carry, which here is the read failure. Appending
+# every summary would double each earlier loss, since each one reached the
+# stored set through the same call that put it on the seal.
+priorSealShards: 1
+priorTruncationRecords: true
+terminalAge: 5m
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

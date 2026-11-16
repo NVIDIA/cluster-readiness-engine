@@ -1,0 +1,10 @@
+# A selector that does not parse. Reported with the offending value, because
+# the alternative is a selector that silently matches nothing and a result set
+# that reads as missing.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    selector: 'this is not=a valid=selector'
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

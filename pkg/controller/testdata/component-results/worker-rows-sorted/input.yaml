@@ -1,0 +1,15 @@
+# The happy path, and the only case that proves the emission order.
+#
+# The log emits the four rows scrambled — GPU-f00d before GPU-cafe, sample 1
+# before sample 0 — so a golden listing them in (node, componentID, index,
+# name, sample) order is evidence the sort ran, which a row count cannot give.
+producer: structured-rows
+containerName: node
+log: |
+  [0] Initializing profiler, 2 devices visible
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":1,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1455.5,"unit":"TFLOPS","sample":1,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
+  [0] iteration 1 done
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1398.125,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}
+  [0] All devices above floor; exiting 0

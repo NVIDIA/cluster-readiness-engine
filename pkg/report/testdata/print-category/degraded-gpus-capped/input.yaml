@@ -1,0 +1,23 @@
+# The list is capped at 16 and the count is not, so the header has to say how
+# many were found as well as how many are shown. A reader who sees three rows
+# and a count of three concludes three GPUs degraded; one who sees three rows
+# and no count concludes the same thing wrongly.
+domain: compute
+variant: cutlass-gemm
+status: Passed
+nodesPerJob: 1
+jobs: 400
+degradedComponentCount: 37
+degradedComponents:
+  - node: gpu-node-11
+    componentID: GPU-0001
+    index: 0
+    max: "29.80"
+    min: "11.20"
+    belowSamples: 1700
+  - node: gpu-node-2
+    componentID: GPU-0002
+    index: 3
+    max: "30.10"
+    min: "18.90"
+    belowSamples: 640

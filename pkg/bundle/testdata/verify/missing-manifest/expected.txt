@@ -1,0 +1,1 @@
+<bundle>: no manifest.json in bundle

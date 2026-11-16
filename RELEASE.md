@@ -50,8 +50,17 @@ people do not tag at the same time.
    `config/samples/policy/policy-controller-verify-images.yaml` to the version you are
    about to cut, and land that change on `main` **before** tagging. Nothing in CI
    rewrites those strings. Tagging first and bumping later leaves the samples at that
-   tag pinned to the previous release — exactly the stale-pin outage the bump exists to
-   prevent. See [Verifying release artifacts](docs/operations/verifying-artifacts.md#admission-policy-samples).
+   tag pinned to the previous release, which is exactly the stale-pin outage the bump
+   exists to prevent.
+   See [Verifying release artifacts](docs/operations/verifying-artifacts.md#admission-policy-samples).
+
+   You no longer have to get this right unaided. `release.yml`'s `verify-pins` job reads
+   every pinned version back and compares it to the tag being cut, and it runs ahead of
+   every build, so a forgotten bump costs a failed check rather than a published
+   release. Images this repository publishes for its own catalog carry no pin at all:
+   their tag is derived from the binary's version, so the entry that pulls the
+   `cutlass-gemm` harness is correct by construction and `verify-pins` fails if a
+   literal is ever put back.
 4. Tag the commit on `main` (the one that already carries the bumped pins) and push the
    tag.
 

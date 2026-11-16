@@ -5,7 +5,7 @@
 # replace trainer.args and trainer.env wholesale and patch the node
 # container's resources, so this is the case that pins the secrets living
 # outside anything a platform fragment restates: the list must still reach
-# the node pod of all eight entries and the launcher pod of the three MPI
+# the node pod of all nine entries and the launcher pod of the three MPI
 # entries after the overrides compose.
 #
 # nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
@@ -33,6 +33,8 @@ spec:
       variant: nccl-loopback
     - domain: communication
       variant: nccl-loopback-nvswitch
+    - domain: compute
+      variant: cutlass-gemm
     - domain: diagnostics
       variant: dcgm-level4
     - domain: training

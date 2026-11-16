@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One row, which pins the wire form of the schema: field order, the two
+# decimal value, and the trailing newline.
+rows:
+  - node: node-000
+    componentID: GPU-7f3a1c2e-0000
+    index: 0
+    name: achievedTFLOPS
+    value: 1234.5
+    unit: TFLOPS
+    sample: 0
+    timestamp: "2026-11-03T00:00:00Z"
+    outcome: pass

@@ -1,0 +1,17 @@
+# A Job re-driven onto the read-failure branch while already holding a Writing
+# seal, which is what a shard write that kept failing leaves behind: the seal
+# records two shards, the workload is then deleted, and this pass finds no logs.
+#
+# The seal must keep those two shards. Building a fresh seal here overwrote the
+# count with zero while the shards it counted stayed on the cluster, and the
+# group had already copied the original count, so the selector walk resolved
+# more shards than the total admitted and the category's bundle was refused
+# permanently. The truncation record is added beside the count, not instead
+# of it.
+priorSealShards: 2
+terminalAge: 5m
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

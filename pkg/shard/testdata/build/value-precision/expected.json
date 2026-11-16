@@ -1,0 +1,17 @@
+{
+  "shardCount": 1,
+  "shards": [
+    {
+      "index": 0,
+      "rows": 5
+    }
+  ],
+  "totalRows": 5,
+  "ndjson": [
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"integral\",\"value\":1200.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"repeating\",\"value\":0.30,\"unit\":\"ratio\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"roundsUp\",\"value\":1234.57,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"trailingZero\",\"value\":1500.50,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"zero\",\"value\":0.00,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"fail\"}"
+  ]
+}

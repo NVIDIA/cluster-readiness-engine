@@ -21,6 +21,10 @@
       "scripts": []
     },
     {
+      "entry": "compute/cutlass-gemm@NVIDIA-GB200-NVL72",
+      "scripts": []
+    },
+    {
       "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
       "scripts": []
     },
