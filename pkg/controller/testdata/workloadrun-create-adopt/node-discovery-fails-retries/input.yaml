@@ -1,0 +1,10 @@
+# Node discovery fails on every pass (ADR-110): the run must neither fail nor
+# build a Workflow from defaults decided without the nodes. It requeues, a
+# Warning event says why nothing has happened yet, and an InProgress condition
+# with reason WorkflowBuildRetrying says the same on the run's status. The
+# condition is written once: the second pass, on the same error, changes
+# nothing.
+holder: none
+statusWriteFailures: 0
+nodeListFails: true
+reconciles: 2

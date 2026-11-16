@@ -16,6 +16,7 @@ spec:
 status:
   categoryStatuses:
   - domain: communication
+    resolvedFabric: roce
     status: Succeeded
     succeededNodesRef:
       apiGroup: null

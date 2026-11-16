@@ -6,6 +6,7 @@ waitFor:
   name: test-certification
   namespace: default
   condition: InProgress
+  reason: WorkflowRunning
 collect:
   - kind: Certification
     name: test-certification

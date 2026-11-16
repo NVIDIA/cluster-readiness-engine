@@ -1,12 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# The Certification moves from WorkflowCreated to WorkflowRunning on a
+# reconcile of its own, after the Workflow exists. Waiting on the Workflow
+# alone can collect the Certification before that reconcile runs.
+steps:
+  - waitFor:
+      kind: Workflow
+      name: onprem-nc-h20-communicati-7bb04
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
 waitFor:
-  kind: Workflow
-  name: onprem-nc-h20-communicati-7bb04
+  kind: Certification
+  name: onprem-nc-h20
   namespace: default
   condition: InProgress
-  reason: JobRunning
+  reason: WorkflowRunning
 collect:
   - kind: Certification
     name: onprem-nc-h20

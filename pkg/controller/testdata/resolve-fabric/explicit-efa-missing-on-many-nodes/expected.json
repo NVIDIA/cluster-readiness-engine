@@ -1,0 +1,8 @@
+{
+  "fabric": "efa",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"efa\" is set, but 12 of 12 target nodes advertise no vpc.amazonaws.com/efa allocatable: gb300-01, gb300-02, gb300-03, gb300-04, gb300-05, gb300-06, gb300-07, gb300-08, gb300-09, gb300-10 and 2 more"
+}

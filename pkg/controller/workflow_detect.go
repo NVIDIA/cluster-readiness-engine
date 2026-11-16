@@ -325,15 +325,23 @@ type OverrideContext struct {
 	WorkloadKind    string
 	TopologyMode    string
 	DomainCount     int
-	Config          *apiextensionsv1.JSON
+	// Fabric is the resolved network fabric (ADR-110), matched by when.fabric.
+	Fabric string
+	Config *apiextensionsv1.JSON
 }
 
 // buildOverrideContext creates an OverrideContext from available workflow data.
-// Pass nil for nodes when they haven't been discovered yet.
-func buildOverrideContext(spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
+// Pass nil for nodes when they haven't been discovered yet. fabric is the
+// caller's resolved fabric (resolveFabric); it is a parameter rather than
+// something read from the spec so that no caller can forget it and leave
+// when.fabric a dimension that never matches (ADR-110).
+func buildOverrideContext(
+	spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node, fabric string,
+) OverrideContext {
 	octx := OverrideContext{
 		Platform:        orch.DetectedPlatform,
 		GPUArchitecture: orch.DetectedGPUArchitecture,
+		Fabric:          fabric,
 		WorkloadKind:    detectWorkloadKind(&spec.JobTemplate.Spec.Workload),
 		TopologyMode:    "simple",
 	}
@@ -387,6 +395,9 @@ func matchesWhen(when nvcrev1alpha1.WhenSpec, octx OverrideContext) (bool, error
 		if when.Topology.DomainCount != nil && !matchesIntSpec(*when.Topology.DomainCount, octx.DomainCount) {
 			return false, nil
 		}
+	}
+	if when.Fabric != nil && !matchesStringSpec(*when.Fabric, octx.Fabric) {
+		return false, nil
 	}
 	if when.Config != nil && !matchesConfig(when.Config, octx.Config) {
 		return false, nil
@@ -758,6 +769,9 @@ func summarizeWhen(when nvcrev1alpha1.WhenSpec) string {
 		if when.Topology.DomainCount != nil {
 			parts = append(parts, "topology.domainCount="+summarizeIntSpec(*when.Topology.DomainCount))
 		}
+	}
+	if when.Fabric != nil {
+		parts = append(parts, "fabric="+summarizeStringSpec(*when.Fabric))
 	}
 	if when.Config != nil {
 		parts = append(parts, "config=<custom>")

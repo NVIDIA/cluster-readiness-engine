@@ -91,6 +91,14 @@ type CertificationCategoryStatus struct {
 	// +optional
 	WorkflowRef *WorkflowReference `json:"workflowRef,omitempty"`
 
+	// resolvedFabric is the network fabric this category's Workflow was
+	// rendered for: spec.fabric when set, otherwise the detected fabric or
+	// the platform default (ADR-110). It is recorded only where the fabric
+	// chose the render: when spec.fabric is set, or on AWS GB300, the one
+	// target the catalog renders for more than one fabric.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
+
 	// status is the current status of this category.
 	// Values: "Pending", "InProgress", "Succeeded", "Failed"
 	Status string `json:"status"`
@@ -241,14 +249,16 @@ type CategoryOptions struct {
 	GpusPerNode *int32 `json:"gpusPerNode,omitempty"`
 
 	// mlnxPerNode overrides the auto-detected Mellanox NIC count per node.
-	// Used by platforms with InfiniBand or RoCE networking (Azure, OCI, TogetherAI).
+	// Used by platforms with InfiniBand or RoCE networking (Azure, Forge, OCI,
+	// TogetherAI).
 	// If not specified, derived from GPU architecture and platform via the
 	// catalog's gpu-defaults.yaml (e.g., 8 for most architectures, 2 for OCI L40s,
 	// 0 for OCI GB200).
 	// Setting it to 0 is an opt-out, not a request for zero devices: the catalog
-	// stops requesting nvidia.com/mlnxnics altogether, and on OCI it also drops
-	// the k8s.v1.cni.cncf.io/networks annotation that attaches the detected RDMA
-	// network.
+	// stops requesting the NIC resource altogether (nvidia.com/mlnxnics, or on
+	// Azure, Forge and TogetherAI the resource nicResourceName names), and on
+	// OCI it also drops the k8s.v1.cni.cncf.io/networks annotation that
+	// attaches the detected RDMA network.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
@@ -262,7 +272,11 @@ type CategoryOptions struct {
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
-	// event explaining what was found. Offline nvcrectl render (without
+	// event explaining what was found. On Azure, Forge and TogetherAI, in the
+	// categories whose catalog entries request a NIC resource, the field
+	// replaces the default nvidia.com/mlnxnics name (for example rdma/hca_shared_devices_a from
+	// the Network Operator's shared RDMA device plugin); the name is not
+	// auto-detected there. Offline nvcrectl render (without
 	// --dry-run) has no cluster to inspect and uses only this field. The
 	// value must be a fully qualified extended resource name: a
 	// DNS-subdomain domain, a slash, and a name segment of at most 63
@@ -638,6 +652,27 @@ type CertificationSpec struct {
 	// so it also replaces the scheduler a catalog entry hardcodes.
 	// +optional
 	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
+
+	// fabric selects the inter-node network fabric the workloads are rendered
+	// for: efa, ib, roce or tcpxo (ADR-110). It is a property of the cluster,
+	// so it applies to every category and cannot be set per category.
+	//
+	// When set, it is validated against the target nodes before any Workflow
+	// is created, and a mismatch fails the Certification with
+	// FabricValidationFailed rather than rendering pods that cannot schedule:
+	// efa needs vpc.amazonaws.com/efa allocatable on every target node, roce
+	// on AWS needs RoCE devices from the dra.networking.k8s.aws DRA driver on
+	// every target node, and the value must be one the catalog renders on the
+	// detected platform and GPU architecture (AWS GB300 renders roce and efa;
+	// every other target renders only its default fabric). ib and tcpxo have
+	// no cluster signal and are accepted as given.
+	//
+	// When unset, the controller detects the fabric on AWS GB300 from those
+	// same signals, and otherwise uses the platform default, which is the
+	// fabric NVCRE has always rendered there. The EFA device count requested
+	// per worker is read from node allocatable.
+	// +optional
+	Fabric Fabric `json:"fabric,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.
 	CategoryOptions `json:",inline"`

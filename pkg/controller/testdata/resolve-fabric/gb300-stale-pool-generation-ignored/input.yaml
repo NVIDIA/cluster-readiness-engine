@@ -1,0 +1,35 @@
+# Only the newest generation of a pool counts. gb300-b's RoCE device is in a
+# stale generation, so RoCE is on one node only: inconclusive.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+resourceSlices:
+  - nodeName: gb300-a
+    driver: dra.networking.k8s.aws
+    pool: gb300-a
+    generation: 1
+    devices:
+      - name: rocep201s0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: roce
+  - nodeName: gb300-b
+    driver: dra.networking.k8s.aws
+    pool: gb300-b
+    generation: 1
+    devices:
+      - name: rocep201s0
+        attributes:
+          dra.vpc.amazonaws.com/deviceType: roce
+  - nodeName: gb300-b
+    driver: dra.networking.k8s.aws
+    pool: gb300-b
+    generation: 2
+    devices: []

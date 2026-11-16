@@ -1,0 +1,44 @@
+# An explicit efa on a cluster that advertises none puts every target node in
+# the message. The list is capped at ten names and a count of the rest, so a
+# large cluster cannot push the condition message past the CRD's maxLength
+# and get the status write rejected; the counts carry the full picture.
+field: efa
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-01
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-02
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-03
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-04
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-05
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-06
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-07
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-08
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-09
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-10
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-11
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: gb300-12
+    allocatable:
+      nvidia.com/gpu: "4"

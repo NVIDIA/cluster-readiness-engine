@@ -1,0 +1,10 @@
+field: efa
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      vpc.amazonaws.com/efa: "2"
+  - name: gb300-b
+    allocatable:
+      vpc.amazonaws.com/efa: "2"

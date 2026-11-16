@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS GB300 with no spec.fabric renders its default, roce (ADR-110): the
+# annotation records it, since AWS GB300 is the target where the fabric chooses
+# the render, and the RoCE arms match on fabric=roce.
+platform: aws

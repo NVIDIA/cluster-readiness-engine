@@ -122,3 +122,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 107 | [Publish the CRDs as a Separate `cluster-readiness-engine-crds` Chart](107-crds-chart.md) |
 | 108 | [JUnit Certification Reports](108-junit-certification-reports.md) |
 | 109 | [AWS RTX PRO 6000 Workload Overlays](109-aws-rtxpro6000-overlays.md) |
+| 110 | [Select the Network Fabric with `spec.fabric`, Detection, and Today's Mapping as the Fallback](110-fabric-selection.md) |

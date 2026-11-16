@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS GB300 on an EFA fabric (ADR-110): the stock-EKS layout, where the EFA
+# device plugin advertises vpc.amazonaws.com/efa (1 or 2 on p6e-gb300r) and
+# there is no RoCE DRA driver. Same nccl-tests image as the RoCE arm
+# (aws-gb300-roce-runtime-patch-comm.yaml), but the EFA libfabric provider and
+# the aws-ofi-nccl plugin are kept, since they are the transport here, so the
+# worker keeps the base sshd args instead of the RoCE arm's plugin strip.
+#
+# The EFA count is read from node allocatable (EFAPerNode). No
+# hugepages are requested: whether stock-EKS GB300 nodes advertise any is
+# unconfirmed, and a request a node cannot satisfy leaves its pods Pending;
+# libfabric falls back to regular pages without them.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: "{{ .EFAPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: "{{ .EFAPerNode }}"
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer

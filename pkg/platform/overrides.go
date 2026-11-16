@@ -42,8 +42,23 @@ type OverrideConfig struct {
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// for the on-prem GB200/GB300 and HGX B200/B300 overrides. Empty means the override omits
-	// the NIC resource block. The per-container count comes from MlnxPerNode.
+	// the NIC resource block. The Azure and TogetherAI overrides use it in place
+	// of their nvidia.com/mlnxnics default. The per-container count comes from MlnxPerNode.
 	NicResourceName string
+
+	// Fabric selects between the AWS GB300 RoCE and EFA blocks at template
+	// time (ADR-110). These overrides are stored on the Workflow verbatim and
+	// re-evaluated there without spec.fabric, so the WorkloadRun resolves the
+	// fabric rather than leaving a when.fabric matcher behind. Set it only
+	// where the fabric chose the render (spec.fabric set, or AWS GB300); ""
+	// renders the RoCE blocks, which is the AWS GB300 default.
+	// Templates use: {{- if eq .Fabric "efa" }}
+	Fabric string `json:",omitempty"`
+
+	// EFAPerNode is the vpc.amazonaws.com/efa device count each worker
+	// requests on AWS GB300 EFA (ADR-110), read from node allocatable. 0
+	// renders the default of 1. Templates use: {{ .EFAPerNode }}
+	EFAPerNode int32 `json:",omitempty"`
 
 	EnableMNNVL   bool
 	FrameworkType string
@@ -72,6 +87,7 @@ type WorkloadRunOverride struct {
 // BuildOverrides renders the platform override templates and returns
 // the resulting WorkloadRunOverride list.
 func BuildOverrides(cfg OverrideConfig) []WorkloadRunOverride {
+	cfg.EFAPerNode = max(cfg.EFAPerNode, 1)
 	rendered, err := renderTemplate("overrides/workloadrun.yaml", cfg)
 	if err != nil {
 		panic(fmt.Sprintf("platform: render overrides: %v", err))

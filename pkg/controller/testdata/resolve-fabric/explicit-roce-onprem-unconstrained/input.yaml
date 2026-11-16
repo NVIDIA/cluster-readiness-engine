@@ -1,0 +1,6 @@
+# On-prem has no default fabric, so any value is accepted and surfaced.
+field: roce
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: onprem-a

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An H100 node in the target is not of the primary architecture, so, as in the
+# controller, it neither lacks EFA for detection nor lowers the count.
+nodes:
+  - name: gb300-a
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "2"}
+  - name: gb300-b
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "2"}
+  - name: gb300-c
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "2"}
+  - name: h100-a
+    product: NVIDIA-H100-80GB-HBM3
+    allocatable: {nvidia.com/gpu: "8"}

@@ -1,0 +1,21 @@
+{
+  "statusWrites": 1,
+  "completedIterations": 0,
+  "currentIteration": 1,
+  "totalGroups": 1,
+  "iterationHistory": 0,
+  "groups": [
+    {
+      "name": "group-0",
+      "phase": "Pending"
+    }
+  ],
+  "trueCondition": "InProgress",
+  "reason": "GroupsPartitioned",
+  "totalNodes": 2,
+  "detectedPlatform": "aws",
+  "resolvedFabric": "efa",
+  "dependencyRefs": [
+    "ConfigMap/efa-config"
+  ]
+}

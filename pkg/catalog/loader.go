@@ -156,7 +156,18 @@ type TemplateData struct {
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// for the on-prem GB200/GB300 and HGX B200/B300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
+	// The Azure, Forge and TogetherAI templates use it in place of their
+	// nvidia.com/mlnxnics default:
+	// {{ or .NicResourceName "nvidia.com/mlnxnics" }}
 	NicResourceName string
+
+	// Fabric is the resolved network fabric (ADR-110). Templates use: {{ .Fabric }}
+	Fabric string
+
+	// EFAPerNode is the vpc.amazonaws.com/efa device count per worker on AWS
+	// GB300 EFA, read from node allocatable; at least 1.
+	// Templates use: {{ .EFAPerNode }}
+	EFAPerNode int32
 
 	// RDMADeviceAccess selects how workload containers reach the host's RDMA
 	// devices. "hostPath" mounts /dev/infiniband and runs the workload
@@ -549,6 +560,8 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		GpusPerNode:                config.GpusPerNode,
 		MlnxPerNode:                config.MlnxPerNode,
 		NicResourceName:            config.NicResourceName,
+		Fabric:                     config.Fabric,
+		EFAPerNode:                 max(config.EFAPerNode, 1),
 		RDMADeviceAccess:           config.RDMADeviceAccess,
 		HasNetworkAttachments:      len(config.NetworkAttachments) > 0,
 		OCISecondaryNetwork:        config.OCISecondaryNetwork,

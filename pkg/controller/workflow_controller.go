@@ -196,7 +196,13 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// validation checks. On the first reconcile DetectedPlatform is empty
 	// so platform/GPU overrides won't match yet; discoverAndPartition
 	// applies them authoritatively once detection completes.
-	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil)); err != nil {
+	// The fabric is not resolved yet either, so a when.fabric override waits
+	// for the authoritative call too. After that call the fabric is read back
+	// from status like the platform is: this pass builds the spec every Job is
+	// created from, so passing "" here would leave the Jobs without the
+	// when.fabric changes the dependencies were created with.
+	fabric := string(orch.ResolvedFabric)
+	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil, fabric)); err != nil {
 		message := fmt.Sprintf("Failed to apply overrides: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError", message); statusErr != nil {
 			logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after override failure")
@@ -663,9 +669,27 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// and write nothing.
 	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
+	// A Certification or WorkloadRun settles every when.fabric matcher before
+	// it creates the Workflow (ADR-110), so only a hand-written Workflow still
+	// carries one. Resolve the fabric for it the way a parent with no
+	// spec.fabric would: detect on AWS GB300, otherwise the platform default.
+	// Skipped entirely otherwise, so no other Workflow lists ResourceSlices.
+	fabric := ""
+	if overridesUseFabric(workflow.Spec.Overrides) {
+		fr, ferr := resolveFabric(ctx, r.jobReader(), "", orch.DetectedPlatform, gpuArch, nodes)
+		if ferr != nil {
+			return ctrl.Result{}, ferr
+		}
+		fabric = fr.Fabric
+		// Recorded for the later reconciles, which re-apply the overrides
+		// without re-resolving: a second resolution could disagree with the
+		// one the dependencies were already created for.
+		orch.ResolvedFabric = nvcrev1alpha1.Fabric(fabric)
+	}
+
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
 	// This is the authoritative call — emit events, log details, and populate status.
-	octx := buildOverrideContext(&workflow.Spec, orch, nodes)
+	octx := buildOverrideContext(&workflow.Spec, orch, nodes, fabric)
 	applied, err := applyOverridesWithTracking(&workflow.Spec, octx)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",
@@ -758,7 +782,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// already modified spec.Dependencies in memory. Creating dependencies here
 	// ensures immutable resources like TrainingRuntime include override changes.
 	// Dependency refs are accumulated in memory; setWorkflowInProgress below
-	// writes the full status (including refs) in a single update.
+	// writes them with the orchestration status in a single update.
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		// A dependency kind an override added was not part of the check
 		// before discovery, so its create can be the first sign the binding
@@ -824,7 +848,14 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 			"(%d target nodes not exercised)",
 			orch.TotalNodes, orch.NodesPerJob, orch.TotalNodes-orch.NodesPerJob)
 	}
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg); err != nil {
+	// Everything discovery computed lives only on the in-memory object, so it
+	// is re-applied inside the write. A 409 re-fetches the Workflow in place
+	// and would otherwise persist the condition alone; the next reconcile
+	// would re-run discovery, find the condition unchanged, skip the write as
+	// a no-op, and never reach the Jobs.
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg,
+		applyOrchestration(orch),
+		applyDependencyRefs(workflow.Status.DependencyRefs)); err != nil {
 		return ctrl.Result{}, err
 	}
 

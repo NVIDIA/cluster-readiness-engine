@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS GB300 renders roce or efa; ib would render no NIC at all (ADR-110).
+platform: aws
+fabric: ib

@@ -1,0 +1,8 @@
+{
+  "fabric": "roce",
+  "source": "spec",
+  "efaPerNode": 1,
+  "surface": true,
+  "errorKind": "validation",
+  "error": "fabric \"roce\" is set, but 2 of 2 target nodes have no RoCE device published by the dra.networking.k8s.aws DRA driver: gb300-a, gb300-b"
+}

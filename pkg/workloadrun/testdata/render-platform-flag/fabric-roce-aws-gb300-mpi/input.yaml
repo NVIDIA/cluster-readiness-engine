@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --fabric roce renders the RoCE blocks, as the AWS GB300 default does.
+platform: aws
+fabric: roce

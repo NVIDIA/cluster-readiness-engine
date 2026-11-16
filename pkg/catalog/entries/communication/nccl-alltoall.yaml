@@ -502,6 +502,8 @@ overrides:
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- GB300 (RoCE) ---
 # --- AWS + GB300 (RoCE) ---
+# Matched on fabric roce (ADR-110): detected from RoCE devices published by the
+# dra.networking.k8s.aws DRA driver, set by spec.fabric, or the AWS GB300 default.
 # Uses nccl-tests image (sshd pre-installed) with OpenMPI at /opt/amazon/openmpi.
 # Removes EFA/OFI plugins that segfault on RoCE, keeps OpenMPI for orted.
 # MCA transport explicitly set to TCP on eth0 for RoCE connectivity.
@@ -510,6 +512,8 @@ overrides:
       equals: aws
     gpuArchitecture:
       equals: gb300
+    fabric:
+      equals: roce
   dependencies:
 {{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
 {{ lib "deps/aws-gb300-roce-runtime-patch-comm.yaml" . | indent 2 }}
@@ -520,9 +524,9 @@ overrides:
           trainer:
             image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
             command:
-{{ lib "nccl/aws-gb300-roce-command.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb300-mpirun-command.yaml" . | indent 12 }}
             args:
-{{ lib "nccl/aws-gb300-roce-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb300-mpirun-args.yaml" . | indent 12 }}
 {{ lib "nccl/aws-gb300-roce-env.yaml" . | toMpiArgs | indent 12 }}
             - /opt/nccl-tests/build/alltoall_perf
             - -d
@@ -824,3 +828,35 @@ overrides:
 # Renders nothing unless the option is set. Last in the list so the privileged
 # flag and the /dev/infiniband mount survive every platform patch above.
 {{ lib "overrides/hostpath-rdma.yaml" . }}
+# --- AWS + GB300 (EFA) ---
+# Kept last in the list so that adding it shifted no existing override's index
+# in the applied-overrides record. It still follows the GB200/GB300 base block.
+# Matched on fabric efa (ADR-110): a stock-EKS GB300 cluster, where the EFA device
+# plugin advertises vpc.amazonaws.com/efa and no RoCE DRA driver runs. Same image,
+# launcher command and MPI bootstrap args as the RoCE arm (OpenMPI only needs TCP
+# on eth0), but no RoCE claim and no plugin strip: NCCL reaches EFA through the
+# image's aws-ofi-nccl plugin. Must come AFTER the GB200/GB300 ComputeDomain block.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+    fabric:
+      equals: efa
+  dependencies:
+{{ lib "deps/aws-gb300-efa-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda13.1.2-efa1.50.0-ofiv1.21.1-ncclv2.31.2-1-testsv2.20.0
+            command:
+{{ lib "nccl/aws-gb300-mpirun-command.yaml" . | indent 12 }}
+            args:
+{{ lib "nccl/aws-gb300-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb300-efa-env.yaml" . | toMpiArgs | indent 12 }}
+            - /opt/nccl-tests/build/alltoall_perf
+            - -d
+            - uint8
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}

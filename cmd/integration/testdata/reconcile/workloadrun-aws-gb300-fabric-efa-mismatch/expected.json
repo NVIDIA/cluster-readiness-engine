@@ -1,0 +1,63 @@
+{
+  "WorkloadRun/test-gb300-efa-mismatch-run": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gb300-efa-mismatch-run",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-GB300"
+        }
+      },
+      "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+      "framework": {
+        "mpi": {
+          "binary": "/usr/local/bin/all_reduce_perf_mpi",
+          "args": [
+            "-b",
+            "8",
+            "-e",
+            "32G",
+            "-f",
+            "2"
+          ],
+          "mpiArgs": [
+            "--tag-output"
+          ],
+          "mpiImplementation": "OpenMPI",
+          "mpirunPath": "/usr/local/mpi/bin/mpirun"
+        }
+      },
+      "numNodes": 2,
+      "fabric": "efa"
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "FabricValidationFailed",
+          "message": "workloadrun test-gb300-efa-mismatch-run: fabric \"efa\" is set, but 2 of 2 target nodes advertise no vpc.amazonaws.com/efa allocatable: gpu-node-01, gpu-node-02"
+        }
+      ]
+    }
+  }
+}

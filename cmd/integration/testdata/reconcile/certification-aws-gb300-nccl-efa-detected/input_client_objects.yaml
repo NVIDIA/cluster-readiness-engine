@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Stock EKS GB300 (ADR-110): every target node advertises vpc.amazonaws.com/efa
+# "1" and there is no RoCE DRA driver, so the fabric is detected as efa and the
+# Workflow requests one EFA device per worker and no RoCE claim.
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-efa-1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: aws-gb300-efa-1
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "1"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-efa-2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: aws-gb300-efa-2
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000002"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "1"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-gb300-efa
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

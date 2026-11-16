@@ -138,6 +138,7 @@ gangScheduler is configured with queue "team-a" but TrainingRuntime "nccl-runtim
 | `orchestration.detectedGPUArchitecture` | string | Detected GPU architecture (e.g. `gb200`) |
 | `orchestration.gpuProducts` | []string | Distinct `nvidia.com/gpu.product` label values of the discovered nodes, as written on the nodes. `detectedGPUArchitecture` is the parsed form and cannot be matched back to a label, so the raw values are recorded here and carried onto every job as a node affinity term |
 | `orchestration.detectedPlatform` | string | Detected cloud platform (e.g. `aws`) |
+| `orchestration.resolvedFabric` | string | The network fabric resolved for this Workflow's `when.fabric` overrides: detected on AWS GB300, otherwise the platform default. Set only when an override matches on `when.fabric`, and read back on every later reconcile so the Jobs get the same overrides as the dependencies. Empty on a Workflow created by a Certification or WorkloadRun, whose own status records the fabric |
 | `orchestration.placement` | string | The resolved placement mode for this run, `Pinned` or `Unpinned` |
 | `orchestration.appliedOverrides` | []AppliedOverride | Which spec overrides matched and were applied |
 | `orchestration.groups` | []GroupStatus | Per-group job status for the current iteration |

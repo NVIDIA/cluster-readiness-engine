@@ -1,0 +1,67 @@
+{
+  "Certification/aws-gb300-mis": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-gb300-mis",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-GB300-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ],
+      "fabric": "efa"
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "FabricValidationFailed",
+          "message": "fabric \"efa\" is set, but 2 of 2 target nodes advertise no vpc.amazonaws.com/efa allocatable: aws-gb300-mis-1, aws-gb300-mis-2"
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "FabricValidationFailed",
+      "message": "fabric \"efa\" is set, but 2 of 2 target nodes advertise no vpc.amazonaws.com/efa allocatable: aws-gb300-mis-1, aws-gb300-mis-2",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "aws-gb300-mis"
+      },
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# spec.fabric efa on AWS GB300 selects the EFA arms of each entry, and the
+# annotation records efa.
+platform: aws

@@ -229,7 +229,8 @@ type WorkloadRunSpec struct {
 	// If not specified, derived from GPU architecture and platform via the
 	// catalog's gpu-defaults.yaml.
 	// Setting it to 0 is an opt-out, not a request for zero devices: the Azure
-	// override stops requesting nvidia.com/mlnxnics altogether rather than
+	// and TogetherAI overrides stop requesting their NIC resource
+	// (nvidia.com/mlnxnics, or nicResourceName when set) altogether rather than
 	// emitting a count of zero.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
@@ -244,7 +245,11 @@ type WorkloadRunSpec struct {
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
-	// event explaining what was found. Offline nvcrectl render (without
+	// event explaining what was found. On Azure and TogetherAI, whose platform
+	// overrides request a NIC resource, the field replaces the default
+	// nvidia.com/mlnxnics name (for example rdma/hca_shared_devices_a from
+	// the Network Operator's shared RDMA device plugin); the name is not
+	// auto-detected there. Offline nvcrectl render (without
 	// --dry-run) has no cluster to inspect and uses only this field. The
 	// value must be a fully qualified extended resource name: a
 	// DNS-subdomain domain, a slash, and a name segment of at most 63
@@ -319,6 +324,18 @@ type WorkloadRunSpec struct {
 	// If nil, auto-detected from GPU architecture (enabled for GB200/GB300).
 	// +optional
 	EnableMNNVL *bool `json:"enableMNNVL,omitempty"`
+
+	// fabric selects the inter-node network fabric the platform overrides
+	// render for: efa, ib, roce or tcpxo (ADR-110). When set, it is
+	// validated against the target nodes, and a mismatch fails the WorkloadRun
+	// with FabricValidationFailed: efa needs vpc.amazonaws.com/efa
+	// allocatable on every target node, roce on AWS needs RoCE devices from
+	// the dra.networking.k8s.aws DRA driver on every target node, and the
+	// value must be one NVCRE renders on the detected platform and GPU
+	// architecture. When unset, the fabric is detected on AWS GB300 and is
+	// otherwise the platform default.
+	// +optional
+	Fabric Fabric `json:"fabric,omitempty"`
 
 	// checkpoint configures checkpoint storage. When set, provisions a PVC
 	// and enables checkpoint-based restart.
@@ -442,6 +459,13 @@ type WorkloadRunStatus struct {
 	// resolvedGpusPerNode is the final GPU count per node used for the workload.
 	// +optional
 	ResolvedGpusPerNode int32 `json:"resolvedGpusPerNode,omitempty"`
+
+	// resolvedFabric is the network fabric the Workflow was rendered for:
+	// spec.fabric when set, otherwise the detected fabric or the platform
+	// default (ADR-110). It is recorded only where the fabric chose the
+	// render: when spec.fabric is set, or on AWS GB300.
+	// +optional
+	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
 
 	// succeededNodesRef references the ConfigMap holding the underlying Workflow's
 	// succeeded-nodes list (comma-separated node names).
