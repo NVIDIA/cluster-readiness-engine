@@ -1,4 +1,0 @@
-{
-  "error": "compute/cutlass-gemm: the run recorded lost evidence and no truncation record resolved; refusing to write a bundle whose truncation.json would report no loss while the run says there was one",
-  "components": []
-}

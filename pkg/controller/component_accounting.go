@@ -161,7 +161,7 @@ func reconcileUnverifiedSeal(
 	g *nvcrev1alpha1.GroupStatus,
 ) error {
 	seal := liveSeal(*g)
-	if seal == nil || componentResultsSealed(seal.Phase) || seal.ShardCount == 0 {
+	if seal == nil || componentResultsSealed(seal.Phase) || sealDeleteBound(*seal) == 0 {
 		return nil
 	}
 	log := logf.FromContext(ctx)
@@ -184,6 +184,52 @@ func reconcileUnverifiedSeal(
 		"claimed", seal.ShardCount, "existing", shards)
 	seal.ShardCount, seal.RowCount = shards, rows
 	seal.Phase = nvcrev1alpha1.ComponentResultsPartial
+	return nil
+}
+
+// reconcileRetainedSeals corrects every seal a group still holds against the
+// shards that are actually on the cluster.
+//
+// Run immediately before the totals are frozen, because that is the last
+// moment the correction is possible. A retained superseded seal is one whose
+// shard delete failed, and retirement keeps it so a later pass can retry; if
+// that retry fails again the seal is frozen with the counts the attempt
+// originally wrote, which no longer describe what survived. Rollover then folds
+// those counts into a bare total that carries neither the Job name nor the
+// bound, so nothing afterwards can name the shards or retry the delete, and a
+// terminal Workflow is never reconciled again. The resolved count comes up
+// short against the frozen one and the category's bundle is refused for good.
+//
+// Correcting the counts rather than preserving the identity for a later retry.
+// Both close it; this one needs no new status and no new pass, and it is also
+// the more honest of the two, because the number it publishes is the number a
+// reader can verify. The shards it could not delete stay on the cluster and are
+// reclaimed at teardown, which still enumerates the bound.
+func reconcileRetainedSeals(
+	ctx context.Context, c client.Client, workflowUID, namespace string,
+	g *nvcrev1alpha1.GroupStatus,
+) error {
+	log := logf.FromContext(ctx)
+	for i := range g.ComponentSeals {
+		seal := &g.ComponentSeals[i]
+		upper := sealDeleteBound(*seal)
+		if upper == 0 {
+			continue
+		}
+		stem := shardNameStem(workflowUID, seal.JobName)
+		shards, rows, _, err := probeShards(ctx, c, namespace, stem, upper)
+		if err != nil {
+			return fmt.Errorf("confirm the shards group %s wrote for job %s: %w",
+				g.Name, seal.JobName, err)
+		}
+		if seal.ShardCount == shards && seal.RowCount == rows {
+			continue
+		}
+		log.Info("Correcting a seal against the shards that survived, before the totals are frozen",
+			"group", g.Name, "job", seal.JobName,
+			"was", seal.ShardCount, "surviving", shards)
+		seal.ShardCount, seal.RowCount = shards, rows
+	}
 	return nil
 }
 
@@ -315,19 +361,26 @@ func recomputeComponentResults(
 		RowCount:   totals.RowCount,
 		Selector:   componentResultsSelector(workflowUID),
 		Final:      final,
-		// Any recorded loss, not only one with rows behind it.
+		// The row count alone, deliberately.
 		//
-		// A record legitimately carries Count 0, for a log page that could not
-		// be fetched or a producer that never came up, and that record IS the
-		// finding. Keying this on the row count alone left a category whose only
-		// loss was such a record reporting truncated=false with a zero count, so
-		// nvcrectl had nothing to check the surviving records against: delete
-		// that one ConfigMap and both sums stay zero, and the bundle is accepted
-		// with the reason gone. A Partial seal is exactly the signal that a Job
-		// recorded a loss, since the Job seals Partial if and only if it has
-		// truncation records, and those records and the written sibling come
-		// from the same call.
-		Truncated:              totals.TruncatedRowCount > 0 || partial,
+		// Deriving this from the Partial phase as well looked right and was a
+		// false refusal. The reasoning was that a Job seals Partial if and only
+		// if it holds truncation records, so Partial implied a sibling existed
+		// and the reader could demand one. That stopped being true the moment
+		// reconcileUnverifiedSeal began sealing Partial itself: it marks an
+		// unconfirmed Writing claim Partial, with no record anywhere, so the
+		// flag went on and the reader refused a bundle whose shard and row
+		// counts agreed. Refusing intact evidence is worse than the gap it was
+		// closing.
+		//
+		// The gap it was closing is real and stays open: a loss whose only
+		// record carries Count 0, which is what an unfetchable log page
+		// produces, leaves every number zero, so deleting that one ConfigMap is
+		// invisible to any check keyed on counts. Closing it needs a per-seal
+		// record of whether truncation records exist, which is a field rather
+		// than an inference, and inferring it from a phase that now has two
+		// sources is exactly how the false refusal got in.
+		Truncated:              totals.TruncatedRowCount > 0,
 		TruncatedRowCount:      totals.TruncatedRowCount,
 		DegradedComponentCount: totals.DegradedComponentCount,
 		DegradedComponents:     totals.DegradedComponents,

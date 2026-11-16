@@ -221,10 +221,17 @@ func (r *JobReconciler) reconcileComponentResults(
 			//
 			// So the counts are reconciled against what is actually on the
 			// cluster. Fewer shards than claimed is the normal outcome here.
-			if owed.ShardCount > 0 {
+			// Over the bound, not the count, and that distinction bites on the
+			// SECOND pass rather than the first. Pass one can lower the count
+			// below the bound, so a pass that probed the count would narrow its
+			// own range: with 0000 and 0002 present it records count 2 and
+			// bound 3, and the next pass would look only at 0000 and 0001, seal
+			// count 1, and leave two shards on the cluster against a total that
+			// admits one.
+			if probeUpTo := max(owed.ShardCount, owed.ShardIndexBound); probeUpTo > 0 {
 				gotShards, gotRows, bound, err := r.observedShards(
 					ctx, job.Namespace, shardNameStem(string(workflow.UID), job.Name),
-					owed.ShardCount)
+					probeUpTo)
 				if err != nil {
 					// Requeued rather than sealed on a guess: this runs inside
 					// the grace period's tail and a wrong count here is
@@ -237,12 +244,17 @@ func (r *JobReconciler) reconcileComponentResults(
 				// bound existed this had to keep a gap's wider value, which
 				// made the count overstate the cluster and the bundle refuse a
 				// run whose shards were all reachable.
-				_ = bound
 				if gotShards != owed.ShardCount {
 					log.Info("Lowering a seal to the shards that were actually written",
 						"claimed", owed.ShardCount, "observed", gotShards)
 				}
 				owed.ShardCount, owed.RowCount = gotShards, gotRows
+				// The bound only rises. bound is one past the highest index
+				// this probe actually found, which can be lower than the
+				// recorded bound once a delete has removed the tail, and
+				// forgetting the wider value would strand whatever is left
+				// above it.
+				owed.ShardIndexBound = max(owed.ShardIndexBound, max(bound, gotShards))
 			}
 		}
 		// Writing, not Partial, and the order matters as much here as on

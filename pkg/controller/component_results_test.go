@@ -107,6 +107,11 @@ func TestReconcileComponentResults(t *testing.T) {
 			// partway leaves a hole, and then the count and the index bound are
 			// different numbers.
 			PriorShardIndices []int `yaml:"priorShardIndices"`
+			// PriorSealIndexBound overrides the prior seal's bound, for the
+			// second-re-drive case: after one pass the count can already sit
+			// below the bound, and a probe sized by the count then narrows its
+			// own range and misses what is above it.
+			PriorSealIndexBound *int32 `yaml:"priorSealIndexBound"`
 			// LogReadFails makes every log read fail with an ordinary error
 			// rather than a pagination failure. That distinction decides
 			// whether the read is retried: an unpageable log fails the same
@@ -236,9 +241,14 @@ func TestReconcileComponentResults(t *testing.T) {
 				// rises, so it is at least the claim. A fixture that left it
 				// zero would make every delete fall back to the count and the
 				// bound would not be under test at all.
-				ShardIndexBound: input.PriorSealShards,
-				RowCount:        int64(input.PriorSealShards) * 10,
-				SealedAt:        &metav1.Time{Time: terminalAt.Time},
+				ShardIndexBound: func() int32 {
+					if input.PriorSealIndexBound != nil {
+						return *input.PriorSealIndexBound
+					}
+					return input.PriorSealShards
+				}(),
+				RowCount: int64(input.PriorSealShards) * 10,
+				SealedAt: &metav1.Time{Time: terminalAt.Time},
 			}
 		}
 

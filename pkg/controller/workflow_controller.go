@@ -2573,6 +2573,21 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 	// Publishing it would put the total above what the selector walk resolves
 	// and refuse the category, so the claim is replaced by the shards that
 	// actually exist and the seal is marked Partial.
+	// Every retained seal corrected against what survived, which is the last
+	// point at which it can be. A retirement that failed again leaves counts
+	// describing shards that are partly gone, and both exits from here freeze
+	// them: the terminal one publishes the total, and rollover folds it into a
+	// bare total carrying neither the Job name nor the bound, so nothing
+	// afterwards can name those shards or retry the delete.
+	for i := range orch.Groups {
+		if err := reconcileRetainedSeals(ctx, r.Client, string(workflow.UID),
+			componentShardNamespace(workflow), &orch.Groups[i]); err != nil {
+			log.Error(err, "Could not confirm a group's surviving component result shards; "+
+				"holding the verdict rather than freezing counts that may overstate them")
+			return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+		}
+	}
+
 	for i := range orch.Groups {
 		if err := reconcileUnverifiedSeal(ctx, r.Client, string(workflow.UID),
 			componentShardNamespace(workflow), &orch.Groups[i]); err != nil {
