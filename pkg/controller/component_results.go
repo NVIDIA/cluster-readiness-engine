@@ -40,6 +40,10 @@ const (
 	// shardNamePrefix prefixes every shard ConfigMap, so a human listing a
 	// namespace can tell them from the node-result objects.
 	shardNamePrefix = "shard-"
+
+	// truncationNameSuffix names the one object in a Job's set that carries
+	// records of what was lost rather than rows.
+	truncationNameSuffix = "-truncation"
 )
 
 // componentResultsSelector is the label selector that resolves every shard a
@@ -258,15 +262,46 @@ func (r *JobReconciler) reconcileComponentResults(
 		// read.
 		// The whole merged set, not only the record just added, so a re-drive
 		// rewrites a truncation shard that still names the earlier loss.
-		dropped := make([]shard.Dropped, 0, len(owed.Truncations))
+		//
+		// Built from the records already stored, not from the seal's summaries,
+		// because writeShardConfigMap assigns BinaryData outright: whatever is
+		// passed here REPLACES the truncation shard an earlier attempt wrote.
+		// The stored records carry the node, the component and the sample each
+		// loss came from, while the seal's set is those same losses folded per
+		// reason, since the field is a listType=map keyed on reason and cannot
+		// hold that identity. Rebuilding the payload from it would turn "GPU 3
+		// on node A lost five rows" into "five rows were lost". ADR-090
+		// requires a dropped row to be counted with its component reference,
+		// and this is the branch that would drop the reference.
+		//
+		// A summary is appended only for a reason the stored set does not
+		// already carry, which in practice is the read failure merged in just
+		// above. Appending all of them would count every earlier loss twice:
+		// each reason on the seal reached the stored set through the same
+		// componentTruncations call that put it on the seal.
+		stem := shardNameStem(string(workflow.UID), job.Name)
+		dropped, droppedTotal, readErr := r.storedTruncation(ctx, job.Namespace, stem)
+		if readErr != nil {
+			// Logged rather than fatal, and rather than swallowed. The
+			// summaries are a coarser account of the same losses, so falling
+			// back to them keeps the record; refusing to write one because the
+			// old one could not be read would lose it altogether, and this runs
+			// in the tail of the group's grace period.
+			log.Error(readErr, "Could not read the stored truncation records; "+
+				"rewriting them from the seal's summaries")
+		}
 		for _, t := range owed.Truncations {
+			if slices.ContainsFunc(dropped, func(d shard.Dropped) bool {
+				return d.Reason == t.Reason
+			}) {
+				continue
+			}
 			dropped = append(dropped, shard.Dropped{
 				Reason: t.Reason, Count: t.Count, Message: t.Message,
 			})
 		}
-		stem := shardNameStem(string(workflow.UID), job.Name)
 		if err := r.writeComponentShards(ctx, workflow, job, stem, shard.Result{
-			Dropped: dropped,
+			Dropped: dropped, DroppedTotal: droppedTotal,
 		}); err != nil {
 			log.Error(err, "Failed to write the truncation record; will retry")
 			return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
@@ -291,6 +326,33 @@ func (r *JobReconciler) reconcileComponentResults(
 	// that could not be paginated is recorded only in Job status, which a
 	// bundle reader never sees.
 	built.Dropped = append(built.Dropped, controllerDropped...)
+
+	// Remove any shard an earlier attempt wrote above this attempt's count,
+	// BEFORE the seal is lowered to it.
+	//
+	// A re-drive can produce fewer shards than the attempt before it: the row
+	// set is whatever the pods still serve, and a Job whose third shard write
+	// failed is re-driven after the read retry budget has run out on one of its
+	// logs. The write loop below addresses shards by derived name, so nothing
+	// names the ones above the new high-water mark and they stay on the cluster
+	// carrying the Workflow UID label. nvcrectl resolves shards by that label
+	// alone, with no index bound, so the walk counts the orphan, the resolved
+	// count exceeds the total the seal admits, and ShardMismatchError refuses
+	// the category permanently (pkg/bundle/resolve.go). Retirement cannot clean
+	// it up either: it enumerates 0..ShardCount-1 from the seal, which no
+	// longer reaches that index.
+	//
+	// The ordering is the guarantee rather than a preference. The earlier claim
+	// is the only record of how far the old set reached, because the controller
+	// has no list on ConfigMaps; lowering the seal first and then failing the
+	// delete would erase that bound and leave the orphan with nothing to find
+	// it by. A claim that is too high is recoverable, since the read-failure
+	// branch above reconciles it against what exists, so the count stays high
+	// until the surplus is actually gone.
+	if err := r.deleteSurplusShards(ctx, job, stem, len(built.Shards)); err != nil {
+		log.Error(err, "Failed to delete a superseded component result shard; will retry")
+		return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
+	}
 
 	// The seal is written BEFORE the first shard exists (ADR-090 decision 3).
 	// A Job whose every shard write then fails still records that it owed
@@ -361,6 +423,43 @@ func (r *JobReconciler) observedShards(
 		}
 	}
 	return shards, rows, nil
+}
+
+// storedTruncation reads back the truncation records already written for a
+// stem, with the exact dropped total the stored object carries, so a pass that
+// holds only the seal's per-reason summaries adds to them instead of replacing
+// them.
+//
+// An absent object is not a failure: the ordinary way into the branch that
+// calls this is a first pass that never wrote one. A payload that will not
+// decode is a failure and is reported as one, because the rule for this data is
+// that an unreadable object must never read as an empty one, which is the same
+// distinction ShardMismatchError exists to keep (pkg/bundle/resolve.go). What
+// to do about it is the caller's, which is inside the grace period.
+func (r *JobReconciler) storedTruncation(
+	ctx context.Context, namespace, stem string,
+) ([]shard.Dropped, int64, error) {
+	cm := &corev1.ConfigMap{}
+	key := client.ObjectKey{Namespace: namespace, Name: stem + truncationNameSuffix}
+	if err := r.Get(ctx, key, cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, 0, nil
+		}
+		return nil, 0, fmt.Errorf("read truncation record %s: %w", key.Name, err)
+	}
+	dropped, err := shard.DecodeTruncation(cm.BinaryData[shard.TruncationKey])
+	if err != nil {
+		return nil, 0, fmt.Errorf("decode truncation record %s: %w", key.Name, err)
+	}
+	// The total is the object's own account of losses beyond its bounded
+	// ledger. An unparseable one is not worth failing the rewrite over: the
+	// records are the part a reader needs, and zero is what this branch wrote
+	// before there was anything to carry forward.
+	total, err := strconv.ParseInt(cm.Data[shard.RowCountKey], 10, 64)
+	if err != nil {
+		total = 0
+	}
+	return dropped, total, nil
 }
 
 // componentResultsSealed reports whether a phase is terminal. Writing is not:
@@ -443,7 +542,7 @@ func (r *JobReconciler) writeComponentShards(
 		return nil
 	}
 	cm := &corev1.ConfigMap{}
-	cm.Name = stem + "-truncation"
+	cm.Name = stem + truncationNameSuffix
 	cm.Namespace = job.Namespace
 	return r.writeShardConfigMap(ctx, workflow, job, cm, shardKindTruncation,
 		map[string]string{
@@ -523,10 +622,36 @@ func deleteComponentShards(
 		}
 	}
 	cm := &corev1.ConfigMap{}
-	cm.Name = stem + "-truncation"
+	cm.Name = stem + truncationNameSuffix
 	cm.Namespace = namespace
 	if err := c.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("delete truncation record %s: %w", cm.Name, err)
+	}
+	return nil
+}
+
+// deleteSurplusShards removes the shards an earlier attempt wrote above a new
+// attempt's shard count.
+//
+// By name over the earlier seal's claimed range, for the same reason
+// deleteComponentShards works that way: the ConfigMap grant carries no list and
+// no watch, so the claim is the only record of how far the old set reached. A
+// no-op unless a re-drive produced fewer shards than the attempt before it,
+// which is the only way an index above the new count can exist.
+func (r *JobReconciler) deleteSurplusShards(
+	ctx context.Context, job *nvcrev1alpha1.Job, stem string, keep int,
+) error {
+	prev := job.Status.ComponentResults
+	if prev == nil {
+		return nil
+	}
+	for i := keep; i < int(prev.ShardCount); i++ {
+		cm := &corev1.ConfigMap{}
+		cm.Name = shardName(stem, i)
+		cm.Namespace = job.Namespace
+		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete superseded shard %s: %w", cm.Name, err)
+		}
 	}
 	return nil
 }

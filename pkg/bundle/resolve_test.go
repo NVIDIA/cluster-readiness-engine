@@ -86,6 +86,10 @@ func TestResolveCertification(t *testing.T) {
 				// what a rebuild under a changed name leaves behind when the
 				// shard it supersedes is not deleted.
 				DuplicateIndex bool `yaml:"duplicateIndex"`
+				// TruncationDeleted drops the truncation sibling while the
+				// sealed count still records the loss, which is what removing
+				// that one ConfigMap out of band leaves behind.
+				TruncationDeleted bool `yaml:"truncationDeleted"`
 			} `yaml:"categories"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
@@ -167,7 +171,7 @@ func TestResolveCertification(t *testing.T) {
 			}
 			if payload, err := shard.EncodeTruncation(built.Dropped); err != nil {
 				return err
-			} else if payload != nil {
+			} else if payload != nil && !cat.TruncationDeleted {
 				objs = append(objs, &corev1.ConfigMap{
 					Name:       fmt.Sprintf("shard-%s-%s-truncation", wfUID, jobName),
 					Namespace:  shardNS,

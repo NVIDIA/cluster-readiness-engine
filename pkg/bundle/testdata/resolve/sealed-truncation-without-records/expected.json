@@ -1,0 +1,4 @@
+{
+  "error": "compute/cutlass-gemm: the run sealed 3 truncated rows and no truncation record resolved; refusing to write a bundle whose truncation.json would report no loss while its manifest records one",
+  "components": []
+}

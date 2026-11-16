@@ -251,6 +251,40 @@ func resolveOne(
 			SealedRows: totals.RowCount, GotRows: rows.rows,
 		}
 	}
+
+	// A sealed loss with no record of it is refused for the same reason, and
+	// the counts above cannot see it. A dropped row was never in a shard, so
+	// removing the truncation sibling leaves both counts in perfect agreement
+	// while the bundle loses the identities and reasons that record exists to
+	// carry: a manifest stating rows were lost, beside a truncation.json
+	// holding the empty list this format defines as nothing having been lost.
+	// The split is deliberate on the write side, because a thousand groups'
+	// reasons do not fit in a Workflow's status, so the Workflow keeps the
+	// magnitude and the ConfigMap keeps the detail. Half of that record is not
+	// a bundle.
+	//
+	// Presence, deliberately not a count. Equality looks available here and
+	// would refuse runs whose evidence is intact:
+	//
+	//   - the producer's ledger is bounded at a thousand named records while
+	//     DroppedTotal stays exact, so ADR-090's 480,000 row corpus resolves a
+	//     thousand records against a count three orders larger.
+	//   - a record legitimately carries Count 0, for a log page that could not
+	//     be fetched or a producer that never came up, so a set of them sums
+	//     below what it reports.
+	//   - a superseded attempt's sibling whose delete failed is still matched
+	//     by this selector while its seal is no longer in the total, so the sum
+	//     read can exceed the sum sealed.
+	//
+	// What does hold is that TruncatedRowCount is summed from the very records
+	// the sibling carries, so a positive total means some Job wrote one.
+	if totals.TruncatedRowCount > 0 && len(comp.Truncations) == 0 {
+		return comp, fmt.Errorf(
+			"%s/%s: the run sealed %d truncated rows and no truncation record resolved;"+
+				" refusing to write a bundle whose truncation.json would report no loss"+
+				" while its manifest records one",
+			domain, variant, totals.TruncatedRowCount)
+	}
 	return comp, nil
 }
 

@@ -94,6 +94,12 @@ func TestReconcileComponentResults(t *testing.T) {
 			// Job that reached Writing and then failed its writes holds a
 			// count backed by nothing.
 			PriorSealShardsWritten *int32 `yaml:"priorSealShardsWritten"`
+			// PriorTruncationRecords seeds the truncation sibling as an earlier
+			// attempt left it, carrying the node, component and sample a loss
+			// came from. The seal's own set is those same losses folded onto
+			// their reason and cannot hold that identity, so this is the only
+			// fixture state that can tell a rewrite from a merge.
+			PriorTruncationRecords bool `yaml:"priorTruncationRecords"`
 			// LogReadFails makes every log read fail with an ordinary error
 			// rather than a pagination failure. That distinction decides
 			// whether the read is retried: an unpageable log fails the same
@@ -253,6 +259,33 @@ func TestReconcileComponentResults(t *testing.T) {
 			cm.Data = map[string]string{shard.RowCountKey: "10"}
 			objs = append(objs, cm)
 		}
+		// A truncation shard an earlier attempt wrote, carrying the component
+		// identity only the stored records hold.
+		if input.PriorTruncationRecords {
+			payload, err := shard.EncodeTruncation([]shard.Dropped{{
+				Node: "gpu-node-1", ComponentID: "GPU-f00d", Index: 1,
+				Name: "achievedTFLOPS", Sample: 7,
+				Reason: shard.ReasonRowUnencodable, Count: 3,
+			}})
+			if err != nil {
+				return err
+			}
+			cm := &corev1.ConfigMap{}
+			cm.Name = shardNameStem(workflowUID, jobName) + truncationNameSuffix
+			cm.Namespace = ns
+			cm.Labels = map[string]string{
+				labelShardWorkflowUID:          workflowUID,
+				labelShardJob:                  jobName,
+				labelShardKind:                 shardKindTruncation,
+				"app.kubernetes.io/managed-by": managedByValue,
+			}
+			cm.Data = map[string]string{
+				shard.FormatVersionKey: fmt.Sprint(shard.FormatVersion),
+				shard.RowCountKey:      "3",
+			}
+			cm.BinaryData = map[string][]byte{shard.TruncationKey: payload}
+			objs = append(objs, cm)
+		}
 		if !input.NoWorkflow {
 			objs = append(objs, workflow.DeepCopy())
 		}
@@ -372,6 +405,15 @@ func componentResultsOutput(
 	names := make([]string, 0, int(out.SealShards)+1)
 	for i := range int(out.SealShards) {
 		names = append(names, shardName(stem, i))
+	}
+	// One index past the seal, reported only when it exists. A shrinking
+	// re-drive rewrites the shards it has and leaves any above its own count on
+	// the cluster, where the Workflow's selector still resolves them; a golden
+	// that only looked at the sealed range could not see that at all.
+	surplus := shardName(stem, int(out.SealShards))
+	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: surplus},
+		&corev1.ConfigMap{}); err == nil {
+		names = append(names, surplus)
 	}
 	names = append(names, stem+"-truncation")
 
