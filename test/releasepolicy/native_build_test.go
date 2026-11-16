@@ -127,9 +127,35 @@ func TestNativeAndCrossTargetsStaySeparate(t *testing.T) {
 			"the image manifest, and assembling that into the published index yields a " +
 			"child with no usable platform.")
 	}
-	if !strings.Contains(native, "push-by-digest=true") {
-		t.Error("docker-buildx-native does not push by digest, so the per-architecture " +
-			"legs would fight over one tag instead of being assembled into an index")
+	// The output is a variable now, so the assertion follows it: the recipe
+	// must take its output from BUILDX_NATIVE_OUTPUT, and that variable's
+	// DEFAULT must push by digest. Checking only the recipe would pass for a
+	// default that exported nothing, and checking only the default would pass
+	// for a recipe that ignored it.
+	if !strings.Contains(native, "--output=$(BUILDX_NATIVE_OUTPUT)") {
+		t.Error("docker-buildx-native does not take its output from " +
+			"BUILDX_NATIVE_OUTPUT, so a caller cannot ask it to build without " +
+			"publishing and the release default cannot be asserted below")
+	}
+	defaultOutput := regexp.MustCompile(`(?m)^BUILDX_NATIVE_OUTPUT\s*\?=\s*(.+)$`).
+		FindStringSubmatch(body)
+	if defaultOutput == nil {
+		t.Fatal("the Makefile no longer sets BUILDX_NATIVE_OUTPUT; if it was renamed, " +
+			"update this test")
+	}
+	if !strings.Contains(defaultOutput[1], "push-by-digest=true") {
+		t.Errorf("BUILDX_NATIVE_OUTPUT defaults to %q, which does not push by digest. "+
+			"The per-architecture legs would then fight over one tag instead of being "+
+			"assembled into an index.", defaultOutput[1])
+	}
+
+	// And the compile-only target must not publish. It runs on pull requests,
+	// where a push would put a branch's image in the registry under a name the
+	// release path uses.
+	compile := makeRecipe(t, body, "gemm-image-compile")
+	if !strings.Contains(compile, "BUILDX_NATIVE_OUTPUT=type=cacheonly") {
+		t.Errorf("gemm-image-compile does not override the output to cacheonly, so the "+
+			"pull-request check would publish. Recipe was:\n%s", compile)
 	}
 	// The GEMM target must use the native one. Reaching for docker-buildx here
 	// is the single edit that reintroduces the original defect.

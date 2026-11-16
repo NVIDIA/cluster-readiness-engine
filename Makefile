@@ -369,6 +369,13 @@ gemm-image-build: ## Build the CUTLASS GEMM harness image (ADR-091).
 gemm-image-push: ## Push the CUTLASS GEMM harness image.
 	$(MAKE) docker-push DOCKER_IMG="$(GEMM_IMG)"
 
+.PHONY: gemm-image-compile
+gemm-image-compile: ## Compile the GEMM harness image for PLATFORM natively, exporting nothing.
+	$(MAKE) docker-buildx-native \
+		DOCKER_IMAGE_NAME="$(IMAGE_REGISTRY)/$(GEMM_IMAGE_REPOSITORY)" \
+		DOCKERFILE=images/cutlass-gemm/Dockerfile DOCKER_BUILD_CONTEXT=images/cutlass-gemm \
+		BUILDX_NATIVE_OUTPUT=type=cacheonly
+
 .PHONY: gemm-image-native
 gemm-image-native: ## Build the GEMM harness image for PLATFORM natively and push it by digest.
 	$(MAKE) docker-buildx-native \
@@ -391,6 +398,11 @@ PLATFORM ?= linux/amd64
 # that the leg is addressed by digest until the index is assembled.
 DOCKER_IMAGE_NAME ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)
 BUILDX_METADATA ?= buildx-metadata.json
+# What docker-buildx-native does with the result. The default pushes by digest,
+# which is what the release path needs. A PR check that only wants to know the
+# code compiles overrides this with type=cacheonly, so nothing is exported and
+# no registry is involved.
+BUILDX_NATIVE_OUTPUT ?= type=image,"name=$(DOCKER_IMAGE_NAME)",push-by-digest=true,name-canonical=true,push=true
 
 # Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
 NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
@@ -427,7 +439,7 @@ docker-buildx-native: ## Build ONE platform from the unmodified Dockerfile and p
 	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) \
 		--platform=$(PLATFORM) --provenance=false --sbom=false \
 		--metadata-file "$(BUILDX_METADATA)" \
-		--output=type=image,"name=$(DOCKER_IMAGE_NAME)",push-by-digest=true,name-canonical=true,push=true \
+		--output=$(BUILDX_NATIVE_OUTPUT) \
 		-f "$(DOCKERFILE)" "$(DOCKER_BUILD_CONTEXT)"
 
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support

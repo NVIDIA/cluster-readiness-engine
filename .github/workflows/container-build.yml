@@ -164,11 +164,57 @@ jobs:
           ref=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-80)
           echo "value=${ref}-${SHA}" >> "$GITHUB_OUTPUT"
 
-      # Single platform on a pull request. The published image is
-      # multi-platform, built by publish.yml and release.yml; validating one
-      # architecture here catches a broken Dockerfile without doubling an
-      # already long compile.
+      # The amd64 half. The arm64 half is its own job below, because nvcc
+      # compiles for the host: an amd64 build proves nothing about the arm64
+      # image, which is how an arm64 image full of x86-64 binaries got as far
+      # as a release-path build.
       - name: Build GEMM harness image (no push)
         run: make gemm-image-build
         env:
           GEMM_IMG: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:${{ steps.tag.outputs.value }}
+
+  gemm-image-build-arm64:
+    name: GEMM Harness Build (arm64)
+    # GitHub's hosted arm64 runner, available because this repository is
+    # public. It is the smallest thing that works rather than the right thing:
+    # four vCPUs compiling CUTLASS is slow, and its memory and disk are the
+    # tighter limits. A self-hosted arm64 label would be better when one
+    # exists.
+    runs-on: ubuntu-24.04-arm
+    needs: changed-files
+    # The same guard and the same gate as the amd64 job, so this runs on
+    # exactly the pull requests that already pay for a harness compile and on
+    # no others.
+    if: |
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      needs.changed-files.outputs.gemm == 'true'
+    # Longer than the amd64 job's 120. This leg compiles two GPU architecture
+    # families instead of six, but on a quarter of the cores.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No buildkitd-config: that file is pre-populated on the NVIDIA
+      # self-hosted runners and absent here, and setup-buildx fails on a path
+      # that does not exist.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # The point of this job is the hardware, so assert it rather than trust
+      # the label. On amd64 the build would succeed and prove nothing, which is
+      # the failure this job exists to make impossible.
+      - name: Confirm the runner is arm64
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_ARCH}" != "ARM64" ]]; then
+            echo "::error::this job must run on arm64 but the runner reports ${RUNNER_ARCH};" \
+                 "nvcc compiles for the host, so an amd64 run would validate the wrong image"
+            exit 1
+          fi
+
+      # Compiled and discarded. A pull request has nothing to publish, and
+      # type=cacheonly keeps a branch's image out of a registry path the
+      # release uses.
+      - name: Compile the GEMM harness for linux/arm64 (no push)
+        run: make gemm-image-compile
+        env:
+          PLATFORM: linux/arm64
