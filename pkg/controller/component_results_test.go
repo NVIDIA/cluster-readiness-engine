@@ -232,8 +232,13 @@ func TestReconcileComponentResults(t *testing.T) {
 			job.Status.ComponentResults = &nvcrev1alpha1.ComponentResultSeal{
 				Phase:      nvcrev1alpha1.ComponentResultsWriting,
 				ShardCount: input.PriorSealShards,
-				RowCount:   int64(input.PriorSealShards) * 10,
-				SealedAt:   &metav1.Time{Time: terminalAt.Time},
+				// The bound the earlier attempt would have left: it only ever
+				// rises, so it is at least the claim. A fixture that left it
+				// zero would make every delete fall back to the count and the
+				// bound would not be under test at all.
+				ShardIndexBound: input.PriorSealShards,
+				RowCount:        int64(input.PriorSealShards) * 10,
+				SealedAt:        &metav1.Time{Time: terminalAt.Time},
 			}
 		}
 
@@ -385,12 +390,19 @@ type componentResultsReport struct {
 	Error    string `json:"error,omitempty"`
 	// Seal is the Job's status as persisted, with the wall-clock stamp reduced
 	// to whether it was set.
-	SealPhase    string        `json:"sealPhase"`
-	SealShards   int32         `json:"sealShardCount"`
-	SealRows     int64         `json:"sealRowCount"`
-	SealedAtSet  bool          `json:"sealedAtSet"`
-	Truncations  []string      `json:"truncations,omitempty"`
-	ShardObjects []shardReport `json:"shardObjects"`
+	SealPhase  string `json:"sealPhase"`
+	SealShards int32  `json:"sealShardCount"`
+	// SealIndexBound is how far the attempt's set once reached, which is the
+	// range every delete enumerates.
+	//
+	// Reported only when it differs from the count, which is the only case
+	// worth a golden: the two agree whenever nothing has gone wrong, so
+	// printing it always would add a line to every fixture to say so.
+	SealIndexBound int32         `json:"sealIndexBound,omitempty"`
+	SealRows       int64         `json:"sealRowCount"`
+	SealedAtSet    bool          `json:"sealedAtSet"`
+	Truncations    []string      `json:"truncations,omitempty"`
+	ShardObjects   []shardReport `json:"shardObjects"`
 }
 
 // componentResultsOutput collects everything a case asserts: the persisted seal
@@ -407,6 +419,9 @@ func componentResultsOutput(
 	if seal := job.Status.ComponentResults; seal != nil {
 		out.SealPhase = string(seal.Phase)
 		out.SealShards = seal.ShardCount
+		if seal.ShardIndexBound != seal.ShardCount {
+			out.SealIndexBound = seal.ShardIndexBound
+		}
 		out.SealRows = seal.RowCount
 		out.SealedAtSet = seal.SealedAt != nil
 		for _, t := range seal.Truncations {

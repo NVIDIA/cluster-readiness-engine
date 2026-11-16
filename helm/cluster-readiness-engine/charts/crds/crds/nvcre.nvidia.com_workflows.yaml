@@ -8499,6 +8499,20 @@ spec:
                                 maximum: 9999
                                 minimum: 0
                                 type: integer
+                              shardIndexBound:
+                                description: |-
+                                  shardIndexBound is one past the highest index the attempt ever wrote,
+                                  carried from the Job's seal because this is the only durable record of
+                                  it once the Job is deleted.
+
+                                  Retirement derives every shard name from this entry, so without the
+                                  bound a partial delete or a shrinking re-drive leaves a shard the
+                                  retained count can no longer name. See ComponentResultSeal for why the
+                                  bound and the count are different facts.
+                                format: int32
+                                maximum: 9999
+                                minimum: 0
+                                type: integer
                               truncatedRowCount:
                                 description: |-
                                   truncatedRowCount is how many rows this attempt could not store.
@@ -8762,6 +8776,20 @@ spec:
                                   shardCount:
                                     description: shardCount is how many shards the
                                       attempt owes.
+                                    format: int32
+                                    maximum: 9999
+                                    minimum: 0
+                                    type: integer
+                                  shardIndexBound:
+                                    description: |-
+                                      shardIndexBound is one past the highest index the attempt ever wrote,
+                                      carried from the Job's seal because this is the only durable record of
+                                      it once the Job is deleted.
+
+                                      Retirement derives every shard name from this entry, so without the
+                                      bound a partial delete or a shrinking re-drive leaves a shard the
+                                      retained count can no longer name. See ComponentResultSeal for why the
+                                      bound and the count are different facts.
                                     format: int32
                                     maximum: 9999
                                     minimum: 0

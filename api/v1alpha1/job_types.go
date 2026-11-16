@@ -616,6 +616,27 @@ type ComponentResultSeal struct {
 	// +kubebuilder:validation:Maximum=9999
 	ShardCount int32 `json:"shardCount"`
 
+	// shardIndexBound is one past the highest shard index this attempt has
+	// ever written, which is the range a delete has to enumerate.
+	//
+	// Separate from shardCount because the two are different facts and only
+	// coincide while nothing has gone wrong. Shards are named from their index
+	// and the controller has no list on ConfigMaps, so the only way to reach
+	// one is to derive its name; a count is therefore a usable bound only when
+	// the set is exactly {0..count-1}. It is not after a re-drive that produces
+	// fewer shards, nor after a delete that fails partway, and conflating them
+	// put a live shard above the bound where no retirement and no teardown
+	// could name it while nvcrectl's selector walk still resolved it, which
+	// refuses the category for the life of the Workflow.
+	//
+	// Monotonic within an attempt: it only ever rises, because its job is to
+	// remember how far the set once reached. shardCount is free to fall to
+	// whatever is actually there.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=9999
+	// +optional
+	ShardIndexBound int32 `json:"shardIndexBound,omitempty"`
+
 	// rowCount is how many rows those shards hold in total.
 	// +kubebuilder:validation:Minimum=0
 	RowCount int64 `json:"rowCount"`

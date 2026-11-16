@@ -294,6 +294,17 @@ func resolveOne(
 	// recording losses, one surviving record satisfied a category-wide presence
 	// check while the other Job's identities and reasons were gone, and neither
 	// count moved because a dropped row was never in a shard.
+	// Presence first, because the magnitude cannot see a record whose count is
+	// zero. The run sets truncated when any Job recorded a loss, including one
+	// a count cannot describe, so truncated with nothing resolved means the
+	// record that WAS the finding is gone.
+	if totals.Truncated && len(comp.Truncations) == 0 {
+		return comp, fmt.Errorf(
+			"%s/%s: the run recorded lost evidence and no truncation record resolved;"+
+				" refusing to write a bundle whose truncation.json would report no loss"+
+				" while the run says there was one",
+			domain, variant)
+	}
 	var resolvedDropped int64
 	for _, tr := range comp.Truncations {
 		resolvedDropped += tr.Count

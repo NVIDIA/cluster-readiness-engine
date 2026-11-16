@@ -804,6 +804,19 @@ type GroupComponentSeal struct {
 	// +kubebuilder:validation:Maximum=9999
 	ShardCount int32 `json:"shardCount"`
 
+	// shardIndexBound is one past the highest index the attempt ever wrote,
+	// carried from the Job's seal because this is the only durable record of
+	// it once the Job is deleted.
+	//
+	// Retirement derives every shard name from this entry, so without the
+	// bound a partial delete or a shrinking re-drive leaves a shard the
+	// retained count can no longer name. See ComponentResultSeal for why the
+	// bound and the count are different facts.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=9999
+	// +optional
+	ShardIndexBound int32 `json:"shardIndexBound,omitempty"`
+
 	// rowCount is how many rows those shards hold.
 	// +kubebuilder:validation:Minimum=0
 	RowCount int64 `json:"rowCount"`

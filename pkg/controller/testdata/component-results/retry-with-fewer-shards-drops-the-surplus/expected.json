@@ -2,6 +2,7 @@
   "requeued": false,
   "sealPhase": "Complete",
   "sealShardCount": 1,
+  "sealIndexBound": 2,
   "sealRowCount": 1,
   "sealedAtSet": true,
   "shardObjects": [

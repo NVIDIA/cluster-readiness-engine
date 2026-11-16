@@ -97,6 +97,11 @@ func TestResolveCertification(t *testing.T) {
 				// exceeds what the surviving records account for IS that state
 				// as far as the walk is concerned.
 				SealTruncated *int64 `yaml:"sealTruncated"`
+				// SealTruncatedFlag forces the sealed truncated flag on
+				// independently of the count, which is the state a record
+				// carrying Count 0 produces: a log page that could not be
+				// fetched is a loss no count can describe.
+				SealTruncatedFlag bool `yaml:"sealTruncatedFlag"`
 			} `yaml:"categories"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
@@ -213,7 +218,7 @@ func TestResolveCertification(t *testing.T) {
 					Selector:          selector,
 					Final:             cat.Final,
 					TruncatedRowCount: sealTruncated,
-					Truncated:         sealTruncated > 0,
+					Truncated:         sealTruncated > 0 || cat.SealTruncatedFlag,
 				},
 			}
 			if !cat.NoWorkflowRef {

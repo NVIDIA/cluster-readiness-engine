@@ -58,6 +58,7 @@ func observeComponentSeal(g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job, 
 		Attempt:           int32(attempt), //nolint:gosec // bounded by retryFailedGroups
 		JobName:           job.Name,
 		ShardCount:        seal.ShardCount,
+		ShardIndexBound:   seal.ShardIndexBound,
 		RowCount:          seal.RowCount,
 		Phase:             seal.Phase,
 		TruncatedRowCount: truncated,
@@ -79,6 +80,19 @@ func observeComponentSeal(g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job, 
 	}
 	g.ComponentSeals = append(g.ComponentSeals, entry)
 	return true
+}
+
+// sealDeleteBound is the range a delete has to enumerate for one seal.
+//
+// The bound where there is one, the count otherwise. A seal written before the
+// bound existed, or by a path that never raised it, carries zero, and falling
+// back to the count there keeps those seals deletable rather than silently
+// skipping every shard they own.
+func sealDeleteBound(seal nvcrev1alpha1.GroupComponentSeal) int32 {
+	if seal.ShardIndexBound > seal.ShardCount {
+		return seal.ShardIndexBound
+	}
+	return seal.ShardCount
 }
 
 // refreshComponentSeal re-observes a finished group's seal while the Job tier
@@ -137,36 +151,32 @@ func (r *WorkflowReconciler) refreshComponentSeal(
 // Marked Partial, because that is what it is. The attempt owed rows, the Job
 // never confirmed what it stored, and the count now describes the cluster
 // rather than the claim. A reader needs to know the difference.
-// Returns nothing: the caller writes the status either way, so a "changed"
-// signal would only invite a caller to skip a write it has to make anyway.
+// Returns an error when it could not establish what exists. The caller must
+// requeue on that rather than carry on, because the alternative is publishing
+// the unconfirmed claim: the pass that calls this is the pass that snapshots
+// the seal or finalizes the Workflow, and a terminal Workflow is never revised.
+// A failed probe is a reason to come back, not a reason to trust the claim.
 func reconcileUnverifiedSeal(
 	ctx context.Context, c client.Client, workflowUID, namespace string,
 	g *nvcrev1alpha1.GroupStatus,
-) {
+) error {
 	seal := liveSeal(*g)
 	if seal == nil || componentResultsSealed(seal.Phase) || seal.ShardCount == 0 {
-		return
+		return nil
 	}
 	log := logf.FromContext(ctx)
 	stem := shardNameStem(workflowUID, seal.JobName)
-	shards, rows, bound, err := probeShards(ctx, c, namespace, stem, seal.ShardCount)
+	shards, rows, _, err := probeShards(ctx, c, namespace, stem, sealDeleteBound(*seal))
 	if err != nil {
-		// The claim stands for this pass. Nothing is published from here, so a
-		// failed probe costs a pass rather than a wrong number, and the caller
-		// requeues.
-		log.V(1).Info("Could not confirm which shards a group's unsealed attempt wrote",
-			"group", g.Name, "job", seal.JobName, "error", err)
-		return
+		return fmt.Errorf("confirm the shards group %s wrote for job %s: %w",
+			g.Name, seal.JobName, err)
 	}
-	// Never below the highest surviving index, for the reason the Job tier
-	// keeps the same floor: the count is also the range every delete
-	// enumerates, so a live shard above it can never be named again.
-	if shards < bound {
-		shards = bound
-	}
+	// The count falls to what exists. It no longer has to cover the highest
+	// surviving index, because shardIndexBound does that and every delete
+	// enumerates the bound rather than the count.
 	if seal.ShardCount == shards && seal.RowCount == rows &&
 		seal.Phase == nvcrev1alpha1.ComponentResultsPartial {
-		return
+		return nil
 	}
 	log.Info("Sealing a group's component results from the shards that exist, "+
 		"because its Job did not confirm them within the grace period",
@@ -174,6 +184,7 @@ func reconcileUnverifiedSeal(
 		"claimed", seal.ShardCount, "existing", shards)
 	seal.ShardCount, seal.RowCount = shards, rows
 	seal.Phase = nvcrev1alpha1.ComponentResultsPartial
+	return nil
 }
 
 // awaitingComponentSeals names a group whose seal the Job tier may still
@@ -300,11 +311,23 @@ func recomputeComponentResults(
 	}
 
 	next := &nvcrev1alpha1.WorkflowComponentResults{
-		ShardCount:             totals.ShardCount,
-		RowCount:               totals.RowCount,
-		Selector:               componentResultsSelector(workflowUID),
-		Final:                  final,
-		Truncated:              totals.TruncatedRowCount > 0,
+		ShardCount: totals.ShardCount,
+		RowCount:   totals.RowCount,
+		Selector:   componentResultsSelector(workflowUID),
+		Final:      final,
+		// Any recorded loss, not only one with rows behind it.
+		//
+		// A record legitimately carries Count 0, for a log page that could not
+		// be fetched or a producer that never came up, and that record IS the
+		// finding. Keying this on the row count alone left a category whose only
+		// loss was such a record reporting truncated=false with a zero count, so
+		// nvcrectl had nothing to check the surviving records against: delete
+		// that one ConfigMap and both sums stay zero, and the bundle is accepted
+		// with the reason gone. A Partial seal is exactly the signal that a Job
+		// recorded a loss, since the Job seals Partial if and only if it has
+		// truncation records, and those records and the written sibling come
+		// from the same call.
+		Truncated:              totals.TruncatedRowCount > 0 || partial,
 		TruncatedRowCount:      totals.TruncatedRowCount,
 		DegradedComponentCount: totals.DegradedComponentCount,
 		DegradedComponents:     totals.DegradedComponents,
@@ -468,7 +491,7 @@ func (r *WorkflowReconciler) retireComponentSeals(
 		}
 		stem := shardNameStem(string(workflow.UID), seal.JobName)
 		if err := deleteComponentShards(
-			ctx, r.Client, componentShardNamespace(workflow), stem, seal.ShardCount,
+			ctx, r.Client, componentShardNamespace(workflow), stem, sealDeleteBound(seal),
 		); err != nil {
 			if retainedFailures < maxRetainedFailedSeals {
 				retainedFailures++
@@ -525,7 +548,8 @@ func (r *WorkflowReconciler) deleteWorkflowComponentShards(
 	var errs []error
 	del := func(seal nvcrev1alpha1.GroupComponentSeal) {
 		stem := shardNameStem(string(workflow.UID), seal.JobName)
-		if err := deleteComponentShards(ctx, r.Client, namespace, stem, seal.ShardCount); err != nil {
+		if err := deleteComponentShards(
+			ctx, r.Client, namespace, stem, sealDeleteBound(seal)); err != nil {
 			errs = append(errs, err)
 		}
 	}

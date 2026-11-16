@@ -2551,13 +2551,38 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			"group", waiting)
 		return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 	}
+	// Retry any retirement whose shard delete failed earlier.
+	//
+	// retireComponentSeals is otherwise reached only from retirePendingGroups,
+	// which skips a group that is not Pending, so once the next attempt has
+	// launched a failed delete is never retried for the rest of the run. The
+	// seal is kept precisely so it CAN be retried, and nothing was retrying it:
+	// the retained count then stayed in the total while its shards were partly
+	// gone, so the resolved count came up short and the category's bundle was
+	// refused permanently.
+	//
+	// Here because this is the pass that freezes the totals, and it runs
+	// repeatedly while the verdict is held, so a transient failure converges.
+	// A delete that succeeds drops the seal and the total stops counting it; one
+	// that fails again keeps it, which is what the fold below then carries.
+	for i := range orch.Groups {
+		r.retireComponentSeals(ctx, workflow, &orch.Groups[i])
+	}
+
 	// The wait is over and any seal still non-terminal is an unconfirmed claim.
 	// Publishing it would put the total above what the selector walk resolves
 	// and refuse the category, so the claim is replaced by the shards that
 	// actually exist and the seal is marked Partial.
 	for i := range orch.Groups {
-		reconcileUnverifiedSeal(ctx, r.Client, string(workflow.UID),
-			componentShardNamespace(workflow), &orch.Groups[i])
+		if err := reconcileUnverifiedSeal(ctx, r.Client, string(workflow.UID),
+			componentShardNamespace(workflow), &orch.Groups[i]); err != nil {
+			// Requeued rather than published. This pass either snapshots the
+			// seal or finalizes the Workflow, and a terminal Workflow is never
+			// revised, so carrying on would freeze a claim nothing confirmed.
+			log.Error(err, "Could not confirm a group's component result shards; "+
+				"holding the verdict rather than publishing an unconfirmed count")
+			return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+		}
 	}
 
 	orch.CompletedIterations++

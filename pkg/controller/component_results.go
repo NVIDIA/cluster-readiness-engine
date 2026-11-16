@@ -232,28 +232,12 @@ func (r *JobReconciler) reconcileComponentResults(
 					log.Error(err, "Could not confirm which component result shards exist; will retry")
 					return ctrl.Result{RequeueAfter: componentResultsRequeue}, nil
 				}
-				// Never below the highest surviving index.
-				//
-				// The count is also the range every delete path enumerates, so
-				// the two cannot be set independently. The survivors are only a
-				// prefix when the writes failed at the tail, which is the usual
-				// way in; a delete that failed partway leaves a gap instead, and
-				// there lowering to the number that exists would put a live
-				// shard above the bound, where no retirement and no teardown can
-				// name it and the selector walk still finds it. The category's
-				// bundle would then be refused for good.
-				//
-				// So a gap keeps the wider bound. The count then overstates what
-				// exists, which the bundle also refuses, but recoverably: the
-				// shards are still reachable, so the next retirement clears them
-				// and the total converges. An unreachable shard never does.
-				if gotShards < bound {
-					log.Info("Keeping a seal's shard count above the shards that exist, "+
-						"because a higher index survives and the count is also the "+
-						"range every delete enumerates",
-						"existing", gotShards, "highestIndex", bound-1, "keeping", bound)
-					gotShards = bound
-				}
+				// The count falls freely to what exists, because the bound and
+				// not the count is what every delete enumerates. Before the
+				// bound existed this had to keep a gap's wider value, which
+				// made the count overstate the cluster and the bundle refuse a
+				// run whose shards were all reachable.
+				_ = bound
 				if gotShards != owed.ShardCount {
 					log.Info("Lowering a seal to the shards that were actually written",
 						"claimed", owed.ShardCount, "observed", gotShards)
@@ -392,11 +376,15 @@ func (r *JobReconciler) reconcileComponentResults(
 	// the counts written afterwards, nothing would say the Job owed anything.
 	degradedCount, degraded := degradedComponents(result.rows)
 	sealed := &nvcrev1alpha1.ComponentResultSeal{
-		Phase:       nvcrev1alpha1.ComponentResultsWriting,
-		ShardCount:  int32(len(built.Shards)), //nolint:gosec // bounded by shard.MaxShardsPerJob
-		RowCount:    built.Rows,
-		SealedAt:    &metav1.Time{Time: time.Now()},
-		Truncations: truncations,
+		Phase:      nvcrev1alpha1.ComponentResultsWriting,
+		ShardCount: int32(len(built.Shards)), //nolint:gosec // bounded by shard.MaxShardsPerJob
+		// Raised, never lowered. The bound's job is to remember how far this
+		// attempt's set once reached, so a re-drive that writes fewer shards
+		// still leaves every earlier index reachable by name.
+		ShardIndexBound: shardIndexBound(job, len(built.Shards)),
+		RowCount:        built.Rows,
+		SealedAt:        &metav1.Time{Time: time.Now()},
+		Truncations:     truncations,
 		// Derived from the rows while they are still in hand. Resolving this
 		// later from the shards would only work for a reader that asked for a
 		// bundle, and the point of it is to reach the report of a run that
@@ -471,6 +459,26 @@ func probeShards(
 		}
 	}
 	return shards, rows, bound, nil
+}
+
+// shardIndexBound is the wider of a Job's existing bound and what this attempt
+// is about to write.
+//
+// Monotonic on purpose. A re-drive that produces fewer shards leaves the
+// earlier, higher indices on the cluster until something deletes them, and the
+// only way to name one is to derive it from its index, so forgetting how far
+// the set reached is the same as leaking it.
+func shardIndexBound(job *nvcrev1alpha1.Job, writing int) int32 {
+	bound := int32(writing) //nolint:gosec // bounded by shard.MaxShardsPerJob
+	if prev := job.Status.ComponentResults; prev != nil {
+		if prev.ShardIndexBound > bound {
+			bound = prev.ShardIndexBound
+		}
+		if prev.ShardCount > bound {
+			bound = prev.ShardCount
+		}
+	}
+	return bound
 }
 
 // storedTruncation reads back the truncation records already written for a
@@ -703,11 +711,15 @@ func (r *JobReconciler) deleteSurplusShards(
 	if prev == nil {
 		return nil
 	}
+	// Over the bound, not the count. The count is what this attempt wrote and
+	// can be smaller than the set once was; the bound is how far it reached,
+	// which is the only range that reaches every shard still out there.
+	upper := max(int(prev.ShardIndexBound), int(prev.ShardCount))
 	// Every index attempted, errors joined, for the reason
 	// deleteComponentShards does it: stopping at the first failure leaves the
 	// higher indices in place while the seal is about to stop naming them.
 	var errs []error
-	for i := keep; i < int(prev.ShardCount); i++ {
+	for i := keep; i < upper; i++ {
 		cm := &corev1.ConfigMap{}
 		cm.Name = shardName(stem, i)
 		cm.Namespace = job.Namespace

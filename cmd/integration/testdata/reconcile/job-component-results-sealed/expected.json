@@ -71,6 +71,7 @@
       "componentResults": {
         "phase": "Complete",
         "shardCount": 1,
+        "shardIndexBound": 1,
         "rowCount": 4,
         "sealedAt": "1970-01-01T00:00:00Z"
       }

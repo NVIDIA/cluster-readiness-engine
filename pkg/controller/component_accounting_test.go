@@ -120,8 +120,11 @@ func TestComponentAccounting(t *testing.T) {
 		// runs once awaitingComponentSeals stops holding the verdict.
 		if input.ReconcileUnverified {
 			for i := range live.Status.Orchestration.Groups {
-				reconcileUnverifiedSeal(ctx, c, workflowUID, componentShardNamespace(live),
-					&live.Status.Orchestration.Groups[i])
+				if err := reconcileUnverifiedSeal(ctx, c, workflowUID,
+					componentShardNamespace(live),
+					&live.Status.Orchestration.Groups[i]); err != nil {
+					return err
+				}
 			}
 		}
 

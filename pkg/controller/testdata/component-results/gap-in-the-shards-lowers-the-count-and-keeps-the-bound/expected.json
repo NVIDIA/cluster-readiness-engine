@@ -1,7 +1,8 @@
 {
   "requeued": false,
   "sealPhase": "Partial",
-  "sealShardCount": 3,
+  "sealShardCount": 2,
+  "sealIndexBound": 3,
   "sealRowCount": 20,
   "sealedAtSet": true,
   "truncations": [
