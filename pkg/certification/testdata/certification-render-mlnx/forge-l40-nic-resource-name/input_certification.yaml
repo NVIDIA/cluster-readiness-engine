@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName on deps/forge-ib-comm.yaml (issue #583): the configured name
+# replaces nvidia.com/mlnxnics as a sibling of nvidia.com/gpu under limits and
+# requests, at the l40 default count of 4.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: forge-l40-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
