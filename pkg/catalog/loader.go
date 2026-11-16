@@ -156,6 +156,9 @@ type TemplateData struct {
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// for the on-prem GB200/GB300 and HGX B200/B300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
+	// The Azure, Forge and TogetherAI templates use it in place of their
+	// nvidia.com/mlnxnics default:
+	// {{ or .NicResourceName "nvidia.com/mlnxnics" }}
 	NicResourceName string
 
 	// Fabric is the resolved network fabric (ADR-110). Templates use: {{ .Fabric }}

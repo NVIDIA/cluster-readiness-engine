@@ -30,7 +30,6 @@ followed them.
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
 
-### Added
 
 - Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
   A workload can now report a measurement per GPU, or per any component it names,
@@ -90,12 +89,20 @@ followed them.
   now an error rather than a panic, and a symlinked results path updates the file it
   points at instead of silently replacing the link.
 
+- `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
+  Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
+  advertises its RDMA NICs under another name, such as AKS with the NVIDIA Network
+  Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), no longer leaves
+  worker pods Pending on `nvidia.com/mlnxnics`. Without the field, these platforms
+  request `nvidia.com/mlnxnics` as before. OCI is unchanged
+  ([#583](https://github.com/NVIDIA/cluster-readiness-engine/issues/583)).
+
 ### Security
 
 - Built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054), an HTTP/1
   server crash from a `MaxBytesReader` header race in `net/http`. The manager
   serves HTTP for metrics and health probes, so it reaches the affected code
-  (#601).
+  (#602).
 
 ## [0.11.0] - 2026-11-09
 
