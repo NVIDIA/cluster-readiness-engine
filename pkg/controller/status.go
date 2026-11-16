@@ -111,27 +111,44 @@ func updateStatusWithRetry[T client.Object](
 	obj T,
 	mutate func(T) bool,
 ) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if !mutate(obj) {
-			return nil
-		}
+	// The final attempt's own error is what the caller must see, so keep it
+	// rather than trust RetryOnConflict's return value. Its backoff treats any
+	// error wrapping context.Canceled or context.DeadlineExceeded as an
+	// interrupted wait and returns the last conflict in its place, which is nil
+	// when no conflict came first. client-go refuses a request on a cancelled
+	// context before sending it, so a reconcile still running at manager
+	// shutdown would otherwise report a write that never reached the API server,
+	// and its caller would emit an Event for a transition that was never stored.
+	var attemptErr error
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		attemptErr = func() error {
+			if !mutate(obj) {
+				return nil
+			}
 
-		err := c.Status().Update(ctx, obj)
-		if err == nil {
-			return nil
-		}
-		if !apierrors.IsConflict(err) {
+			err := c.Status().Update(ctx, obj)
+			if err == nil {
+				return nil
+			}
+			if !apierrors.IsConflict(err) {
+				return err
+			}
+
+			// Refresh in place so the next attempt re-applies mutate to current
+			// state. A failure here is terminal for this reconcile: returning a
+			// non-conflict error stops RetryOnConflict rather than spinning on a
+			// stale object.
+			if getErr := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); getErr != nil {
+				return getErr
+			}
 			return err
-		}
-
-		// Refresh in place so the next attempt re-applies mutate to current state.
-		// A failure here is terminal for this reconcile: returning a non-conflict
-		// error stops RetryOnConflict rather than spinning on a stale object.
-		if getErr := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); getErr != nil {
-			return getErr
-		}
-		return err
+		}()
+		return attemptErr
 	})
+	if attemptErr != nil {
+		return attemptErr
+	}
+	return err
 }
 
 // applyExclusiveConditions sets conditionType to True and every other type in

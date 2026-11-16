@@ -229,7 +229,8 @@ type WorkloadRunSpec struct {
 	// If not specified, derived from GPU architecture and platform via the
 	// catalog's gpu-defaults.yaml.
 	// Setting it to 0 is an opt-out, not a request for zero devices: the Azure
-	// override stops requesting nvidia.com/mlnxnics altogether rather than
+	// and TogetherAI overrides stop requesting their NIC resource
+	// (nvidia.com/mlnxnics, or nicResourceName when set) altogether rather than
 	// emitting a count of zero.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
@@ -244,7 +245,11 @@ type WorkloadRunSpec struct {
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
-	// event explaining what was found. Offline nvcrectl render (without
+	// event explaining what was found. On Azure and TogetherAI, whose platform
+	// overrides request a NIC resource, the field replaces the default
+	// nvidia.com/mlnxnics name (for example rdma/hca_shared_devices_a from
+	// the Network Operator's shared RDMA device plugin); the name is not
+	// auto-detected there. Offline nvcrectl render (without
 	// --dry-run) has no cluster to inspect and uses only this field. The
 	// value must be a fully qualified extended resource name: a
 	// DNS-subdomain domain, a slash, and a name segment of at most 63
