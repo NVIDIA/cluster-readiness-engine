@@ -15,6 +15,21 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- AWS GB300 renders for EFA as well as RoCE, so a stock-EKS GB300 cluster, which has
+  the EFA device plugin and no RoCE DRA driver, gets pods that schedule. Certification
+  and WorkloadRun take `spec.fabric` (`efa`, `ib`, `roce` or `tcpxo`). When it is set,
+  the value is validated against the target nodes, and a mismatch fails the run with
+  `FabricValidationFailed` instead of switching to another fabric. When it is unset on
+  AWS GB300, the controller detects EFA from `vpc.amazonaws.com/efa` allocatable and
+  RoCE from the `dra.networking.k8s.aws` DRA driver's ResourceSlices; conflicting or
+  partial signals keep the RoCE default with a `FabricDetection` event. Every other
+  target renders as before. Overrides can match on `when.fabric`, the resolved fabric
+  is recorded as `resolvedFabric` in status, and `nvcrectl certification render` and
+  `nvcrectl workloadrun render` take `--fabric`
+  ([ADR-110](docs/designs/110-fabric-selection.md), #576).
+
 ### Fixed
 
 - A Certification is no longer marked `Failed` while its Workflow keeps
@@ -22,6 +37,22 @@ followed them.
   status write. A Workflow the Certification already controls is now adopted
   before node discovery, the capacity checks and OCI RDMA network detection
   run again, so a cluster change in between can no longer fail it (#566).
+- `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
+  Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
+  advertises its RDMA NICs under another name, such as AKS with the NVIDIA Network
+  Operator's shared RDMA device plugin (`rdma/hca_shared_devices_a`), no longer leaves
+  worker pods Pending on `nvidia.com/mlnxnics`. Without the field, these platforms
+  request `nvidia.com/mlnxnics` as before. OCI is unchanged
+  ([#583](https://github.com/NVIDIA/cluster-readiness-engine/issues/583)).
+
+## [0.11.0] - 2026-11-09
+
+### Changed
+
+- The controller image's runtime base moves to `nvcr.io/nvidia/distroless/static:v4.2.0`
+  (from v4.1.6) and its builder to the current `golang:1.27.3-trixie` digest (#592).
+  `nvcrectl` builds against `github.com/spf13/pflag` v1.1.0, up from v1.0.10 (#593).
+  This release carries no other change to the controller, the CRDs or the catalog.
 
 ## [0.10.0] - 2026-11-02
 
@@ -976,6 +1007,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.11.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.11.0
 [0.10.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.10.0
 [0.9.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.9.0
 [0.8.2]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.2

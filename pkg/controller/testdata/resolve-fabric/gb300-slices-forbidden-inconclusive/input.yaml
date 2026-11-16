@@ -1,0 +1,14 @@
+# A refused list hides the RoCE signal: EFA everywhere cannot be told apart
+# from both fabrics present, so detection keeps the default and says why.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+listError: forbidden

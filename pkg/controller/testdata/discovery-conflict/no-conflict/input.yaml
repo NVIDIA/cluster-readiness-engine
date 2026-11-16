@@ -1,0 +1,4 @@
+# Control case: no conflict injected. The persisted state must be identical to
+# the one-conflict case; only the write count differs.
+conflicts: 0
+reconciles: 3

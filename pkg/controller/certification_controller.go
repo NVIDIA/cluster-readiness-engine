@@ -206,6 +206,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	// means an earlier pass got past every check below and its status write
 	// was lost (issue #566). Adopt it before running them again.
 	workflowName, err := r.adoptExistingWorkflow(ctx, certification, firstCategory)
+	var resolvedFabric nvcrev1alpha1.Fabric
 	if err == nil && workflowName == "" {
 		// Detect the OCI RDMA network for every category before the first
 		// Workflow exists (ADR-103). Each category's creation detects again,
@@ -225,7 +226,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
 		}
-		workflowName, err = r.createWorkflowForCategory(ctx, certification, firstCategory)
+		workflowName, resolvedFabric, err = r.createWorkflowForCategory(ctx, certification, firstCategory)
 	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
@@ -246,6 +247,16 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 				// surviving error is a real write failure. This branch is
 				// terminal (no requeue): return the error so the Failed status
 				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+		// An explicit spec.fabric the target nodes cannot carry (ADR-110):
+		// terminal, since the spec is immutable, and no Workflow was created.
+		// The Failed transition emits the Warning event with the same message.
+		if fvErr, ok := errors.AsType[*fabricValidationError](err); ok {
+			if statusErr := r.setCertificationFailed(ctx, certification, ReasonFabricValidationFailed, fvErr.Message); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after fabric validation failure")
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -296,6 +307,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			Name:      workflowName,
 			Namespace: c.Namespace,
 		}
+		statuses[0].ResolvedFabric = resolvedFabric
 		if apiequality.Semantic.DeepEqual(c.Status.CategoryStatuses, statuses) {
 			return false
 		}
@@ -347,8 +359,9 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 	// As for the first category: adopt a Workflow an earlier pass created
 	// before its checks run again (issue #566).
 	workflowName, err := r.adoptExistingWorkflow(ctx, certification, category)
+	var resolvedFabric nvcrev1alpha1.Fabric
 	if err == nil && workflowName == "" {
-		workflowName, err = r.createWorkflowForCategory(ctx, certification, category)
+		workflowName, resolvedFabric, err = r.createWorkflowForCategory(ctx, certification, category)
 	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
@@ -369,6 +382,16 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				// surviving error is a real write failure. This branch is
 				// terminal (no requeue): return the error so the Failed status
 				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+		// An explicit spec.fabric the target nodes cannot carry (ADR-110):
+		// terminal, since the spec is immutable, and no Workflow was created.
+		// The Failed transition emits the Warning event with the same message.
+		if fvErr, ok := errors.AsType[*fabricValidationError](err); ok {
+			if statusErr := r.setCertificationFailed(ctx, certification, ReasonFabricValidationFailed, fvErr.Message); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after fabric validation failure")
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -406,6 +429,7 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 			Name:      workflowName,
 			Namespace: certification.Namespace,
 		}
+		cs.ResolvedFabric = resolvedFabric
 	})
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowCreated,
 		fmt.Sprintf("Created Workflow for category %s/%s (%d of %d)", category.Domain, category.Variant,
@@ -568,12 +592,21 @@ func (r *CertificationReconciler) adoptExistingWorkflow(ctx context.Context, cer
 // createWorkflowForCategory creates a single Workflow for the given category.
 // It performs full resolution: discovers nodes, detects platform/GPU, resolves
 // options, renders templates, applies overlays, and prunes applied overlays.
-func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) (string, error) {
+//
+// resolvedFabric is the fabric to record on the category status, or "" when
+// the fabric did not choose the render (ADR-110).
+func (r *CertificationReconciler) createWorkflowForCategory(
+	ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory,
+) (string, nvcrev1alpha1.Fabric, error) {
 	log := logf.FromContext(ctx)
 
-	b, err := r.prepareCategoryBuild(ctx, certification, category, true)
+	b, err := r.prepareCategoryBuild(ctx, certification, category, false)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	var resolvedFabric nvcrev1alpha1.Fabric
+	if b.fabric.Surface {
+		resolvedFabric = nvcrev1alpha1.Fabric(b.fabric.Fabric)
 	}
 	opts, gkeNetworks, tcpxoPlugin, archFallbackMessage := b.opts, b.gkeNetworks, b.tcpxoPlugin, b.archFallbackMessage
 
@@ -586,7 +619,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	workflowSpec, applied, ociNetwork, err := r.buildWorkflowSpecDetectingOCINetwork(
 		ctx, certification, category, b.entry, b.config, b.detectedPlatform, b.gpuArch, b.nodes)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Every post-resolve transform runs in one named stage, in the order
@@ -602,7 +635,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		Env:                opts.Env,
 		NetworkAttachments: opts.NetworkAttachments,
 	}); err != nil {
-		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
+		return "", "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
 
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
@@ -635,7 +668,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 
 	if err := controllerutil.SetControllerReference(certification, workflow, r.Scheme); err != nil {
-		return "", fmt.Errorf("failed to set owner reference on Workflow: %w", err)
+		return "", "", fmt.Errorf("failed to set owner reference on Workflow: %w", err)
 	}
 
 	log.Info("Creating Workflow", "name", workflowName, "domain", category.Domain, "variant", category.Variant)
@@ -656,7 +689,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 				// the holder, and a NotFound here means the holder was deleted
 				// between the Create and this read, which leaves the name free
 				// for the next attempt. Neither should burn the whole run.
-				return "", &retryableCreateError{
+				return "", "", &retryableCreateError{
 					err: fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr),
 				}
 			}
@@ -665,12 +698,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 				// a same-named Certification that was just deleted) releases the
 				// name shortly: retry with backoff instead of failing terminally.
 				if !existing.DeletionTimestamp.IsZero() {
-					return "", &retryableCreateError{
+					return "", "", &retryableCreateError{
 						err: fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
 							workflowName, certification.Namespace),
 					}
 				}
-				return "", &nameCollisionError{
+				return "", "", &nameCollisionError{
 					Reason: ReasonWorkflowNameCollision,
 					Message: fmt.Sprintf("Workflow %q already exists in namespace %q and is not controlled by Certification %q; refusing to adopt it",
 						workflowName, certification.Namespace, certification.Name),
@@ -690,7 +723,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			if statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow creation failure")
 			}
-			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
+			return "", "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
 	} else {
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
@@ -704,9 +737,13 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			r.warnf(certification, ReasonGPUArchitectureDefaults,
 				"%s/%s: %s", category.Domain, category.Variant, archFallbackMessage)
 		}
+		if b.fabric.Notice != "" {
+			r.normalf(certification, ReasonFabricDetection,
+				"%s/%s: %s", category.Domain, category.Variant, b.fabric.Notice)
+		}
 	}
 
-	return workflowName, nil
+	return workflowName, resolvedFabric, nil
 }
 
 // categoryBuild is what createWorkflowForCategory resolves for a category
@@ -722,16 +759,20 @@ type categoryBuild struct {
 	archFallbackMessage string
 	gkeNetworks         gkeNetworkDetection
 	tcpxoPlugin         tcpxoPluginDetection
+	fabric              FabricResolution
 }
 
 // prepareCategoryBuild is steps 1 and 2 of createWorkflowForCategory: it
 // discovers the target nodes, detects the platform and GPU architecture,
 // resolves the options and nodesPerJob, and assembles the BuildConfig. The
-// up-front OCI RDMA network check calls it with emitEvents false, so the NIC
-// detection event comes only from the category's own Workflow creation.
+// up-front OCI RDMA network check calls it with preflight true. A preflight
+// build only needs the platform and the resolved first-pass spec: it emits no
+// NIC detection event, which comes only from the category's own Workflow
+// creation, and it resolves the fabric without reading the cluster
+// (ADR-110), since it goes on only for OCI, where nothing is detected.
 func (r *CertificationReconciler) prepareCategoryBuild(
 	ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory,
-	emitEvents bool,
+	preflight bool,
 ) (categoryBuild, error) {
 	entry := catalog.Lookup(category.Domain, category.Variant)
 	if entry == nil {
@@ -809,7 +850,7 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 		nicDetected := resolveNICResourceName(
 			opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
 		nicResourceName = nicDetected.Name
-		if emitEvents && nicDetected.Ran && nicResourceName == "" {
+		if !preflight && nicDetected.Ran && nicResourceName == "" {
 			r.normalf(certification, ReasonNICResourceDetection,
 				"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
 		}
@@ -817,6 +858,29 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
 		return categoryBuild{}, err
+	}
+
+	// The fabric is resolved on the nodes the job can run on (ADR-110), the
+	// capable set the GCP H100 detections below use too: a node the capacity
+	// filter drops never runs the job, so it must neither fail an explicit
+	// spec.fabric nor make detection inconclusive. An explicit value the
+	// nodes cannot carry fails the Certification; otherwise AWS GB300 is
+	// detected, and every other target takes its platform default. A
+	// preflight build passes no nodes, so it reads nothing for the fabric;
+	// the category's own build resolves against the cluster.
+	nodesForFabric := capableNodes
+	if preflight {
+		nodesForFabric = nil
+	}
+	fabric, err := resolveFabric(
+		ctx, r.workflowReader(), certification.Spec.Fabric, detectedPlatform, gpuArch, nodesForFabric)
+	if err != nil {
+		if _, ok := errors.AsType[*fabricValidationError](err); ok {
+			return categoryBuild{}, err
+		}
+		return categoryBuild{}, &retryableCreateError{
+			err: fmt.Errorf("%s/%s: fabric detection: %w", category.Domain, category.Variant, err),
+		}
 	}
 
 	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
@@ -854,6 +918,8 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 		GpusPerNode:                gpusPerNode,
 		MlnxPerNode:                mlnxPerNode,
 		NicResourceName:            nicResourceName,
+		Fabric:                     fabric.Fabric,
+		EFAPerNode:                 fabric.EFAPerNode,
 		RDMADeviceAccess:           opts.RDMADeviceAccess,
 		NetworkAttachments:         opts.NetworkAttachments,
 		GKETCPXONetworks:           gkeNetworks.Names,
@@ -886,6 +952,7 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 	return categoryBuild{
 		entry: entry, config: buildConfig, opts: opts, detectedPlatform: detectedPlatform, gpuArch: gpuArch,
 		nodes: nodes, archFallbackMessage: archFallbackMessage, gkeNetworks: gkeNetworks, tcpxoPlugin: tcpxoPlugin,
+		fabric: fabric,
 	}, nil
 }
 
@@ -906,7 +973,7 @@ func buildResolvedWorkflowSpec(
 		DetectedPlatform:        detectedPlatform,
 		DetectedGPUArchitecture: gpuArch,
 	}
-	octx := BuildOverrideContext(&spec, orch, nodes)
+	octx := BuildOverrideContext(&spec, orch, nodes, config.Fabric)
 	applied, err := ApplyOverridesWithTracking(&spec, octx)
 	if err != nil {
 		return spec, nil, fmt.Errorf("applying overrides for %s/%s: %w", category.Domain, category.Variant, err)
@@ -1003,7 +1070,7 @@ func (r *CertificationReconciler) preflightOCISecondaryNetwork(
 	ctx context.Context, certification *nvcrev1alpha1.Certification,
 ) error {
 	for _, category := range certification.Spec.Categories {
-		b, err := r.prepareCategoryBuild(ctx, certification, category, false)
+		b, err := r.prepareCategoryBuild(ctx, certification, category, true)
 		if err != nil {
 			continue
 		}

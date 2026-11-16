@@ -1,11 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# The Certification reports WorkflowRunning once its Workflow exists, before
+# that Workflow reaches JobRunning. Waiting on the Certification alone can
+# collect the Workflow still at JobCreated.
+steps:
+  - waitFor:
+      kind: Workflow
+      name: az-a100-nc-communication-18457
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
 waitFor:
   kind: Certification
   name: az-a100-nc
   namespace: default
   condition: InProgress
+  reason: WorkflowRunning
 collect:
   - kind: Certification
     name: az-a100-nc

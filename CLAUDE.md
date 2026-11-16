@@ -259,22 +259,23 @@ spec:
 
 ### What to Verify in Output
 
-1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
+1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct. On AWS GB300, `detected-fabric` records whether the RoCE or the EFA arm rendered (ADR-110): `roce` by default, `efa` with `--fabric efa`. Without `--platform`, offline render reports `detected-platform: onprem` and applies the on-prem overrides (`forge` if the `nodeSelector` carries a Forge marker such as `nke.nvidia.com/site-name`), so pass `--platform` for a cloud target.
 
-2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should appear for GB200, H100 and RTX PRO 6000 on AWS (EFA interconnect), NOT for GB300 (RoCE).
+2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should appear for GB200, H100 and RTX PRO 6000 on AWS (EFA interconnect), NOT for GB300 on its default RoCE fabric. GB300 rendered with `--fabric efa` (stock EKS) sets it too.
 
    `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
 3. **Resources by architecture**:
    - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`
-   - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
+   - GB300 (RoCE, the default): `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
+   - GB300 with `--fabric efa`: `vpc.amazonaws.com/efa` at the allocatable count (1 offline), NO hugepages, NO RoCE claim
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
    - RTX PRO 6000: eight GPUs per worker, `vpc.amazonaws.com/efa: 4`, NO hugepages, NO ComputeDomain
 
 4. **Spot-check with grep**. Use only markers that really are EFA specific:
 
    ```bash
-   # Should return NOTHING for GB300 (RoCE)
+   # Should return NOTHING for GB300 (RoCE, the default)
    ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
      | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
 
@@ -284,16 +285,22 @@ spec:
 
    # And GB300 should show RoCE instead
    ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
+
+   # GB300 on an EFA fabric shows the EFA markers and no RoCE
+   ./bin/nvcrectl certification render --platform aws --fabric efa /tmp/cert-gb300.yaml 2>&1 \
+     | grep -E "FI_EFA|vpc.amazonaws.com/efa|roce"
    ```
 
    Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:
 
-   | Pattern | gb200 | gb300 | rtxpro6000 |
-   |---|---|---|---|
-   | `FI_EFA` | 2 | 0 | 2 |
-   | `hugepages` | 2 | 0 | 0 |
-   | `vpc.amazonaws.com/efa` | 2 | 0 | 2 |
-   | `roce` | 0 | 6 | 0 |
+   | Pattern | gb200 | gb300 | gb300 `--fabric efa` | rtxpro6000 |
+   |---|---|---|---|---|
+   | `FI_EFA` | 2 | 0 | 2 | 2 |
+   | `hugepages` | 2 | 0 | 0 | 0 |
+   | `vpc.amazonaws.com/efa` | 2 | 0 | 2 | 2 |
+   | `roce` | 0 | 8 | 0 | 0 |
+
+   The gb300 `roce` count includes the two render annotations, `fabric=roce` in `applied-overrides` and `detected-fabric: roce`.
 
 ### Override Semantics (Critical)
 

@@ -6,12 +6,22 @@ generateNodes:
   providerID: "aws://us-east-1a/i-0000000000000001"
   labels:
     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+# The Certification moves from WorkflowCreated to WorkflowRunning on a
+# reconcile of its own, after the Workflow exists. Waiting on the Workflow
+# alone can collect the Certification before that reconcile runs.
+steps:
+  - waitFor:
+      kind: Workflow
+      name: aws-h1-training-nemotron5-56b
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
 waitFor:
-  kind: Workflow
-  name: aws-h1-training-nemotron5-56b
+  kind: Certification
+  name: aws-h1
   namespace: default
   condition: InProgress
-  reason: JobRunning
+  reason: WorkflowRunning
 collect:
   - kind: Certification
     name: aws-h1

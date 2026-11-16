@@ -1,0 +1,5 @@
+# Offline render reads no nodes: only the renderable check runs, and the
+# count is the single-EFA default.
+field: efa
+platform: aws
+gpuArchitecture: gb300

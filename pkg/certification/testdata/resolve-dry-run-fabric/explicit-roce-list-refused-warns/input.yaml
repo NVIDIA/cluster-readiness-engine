@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The user's kubeconfig cannot list ResourceSlices: the explicit roce is kept
+# with a warning, since the controller checks it with its own grant.
+fabric: roce
+nodes:
+  - name: gb300-a
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4"}
+listRefused: true

@@ -63,6 +63,10 @@ type sshdInvariantsInput struct {
 	// walked too; without both they render no containers at all.
 	NicResourceName string `json:"nicResourceName,omitempty"`
 	MlnxPerNode     int32  `json:"mlnxPerNode,omitempty"`
+	// Fabric is passed to BuildOverrides. The AWS GB300 EFA blocks render
+	// only when it is "efa", and the RoCE blocks only when it is not, so no
+	// single value walks both; the overrides cases are split by fabric.
+	Fabric string `json:"fabric,omitempty"`
 }
 
 // probeProjection is the golden-file view of a readinessProbe: which handlers
@@ -227,6 +231,7 @@ func renderOverridesCase(t testing.TB, in sshdInvariantsInput) []foundContainer 
 		NodesPerJob:   in.NodesPerJob,
 		GpusPerNode:   in.GpusPerNode,
 		FrameworkType: in.FrameworkType,
+		Fabric:        in.Fabric,
 	})
 	require.NotEmpty(t, overrides, "BuildOverrides rendered nothing")
 	var found []foundContainer

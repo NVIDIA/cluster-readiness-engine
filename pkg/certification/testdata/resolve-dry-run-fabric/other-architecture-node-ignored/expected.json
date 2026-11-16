@@ -1,0 +1,7 @@
+{
+  "fabric": "efa",
+  "source": "detected",
+  "efaPerNode": 2,
+  "surface": true,
+  "stderr": "Auto-detected fabric \"efa\" on every target node\n"
+}

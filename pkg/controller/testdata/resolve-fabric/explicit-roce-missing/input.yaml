@@ -1,0 +1,29 @@
+field: roce
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      vpc.amazonaws.com/efa: "1"
+resourceSlices:
+  - nodeName: gb300-a
+    driver: compute-domain.nvidia.com
+    pool: gb300-a
+    generation: 1
+    devices:
+      - name: channel-0
+        attributes:
+          type: channel
+  - nodeName: gb300-b
+    driver: compute-domain.nvidia.com
+    pool: gb300-b
+    generation: 1
+    devices:
+      - name: channel-0
+        attributes:
+          type: channel

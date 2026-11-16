@@ -1,0 +1,9 @@
+fabric: efa
+overrides:
+  - when:
+      platform:
+        equals: aws
+    jobTemplate:
+      metadata:
+        labels:
+          marker: echo-any

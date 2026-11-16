@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nicResourceName on deps/azure-ib-with-topo-a100-comm.yaml, the
+# a100-plus-communication corner of the four Azure NIC fragments.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-a100-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/hca_shared_devices_a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

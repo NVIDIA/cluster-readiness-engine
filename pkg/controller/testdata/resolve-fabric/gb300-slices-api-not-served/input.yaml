@@ -1,0 +1,12 @@
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+listError: notFound

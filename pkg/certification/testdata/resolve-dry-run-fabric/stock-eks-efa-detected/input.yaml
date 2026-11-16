@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two stock-EKS GB300 nodes: EFA detected, and the count read from allocatable.
+nodes:
+  - name: gb300-a
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "2"}
+  - name: gb300-b
+    product: NVIDIA-GB300
+    allocatable: {nvidia.com/gpu: "4", vpc.amazonaws.com/efa: "2"}

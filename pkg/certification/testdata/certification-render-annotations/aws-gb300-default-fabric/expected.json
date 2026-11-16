@@ -1,0 +1,42 @@
+[
+  {
+    "workflow": "gb300-cert-communication-6c147",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-fabric": "roce",
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "gb300",
+      "nvcrectl.nvidia.com/detected-platform": "aws"
+    },
+    "appliedOverrides": [
+      {
+        "when": "gpuArchitecture=in [gb200,gb300]",
+        "patches": "jobTemplate, 2 dependencies"
+      },
+      {
+        "when": "gpuArchitecture=gb300, platform=aws, fabric=roce",
+        "patches": "jobTemplate, 3 dependencies"
+      }
+    ]
+  },
+  {
+    "workflow": "gb300-cert-training-nemot-92cc9",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-fabric": "roce",
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "gb300",
+      "nvcrectl.nvidia.com/detected-platform": "aws"
+    },
+    "appliedOverrides": [
+      {
+        "when": "gpuArchitecture=gb300, platform=aws, fabric=roce",
+        "patches": "jobTemplate"
+      },
+      {
+        "when": "gpuArchitecture=in [gb200,gb300]",
+        "patches": "2 dependencies, orchestration"
+      },
+      {
+        "when": "gpuArchitecture=gb300, platform=aws, fabric=roce",
+        "patches": "2 dependencies"
+      }
+    ]
+  }
+]

@@ -1,0 +1,14 @@
+# AWS GB300 renders roce or efa; ib would match no fabric block and render a
+# GB300 workload with no NIC at all.
+field: ib
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"
+      hugepages-2Mi: "0"

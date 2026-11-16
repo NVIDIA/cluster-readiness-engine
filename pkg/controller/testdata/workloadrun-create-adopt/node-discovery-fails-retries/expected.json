@@ -1,0 +1,41 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    }
+  ],
+  "finalWorkflowRef": "\u003cnil\u003e",
+  "boundToOwnWorkflow": false,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowBuildRetrying",
+      "message": "Building the Workflow failed and will be retried: discovering target nodes: failed to list nodes: simulated node list failure"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    }
+  ],
+  "events": [
+    "Warning WorkflowBuildRetrying Building the Workflow failed and will be retried: discovering target nodes: failed to list nodes: simulated node list failure",
+    "Warning WorkflowBuildRetrying Building the Workflow failed and will be retried: discovering target nodes: failed to list nodes: simulated node list failure"
+  ]
+}

@@ -1,0 +1,6 @@
+# ib has no cluster signal and is what Azure renders: accepted as given.
+field: ib
+platform: azure
+gpuArchitecture: h100
+nodes:
+  - name: azure-a

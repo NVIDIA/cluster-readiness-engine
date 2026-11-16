@@ -22,6 +22,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -136,7 +137,7 @@ func TestCertificationRenderOCINetwork(t *testing.T) {
 					})
 				}
 			}
-			workflows, renderErr = renderDryRun(context.Background(), cert, nodes, cfg.Platform, gpuArch, nil, "",
+			workflows, renderErr = renderDryRun(context.Background(), cert, nodes, cfg.Platform, gpuArch, nil, "", controller.FabricResolution{},
 				reader, cfg.Namespace, &stderr)
 		} else {
 			workflows, renderErr = renderOffline(cert, cfg.Platform, gpuArch, &stderr)

@@ -1,0 +1,8 @@
+{
+  "error": "",
+  "detectedGPUArchitecture": "gb300",
+  "detectedFabric": "roce",
+  "efaDevicesRequested": false,
+  "roceClaimRequested": true,
+  "efaTransportForwarded": false
+}

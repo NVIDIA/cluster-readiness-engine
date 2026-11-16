@@ -260,8 +260,9 @@ dependencies:
 {{ includeTemplate "configs/train.sh" . | indent 6 }}
 overrides:
 # --- AWS + GB300 (NCCL plugin cleanup) ---
-# AWS GB300 uses a RoCE fabric and has no EFA devices, so the AWS-OFI-NCCL
-# plugin shipped in the pytorch image finds no eligible provider and aborts.
+# AWS GB300 on a RoCE fabric has no EFA devices, so the AWS-OFI-NCCL plugin
+# shipped in the pytorch image finds no eligible provider and aborts. Matched on
+# fabric roce (ADR-110): on an EFA fabric the plugin is the transport.
 # Scoped to gb300 on purpose: H100 and GB200 on AWS are EFA fabrics, and EFA is
 # reachable only through libfabric via this plugin (NCCL's built-in net_ib does
 # not drive EFA). Stripping it there silently drops NCCL to TCP over eth0.
@@ -270,6 +271,8 @@ overrides:
       equals: aws
     gpuArchitecture:
       equals: gb300
+    fabric:
+      equals: roce
   jobTemplate:
     spec:
       workload:
@@ -476,6 +479,8 @@ overrides:
       equals: aws
     gpuArchitecture:
       equals: gb300
+    fabric:
+      equals: roce
   dependencies:
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
 # --- OCI + GB200 (RoCE) ---
@@ -657,3 +662,26 @@ overrides:
 # Renders nothing unless the option is set. Last in the list so the privileged
 # flag and the /dev/infiniband mount survive every platform patch above.
 {{ lib "overrides/hostpath-rdma.yaml" . }}
+# --- AWS + GB300 (EFA) ---
+# Kept last in the list so that adding it shifted no existing override's index
+# in the applied-overrides record. It still follows the GB200/GB300 base block.
+# Matched on fabric efa (ADR-110): requests the EFA devices in place of the RoCE
+# claim. The pytorch image's aws-ofi-nccl plugin is the transport here, so the
+# plugin strip above is RoCE only. NCCL_MNNVL_ENABLE, NVLS and CUMEM already come
+# from the GB200/GB300 runtime's base env; only the EFA transport is added.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+    fabric:
+      equals: efa
+  dependencies:
+{{ lib "deps/aws-gb300-efa-resources.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}

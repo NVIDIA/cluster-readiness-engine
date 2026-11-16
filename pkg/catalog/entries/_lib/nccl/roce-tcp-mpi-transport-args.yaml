@@ -5,7 +5,7 @@
 # On RoCE and AWS RTX EFA clusters NCCL drives RDMA directly; MPI only needs TCP for
 # coordination, and letting OpenMPI select UCX/verbs over the mlx5 devices
 # breaks GID handling (see mpi-disable-ucc-hcoll-args.yaml).
-# Shared by aws-gb300-roce-mpirun-args.yaml, oci-roce-mpirun-args.yaml,
+# Shared by aws-gb300-mpirun-args.yaml, oci-roce-mpirun-args.yaml,
 # AWS RTX EFA catalog entries, and the WorkloadRun platform overrides
 # (pkg/platform/overrides/workloadrun.yaml).
 - --mca

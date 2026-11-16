@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -31,6 +32,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 		var cfg struct {
 			Platform string `yaml:"platform"`
 			GPUArch  string `yaml:"gpuArch"`
+			Fabric   string `yaml:"fabric"`
 			DryRun   bool   `yaml:"dryRun"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
@@ -48,14 +50,25 @@ func TestRenderPlatformFlag(t *testing.T) {
 
 		emitted, renderErr := captureStdout(t, func() error {
 			if cfg.DryRun {
-				return runWorkloadRunRenderDryRun(runPath, "yaml", cfg.Platform, cfg.GPUArch, kubeconfig.NewConfigFlags(true))
+				return runWorkloadRunRenderDryRun(runPath, "yaml", cfg.Platform, cfg.GPUArch, cfg.Fabric, kubeconfig.NewConfigFlags(true))
 			}
-			return runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
+			return runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch, cfg.Fabric)
 		})
 
+		// The fabric fields are recorded only for cases that pass --fabric,
+		// so every other case's golden is unaffected (ADR-110).
 		type result struct {
 			Error                   string `json:"error"`
 			DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
+			DetectedFabric          string `json:"detectedFabric,omitempty"`
+			EFADevicesRequested     *bool  `json:"efaDevicesRequested,omitempty"`
+			RoCEClaimRequested      *bool  `json:"roceClaimRequested,omitempty"`
+			EFATransportForwarded   *bool  `json:"efaTransportForwarded,omitempty"`
+			// Recorded only without --platform, where the user's overrides
+			// reach the output still conditional: the when.fabric matchers
+			// left in it, and which of the user's fabric arms survived.
+			FabricMatchersLeft *int     `json:"fabricMatchersLeft,omitempty"`
+			UserFabricArmsKept []string `json:"userFabricArmsKept,omitempty"`
 		}
 		var r result
 		if renderErr != nil {
@@ -66,6 +79,27 @@ func TestRenderPlatformFlag(t *testing.T) {
 				return err
 			}
 			r.DetectedGPUArchitecture = workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"]
+			if cfg.Fabric != "" {
+				r.DetectedFabric = workflow.Annotations["nvcrectl.nvidia.com/detected-fabric"]
+				r.EFADevicesRequested = new(strings.Contains(emitted, "vpc.amazonaws.com/efa"))
+				r.RoCEClaimRequested = new(strings.Contains(emitted, "roce.networking.k8s.aws"))
+				r.EFATransportForwarded = new(strings.Contains(emitted, "FI_PROVIDER=efa"))
+			}
+			if cfg.Fabric != "" && cfg.Platform == "" {
+				left := 0
+				for _, o := range workflow.Spec.Overrides {
+					if o.When.Fabric != nil {
+						left++
+					}
+				}
+				r.FabricMatchersLeft = &left
+				r.UserFabricArmsKept = []string{}
+				for _, arm := range []string{"user-efa-arm", "user-roce-arm"} {
+					if strings.Contains(emitted, arm) {
+						r.UserFabricArmsKept = append(r.UserFabricArmsKept, arm)
+					}
+				}
+			}
 		}
 
 		data, err := json.MarshalIndent(r, "", "  ")

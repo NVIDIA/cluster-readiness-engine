@@ -1,0 +1,9 @@
+# Node discovery fails twice and then succeeds (ADR-110). The first two passes
+# requeue with InProgress/WorkflowBuildRetrying; the third creates the Workflow,
+# replaces the reason with WorkflowCreated, and still emits the Normal
+# WorkflowCreated transition event, since a run that was only retrying its
+# build had not started.
+holder: none
+statusWriteFailures: 0
+nodeListFailures: 2
+reconciles: 3

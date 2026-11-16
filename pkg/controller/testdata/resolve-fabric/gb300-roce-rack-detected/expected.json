@@ -1,0 +1,6 @@
+{
+  "fabric": "roce",
+  "source": "detected",
+  "efaPerNode": 1,
+  "surface": true
+}

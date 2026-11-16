@@ -43,8 +43,9 @@ type BuildConfig struct {
 	GpusPerNode int32
 
 	// MlnxPerNode is the Mellanox NIC count per node, used by IB/RoCE templates
-	// (Azure, OCI, TogetherAI). 0 means the templates omit nvidia.com/mlnxnics
-	// and, on OCI, the matching k8s.v1.cni.cncf.io/networks annotation: each
+	// (Azure, Forge, OCI, TogetherAI). 0 means the templates omit the NIC
+	// request (nvidia.com/mlnxnics, or NicResourceName where it applies) and, on
+	// OCI, the matching k8s.v1.cni.cncf.io/networks annotation: each
 	// such fragment wraps the request in {{ if gt (int .MlnxPerNode) 0 }}.
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
 	// When it is above 0, OCISecondaryNetwork must be set.
@@ -52,9 +53,22 @@ type BuildConfig struct {
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// requested by the on-prem GB200/GB300 and HGX B200/B300 templates (e.g., "rdma/ib"). Empty
-	// means the templates omit the NIC resource block. The per-container count
-	// comes from MlnxPerNode.
+	// means the templates omit the NIC resource block. The Azure, Forge and
+	// TogetherAI templates request a NIC resource when MlnxPerNode is above 0,
+	// using this name when it is set, else nvidia.com/mlnxnics. The
+	// per-container count comes from MlnxPerNode.
 	NicResourceName string
+
+	// Fabric is the resolved network fabric (efa, ib, roce, tcpxo, or "" where
+	// NVCRE renders no RDMA fabric of its own), which when.fabric overrides
+	// match against (ADR-110). The controller and the CLI resolve it; Build
+	// itself only passes it to the templates.
+	Fabric string
+
+	// EFAPerNode is the vpc.amazonaws.com/efa device count each worker
+	// requests on an EFA fabric whose count varies by layout (AWS GB300), read
+	// from node allocatable. 0 renders the default of 1.
+	EFAPerNode int32
 
 	// RDMADeviceAccess selects how workload containers reach the host's RDMA
 	// devices: "hostPath" mounts /dev/infiniband and runs the workload

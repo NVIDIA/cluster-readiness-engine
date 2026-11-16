@@ -56,7 +56,7 @@ func TestRenderOrchestrationOptions(t *testing.T) {
 			},
 		}
 
-		workflows, err := renderCertification(cert, "aws", "", nil, "", catalog.DefaultOCISecondaryNetwork)
+		workflows, err := renderCertification(cert, "aws", "", nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		if err != nil {
 			return err
 		}

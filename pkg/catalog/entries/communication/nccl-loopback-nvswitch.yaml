@@ -315,6 +315,8 @@ overrides:
       equals: aws
     gpuArchitecture:
       equals: gb300
+    fabric:
+      equals: roce
   dependencies:
 {{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -471,3 +473,54 @@ overrides:
 # Renders nothing unless the option is set. Last in the list so the privileged
 # flag and the /dev/infiniband mount survive every platform patch above.
 {{ lib "overrides/hostpath-rdma.yaml" . }}
+# --- AWS + GB300 (EFA) ---
+# Kept last in the list so that adding it shifted no existing override's index
+# in the applied-overrides record. It still follows the GB200/GB300 base block.
+# Matched on fabric efa (ADR-110): requests the EFA devices instead of the RoCE
+# claim and keeps the image's aws-ofi-nccl plugin that the RoCE arm strips. The
+# EFA transport env is appended to the base env the same way NCCL_MAX_BYTES is.
+# jobTemplate sets command/args only (atomic array replacement is fine for these).
+# jobTemplatePatch appends NCCL_MAX_BYTES to the env array established by the
+# GB200/GB300 base override so that NCCL_NVLS_ENABLE and NCCL_CUMEM_ENABLE
+# set by that override are preserved.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+    fabric:
+      equals: efa
+  dependencies:
+{{ lib "deps/aws-gb300-efa-resources.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            command:
+            - sh
+            - -c
+            args:
+            - |
+              /usr/local/bin/all_reduce_perf_mpi -b 8 -e "$NCCL_MAX_BYTES" -f 2 -g {{ .GpusPerNode }} -n {{ .NumIterations }} -N {{ .NumCycles }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_MAX_BYTES
+      value: {{ .MaxBytes }}
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: FI_PROVIDER
+      value: efa
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: FI_EFA_USE_DEVICE_RDMA
+      value: "1"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: FI_EFA_FORK_SAFE
+      value: "1"

@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A hand-written Workflow that matches on when.fabric (ADR-110). No parent
+# settled the matchers, so the Workflow controller resolves the fabric itself:
+# both nodes advertise vpc.amazonaws.com/efa and there is no RoCE DRA driver,
+# so it detects efa.
+#
+# The Job is created on a reconcile after discovery, from overrides that are
+# applied again. The fabric has to be read back from
+# status.orchestration.resolvedFabric there, or the Job is built without the
+# efa arm while the efa ConfigMap already exists.
+apiVersion: v1
+kind: Node
+metadata:
+  name: wf-fabric-efa-1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    kubernetes.io/hostname: wf-fabric-efa-1
+    fabric-case: workflow-fabric-override-aws-gb300-efa
+spec:
+  providerID: "aws://us-east-1a/i-00000000000fab01"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "1"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: wf-fabric-efa-2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300-NVL72
+    kubernetes.io/hostname: wf-fabric-efa-2
+    fabric-case: workflow-fabric-override-aws-gb300-efa
+spec:
+  providerID: "aws://us-east-1a/i-00000000000fab02"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "1"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-fabric-efa
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: base-image:latest
+            command:
+              - python
+              - train.py
+            env:
+              - name: NCCL_DEBUG
+                value: "INFO"
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        fabric-case: workflow-fabric-override-aws-gb300-efa
+  overrides:
+    # Matches: the detected fabric is efa. The dependency and the env var must
+    # both land, the first at discovery and the second on the Job.
+    - when:
+        fabric:
+          equals: efa
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: wf-fabric-efa-config
+            namespace: default
+          data:
+            fabric: efa
+      jobTemplatePatch:
+        - op: add
+          path: /spec/workload/trainJob/trainer/env/-
+          value:
+            name: FI_EFA_USE_DEVICE_RDMA
+            value: "1"
+    # Must not match: roce is the AWS GB300 default, which detection replaced.
+    - when:
+        fabric:
+          equals: roce
+      jobTemplatePatch:
+        - op: add
+          path: /spec/workload/trainJob/trainer/env/-
+          value:
+            name: WRONG_FABRIC_ARM
+            value: roce

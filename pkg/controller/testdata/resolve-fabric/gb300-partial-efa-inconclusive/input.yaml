@@ -1,0 +1,9 @@
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: gb300-a
+    allocatable:
+      vpc.amazonaws.com/efa: "1"
+  - name: gb300-b
+    allocatable:
+      nvidia.com/gpu: "4"

@@ -45,7 +45,7 @@ func TestAkamaiTCPRendering(t *testing.T) {
 				MaxBytes: input.MaxBytes, NumIterations: input.NumIterations, NumCycles: input.NumCycles,
 			},
 		}}
-		workflows, err := renderCertification(cert, input.Platform, "rtxpro6000", nil, "", catalog.DefaultOCISecondaryNetwork)
+		workflows, err := renderCertification(cert, input.Platform, "rtxpro6000", nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		if err != nil {
 			return err
 		}

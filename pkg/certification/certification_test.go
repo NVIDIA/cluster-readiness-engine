@@ -138,7 +138,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork)
+		workflows, err := renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		if err != nil {
 			return err
 		}
@@ -221,7 +221,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork)
+			_, err = renderCertification(cert, "", "", nil, "", catalog.DefaultOCISecondaryNetwork, nil)
 		}
 
 		type result struct {
@@ -414,6 +414,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 		var cfg struct {
 			Platform string `yaml:"platform"`
 			GPUArch  string `yaml:"gpuArch"`
+			Fabric   string `yaml:"fabric"`
 			DryRun   bool   `yaml:"dryRun"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
@@ -431,7 +432,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 
 		configFlags := kubeconfig.NewConfigFlags(true)
 		*configFlags.Namespace = defaultKubeNamespace
-		renderErr := runCertificationRender(certPath, "yaml", cfg.DryRun, configFlags, cfg.Platform, cfg.GPUArch)
+		renderErr := runCertificationRender(certPath, "yaml", cfg.DryRun, configFlags, cfg.Platform, cfg.GPUArch, cfg.Fabric)
 
 		type result struct {
 			Error            string `json:"error"`
