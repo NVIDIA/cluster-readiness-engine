@@ -169,18 +169,18 @@ A release publishes two images, not one. Besides the controller image above,
 `compute/cutlass-gemm` runs a CUTLASS harness image that the catalog resolves from the
 release's own version, so a certification pulls it without anything being pinned by hand.
 It is signed and attested by the same workflow under the same identity, so it verifies
-exactly as the controller image does, with one name changed:
+exactly as the controller image does. It reuses `ID`, `ISSUER` and `TAG` from above
+and binds its own name to `HARNESS` rather than reassigning `IMAGE`, because the blocks
+on this page are meant to be read and run in order and later ones still verify the
+controller image through `IMAGE`:
 
 ```bash
-TAG=v0.12.0
-IMAGE=ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
-ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
-ISSUER='https://token.actions.githubusercontent.com'
+HARNESS=ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
 
 cosign verify \
   --certificate-identity "${ID}" \
   --certificate-oidc-issuer "${ISSUER}" \
-  "${IMAGE}:${TAG}"
+  "${HARNESS}:${TAG}"
 ```
 
 Mirroring a registry or running air-gapped means mirroring both images. The per-platform
