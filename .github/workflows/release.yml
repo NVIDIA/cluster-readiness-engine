@@ -753,6 +753,10 @@ jobs:
     needs:
       - release-tag
       - build-image
+      # Declared to read its digests in the body below. The ordering is already
+      # guaranteed through image-attested, which needs it and fails the release
+      # when the GEMM build did not succeed.
+      - gemm-build-image
       - image-attested
       - helm-publish
       - chart-attested
@@ -1014,6 +1018,28 @@ jobs:
             ```bash
             IMAGE=${{ needs.build-image.outputs.image_name }}
             INDEX=${{ needs.build-image.outputs.index_digest }}
+
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${IMAGE}@${INDEX}"
+            ```
+
+            ## GEMM harness image
+
+            A different artifact from the controller image, published since v0.12.0. `compute/cutlass-gemm` pulls it, and the catalog resolves the tag from the release's own version, so a certification needs nothing pinned by hand. It matters if you mirror registries or run air-gapped: this is a second image to mirror.
+
+            | Subject | Digest |
+            |---|---|
+            | index (multi-platform) | `${{ needs.gemm-build-image.outputs.index_digest }}` |
+            | `linux/amd64` | `${{ needs.gemm-build-image.outputs.amd64_digest }}` |
+            | `linux/arm64` | `${{ needs.gemm-build-image.outputs.arm64_digest }}` |
+
+            Each architecture is compiled on a runner of that architecture rather than cross-compiled, because `nvcc` builds for the host: the arm64 image holds arm64 CUTLASS kernels for Grace-Blackwell and the amd64 image holds the x86-64 ones. As with the controller image, the index carries the signature and the SLSA provenance and each platform digest carries its own CycloneDX SBOM. Pin the index digest rather than the tag:
+
+            ```bash
+            IMAGE=${{ needs.gemm-build-image.outputs.image_name }}
+            INDEX=${{ needs.gemm-build-image.outputs.index_digest }}
 
             cosign verify \
               --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
