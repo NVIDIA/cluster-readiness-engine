@@ -15,6 +15,8 @@ followed them.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-16
+
 ### Added
 
 - AWS GB300 renders for EFA as well as RoCE, so a stock-EKS GB300 cluster, which has
@@ -88,6 +90,14 @@ followed them.
   indistinguishable from a complete one. `--results-file` with no report to write is
   now an error rather than a panic, and a symlinked results path updates the file it
   points at instead of silently replacing the link.
+
+- A status write refused because its context was cancelled is now reported to the
+  caller instead of being swallowed. `retry.RetryOnConflict` treats an error wrapping
+  `context.Canceled` as an interrupted wait and returns the last conflict in its place,
+  which is nil when no conflict came first, and client-go refuses a request on a
+  cancelled context before sending it. So a reconcile still running when the manager
+  shut down reported a status write that never reached the API server, and its caller
+  logged the transition and emitted an Event for a change that was never stored (#588).
 
 - `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
   Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
@@ -1066,6 +1076,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.12.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.12.0
 [0.11.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.11.0
 [0.10.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.10.0
 [0.9.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.9.0
