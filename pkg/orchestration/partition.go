@@ -305,9 +305,10 @@ func partitionTopology(input PartitionInput) ([]Group, error) {
 
 // minDomainsToFill returns the smallest number of the largest domains that
 // together hold npj nodes, or the number of domains when all of them hold
-// fewer. It equals ceil(npj / largestDomainSize) when the domains are the same
-// size. With uneven domains that formula can name fewer domains than any group
-// can be filled from, so no group would ever form.
+// fewer. When the domains are the same size and hold at least npj nodes in
+// total, it equals ceil(npj / domainSize). With uneven domains that formula
+// can name fewer domains than any group can be filled from, so no group would
+// ever form.
 // Assumes domains is sorted by size descending.
 func minDomainsToFill(domains []domainEntry, npj int) int {
 	count := 0
