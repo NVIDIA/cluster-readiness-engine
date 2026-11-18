@@ -58,3 +58,7 @@ If the final read fails, for example because the launcher pod's log is briefly u
 Set `measurementTimeout` as a Go duration such as `10m`: `options.measurementTimeout` on a Certification category (or at the top of the Certification spec for every category), `spec.validation.performance.measurementTimeout` on a Workflow, or `spec.measurementTimeout` on a Job.
 
 The final read covers the container's current log file. If the kubelet rotated the file while the Job ran, which happens only when the container logs more than the node's `containerLogMaxSize` (10Mi by default), rows in the rotated file are not part of the final results.
+
+## Prometheus lifecycle
+
+The bandwidth gauges are provisional while running. After successful completion they are replaced by the final per-size `status.results` and retained until the measurement is deleted, including when no running sample was available. Provisional-only sizes and unsuccessful or empty terminal outcomes are removed. An already-complete measurement restores the gauges from its frozen status after a controller restart, without reading logs again. See [metrics](../operations/metrics.md).

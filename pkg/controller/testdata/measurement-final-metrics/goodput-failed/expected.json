@@ -1,0 +1,107 @@
+{
+  "terminal": [
+    {
+      "name": "nvcre_goodput_avg_step_time_seconds",
+      "workflow": "workflow",
+      "value": 2.5
+    },
+    {
+      "name": "nvcre_goodput_avg_tflops_per_gpu",
+      "workflow": "workflow",
+      "value": 100
+    },
+    {
+      "name": "nvcre_goodput_checkpoint_save_time_seconds",
+      "workflow": "workflow",
+      "value": 5
+    },
+    {
+      "name": "nvcre_goodput_lost_work_time_seconds",
+      "workflow": "workflow",
+      "value": 6
+    },
+    {
+      "name": "nvcre_goodput_non_warmup_time_seconds",
+      "workflow": "workflow",
+      "value": 93
+    },
+    {
+      "name": "nvcre_goodput_ratio",
+      "workflow": "workflow",
+      "value": 0.75
+    },
+    {
+      "name": "nvcre_goodput_reschedule_time_seconds",
+      "workflow": "workflow",
+      "value": 3
+    },
+    {
+      "name": "nvcre_goodput_resume_time_seconds",
+      "workflow": "workflow",
+      "value": 4
+    },
+    {
+      "name": "nvcre_goodput_training_time_seconds",
+      "workflow": "workflow",
+      "value": 100
+    },
+    {
+      "name": "nvcre_goodput_warmup_time_seconds",
+      "workflow": "workflow",
+      "value": 7
+    }
+  ],
+  "recovered": [
+    {
+      "name": "nvcre_goodput_avg_step_time_seconds",
+      "workflow": "workflow",
+      "value": 2.5
+    },
+    {
+      "name": "nvcre_goodput_avg_tflops_per_gpu",
+      "workflow": "workflow",
+      "value": 100
+    },
+    {
+      "name": "nvcre_goodput_checkpoint_save_time_seconds",
+      "workflow": "workflow",
+      "value": 5
+    },
+    {
+      "name": "nvcre_goodput_lost_work_time_seconds",
+      "workflow": "workflow",
+      "value": 6
+    },
+    {
+      "name": "nvcre_goodput_non_warmup_time_seconds",
+      "workflow": "workflow",
+      "value": 93
+    },
+    {
+      "name": "nvcre_goodput_ratio",
+      "workflow": "workflow",
+      "value": 0.75
+    },
+    {
+      "name": "nvcre_goodput_reschedule_time_seconds",
+      "workflow": "workflow",
+      "value": 3
+    },
+    {
+      "name": "nvcre_goodput_resume_time_seconds",
+      "workflow": "workflow",
+      "value": 4
+    },
+    {
+      "name": "nvcre_goodput_training_time_seconds",
+      "workflow": "workflow",
+      "value": 100
+    },
+    {
+      "name": "nvcre_goodput_warmup_time_seconds",
+      "workflow": "workflow",
+      "value": 7
+    }
+  ],
+  "deleted": []
+}

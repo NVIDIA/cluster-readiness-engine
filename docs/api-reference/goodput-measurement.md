@@ -47,3 +47,7 @@ Additional diagnostic fields (all optional):
 Threshold evaluation (pass/fail) is done at the Job tier, not here — see `Job.spec.thresholds`.
 
 A measurement the Job controller creates records the Job's UID in the `nvcre.nvidia.com/job-uid` annotation. The Workflow owns the measurement, so it outlives its Job. A retried Workflow group gives each attempt its own Job name, and so its own measurement, and the earlier attempt's measurement is deleted when that attempt is retired. A Job can still be replaced under the same name, for example a retry relaunched by a controller version from before attempt-indexed names. A measurement left by such an earlier Job is not used for the new Job's thresholds or stall detection: the Job controller deletes it and creates a fresh one for the new Job, the same way it treats a BandwidthMeasurement. A measurement without the annotation was created before it existed and is matched by Job name.
+
+## Prometheus lifecycle
+
+The goodput gauges are provisional while running. After `JobSucceeded` or `JobFailed` terminal status is persisted, all ten gauges reflect the frozen status and remain until the measurement is deleted. No-data outcomes clear the gauges. Checkpoint restart still clears instantaneous TFLOPS and step-time gauges while retaining cumulative metrics. Complete measurements restore final gauges after a controller restart; deleting a measurement removes its gauges even if the Job has already gone. See [metrics](../operations/metrics.md).

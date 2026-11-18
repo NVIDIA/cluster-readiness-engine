@@ -1,0 +1,17 @@
+{
+  "kind": "goodput",
+  "reason": "JobSucceeded",
+  "seedProvisional": true,
+  "goodput": {
+    "result": "0.75",
+    "avgTFLOPSPerGPU": "100",
+    "avgStepTimeSec": "2.5",
+    "rescheduleTimeSec": "3",
+    "resumeTimeSec": "4",
+    "checkpointSaveTimeSec": "5",
+    "lostWorkTimeSec": "6",
+    "trainingTimeSec": "100",
+    "warmupTimeSec": "7",
+    "nonWarmupTimeSec": "93"
+  }
+}
