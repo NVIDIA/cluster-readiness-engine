@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -487,11 +488,14 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
 
-	// Check for terminal Workflow conditions
+	// Check for terminal Workflow conditions. The Workflow sets ValidationFailed
+	// together with Failed (applyWorkflowValidationFailed), so the mirror only
+	// has to look here.
 	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
 			fmt.Sprintf("Workflow for category %s/%s failed, advancing to next category", catStatus.Domain, catStatus.Variant),
-			writeCategory(categoryStatusFailed)); err != nil {
+			writeCategory(categoryStatusFailed),
+			mirrorWorkflowValidationFailed(workflow, catStatus.Domain+"/"+catStatus.Variant)); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1436,6 +1440,43 @@ func categoryMutation(idx int, apply func(*nvcrev1alpha1.CertificationCategorySt
 		before := c.Status.CategoryStatuses[idx].DeepCopy()
 		apply(&c.Status.CategoryStatuses[idx])
 		return !apiequality.Semantic.DeepEqual(before, &c.Status.CategoryStatuses[idx])
+	}
+}
+
+// validationFailedCategoriesPrefix starts the message of the Certification's
+// ValidationFailed condition, which lists every category whose Workflow missed
+// its performance thresholds.
+const validationFailedCategoriesPrefix = "Performance thresholds not met in categories: "
+
+// mirrorWorkflowValidationFailed returns an extra func for the Certification
+// status writers that sets the Certification's ValidationFailed condition when
+// a category's Workflow has ValidationFailed=True. Like the Workflow's own
+// condition, it is independent of the exclusive InProgress/Succeeded/Failed
+// trio: it tells "the workload ran but missed its thresholds" apart from "the
+// workload broke", which the Failed reason alone (WorkflowFailed) does not.
+// The condition stays once set, as on the Workflow. A later category adds its
+// name to the message rather than replacing the earlier ones. Returns nil when
+// the Workflow met its thresholds.
+func mirrorWorkflowValidationFailed(workflow *nvcrev1alpha1.Workflow, category string) func(*nvcrev1alpha1.Certification) bool {
+	if !condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed) {
+		return nil
+	}
+	return func(c *nvcrev1alpha1.Certification) bool {
+		categories := []string{}
+		if cur := meta.FindStatusCondition(c.Status.Conditions, nvcrev1alpha1.CertificationValidationFailed); cur != nil &&
+			cur.Status == metav1.ConditionTrue && strings.HasPrefix(cur.Message, validationFailedCategoriesPrefix) {
+			categories = strings.Split(strings.TrimPrefix(cur.Message, validationFailedCategoriesPrefix), ", ")
+		}
+		if !slices.Contains(categories, category) {
+			categories = append(categories, category)
+		}
+		return meta.SetStatusCondition(&c.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.CertificationValidationFailed,
+			Status:             metav1.ConditionTrue,
+			Reason:             ReasonThresholdViolation,
+			Message:            validationFailedCategoriesPrefix + strings.Join(categories, ", "),
+			ObservedGeneration: c.GetGeneration(),
+		})
 	}
 }
 
