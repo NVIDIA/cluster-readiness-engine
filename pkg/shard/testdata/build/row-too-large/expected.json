@@ -1,0 +1,27 @@
+{
+  "shardCount": 1,
+  "shards": [
+    {
+      "index": 0,
+      "rows": 2
+    }
+  ],
+  "totalRows": 2,
+  "dropped": [
+    {
+      "node": "node-000",
+      "componentID": "GPU-a000",
+      "index": 0,
+      "name": "thisMetricNameIsLongEnoughThatTheEncodedRowExceedsTheConfiguredPerRowCapAndMustBeDroppedRatherThanRetriedBecauseNoShardHoweverEm...",
+      "sample": 0,
+      "reason": "RowTooLarge",
+      "rawBytes": 396,
+      "count": 1
+    }
+  ],
+  "droppedTotal": 1,
+  "ndjson": [
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a000\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1200.50,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}",
+    "{\"node\":\"node-000\",\"componentID\":\"GPU-a001\",\"index\":1,\"name\":\"achievedTFLOPS\",\"value\":1198.25,\"unit\":\"TFLOPS\",\"sample\":0,\"timestamp\":\"2026-11-03T00:00:00Z\",\"outcome\":\"pass\"}"
+  ]
+}

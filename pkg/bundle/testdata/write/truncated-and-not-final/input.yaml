@@ -1,0 +1,26 @@
+# A snapshot of a run that was still producing and had already lost rows.
+#
+# Both facts reach the manifest: final is false and truncatedRowCount is not
+# zero. A consumer must be able to tell this from a complete result set, and
+# the row count alone cannot tell them, which is the whole reason the seal
+# carries a finality marker.
+reports:
+  - name: gpu-cluster-cert
+    status: RUNNING
+components:
+  - scope: gpu-cluster-cert
+    domain: compute
+    variant: cutlass-gemm
+    shardCount: 1
+    final: false
+    truncatedRowCount: 17
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460.00,"unit":"TFLOPS"}'
+truncations:
+  - scope: gpu-cluster-cert
+    domain: compute
+    variant: cutlass-gemm
+    reason: RowBudgetExceeded
+    count: 17
+    node: gpu-node-1
+    componentID: GPU-cafe

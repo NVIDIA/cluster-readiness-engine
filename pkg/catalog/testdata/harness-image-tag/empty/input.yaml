@@ -1,0 +1,3 @@
+# A build with the version flag omitted entirely. Same answer as dev rather
+# than an empty tag, which would render "image:" with nothing after the colon.
+buildVersion: ""

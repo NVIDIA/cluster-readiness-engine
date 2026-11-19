@@ -1,0 +1,18 @@
+# A re-drive that produces FEWER shards than the attempt before it.
+#
+# The seal records two shards and both are on the cluster. This pass reads one
+# row, which fits in one shard, so the write loop rewrites 0000 and nothing
+# names 0001 again. Left there it still carries the Workflow UID label, so
+# nvcrectl's walk resolves two shards against a total that admits one and
+# refuses the category for good, and no seal can name it for deletion
+# afterwards: both delete paths enumerate 0..ShardCount-1 from the seal, which
+# no longer reaches that index.
+#
+# So the surplus is deleted before the seal is lowered to the new count. That
+# order is the guarantee: the old claim is the only record of how far the old
+# set reached, because the controller has no list on ConfigMaps.
+priorSealShards: 2
+producer: structured-rows
+containerName: node
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

@@ -1297,8 +1297,8 @@ func TestReportPathsRejectOverwrite(t *testing.T) {
 	relative, err := filepath.Rel(cwd, path)
 	require.NoError(t, err)
 	for _, junitPath := range []string{path, relative} {
-		require.ErrorContains(t, handleReport(context.Background(), nil, nil, path, junitPath, nil, &bytes.Buffer{}), "must use different paths")
-		require.ErrorContains(t, runReport(nil, nil, path, junitPath), "must use different paths")
+		require.ErrorContains(t, handleReport(context.Background(), nil, nil, reportTargets{resultsFile: path, junitFile: junitPath}, nil, &bytes.Buffer{}), "must use different paths")
+		require.ErrorContains(t, runReport(nil, nil, reportTargets{resultsFile: path, junitFile: junitPath}), "must use different paths")
 		data, readErr := os.ReadFile(path)
 		require.NoError(t, readErr)
 		assert.Equal(t, "existing report", string(data))
@@ -1311,7 +1311,7 @@ func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
 	jsonPath, xmlPath := filepath.Join(dir, "report.json"), filepath.Join(dir, "report.xml")
 	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
 	wc := newCertificationFakeClient(t, cert)
-	require.NoError(t, handleReport(context.Background(), wc, cert, jsonPath, xmlPath, nil, &bytes.Buffer{}))
+	require.NoError(t, handleReport(context.Background(), wc, cert, reportTargets{resultsFile: jsonPath, junitFile: xmlPath}, nil, &bytes.Buffer{}))
 	jsonData, err := os.ReadFile(jsonPath)
 	require.NoError(t, err)
 	assert.True(t, json.Valid(jsonData))
@@ -1387,7 +1387,7 @@ func TestReportPathsRejectAliasedFile(t *testing.T) {
 	jsonPath, junitPath := filepath.Join(dir, "report"), filepath.Join(link, "report")
 	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
 	wc := newCertificationFakeClient(t, cert)
-	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	err := handleReport(context.Background(), wc, cert, reportTargets{resultsFile: jsonPath, junitFile: junitPath}, nil, &bytes.Buffer{})
 	require.ErrorIs(t, err, errSameReportPaths)
 	data, err := os.ReadFile(jsonPath)
 	require.NoError(t, err)
@@ -1414,8 +1414,30 @@ func TestHandleReportJSONWriteErrorFails(t *testing.T) {
 	junitPath := filepath.Join(dir, "report.xml")
 	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
 	wc := newCertificationFakeClient(t, cert)
-	err := handleReport(context.Background(), wc, cert, jsonPath, junitPath, nil, &bytes.Buffer{})
+	err := handleReport(context.Background(), wc, cert, reportTargets{resultsFile: jsonPath, junitFile: junitPath}, nil, &bytes.Buffer{})
 	require.ErrorContains(t, err, "write results file")
+	_, statErr := os.Stat(junitPath)
+	require.NoError(t, statErr, "JUnit file must still be written")
+}
+
+// TestHandleReportBundleErrorStillWritesJUnit checks that a failed
+// --results-bundle export does not skip the JUnit file, as a failed
+// --results-file write does not. Under --cleanup the deferred cleanup deletes
+// the Certification whichever way the export went, so a skipped JUnit file
+// leaves CI with no result and nothing left to regenerate one from.
+func TestHandleReportBundleErrorStillWritesJUnit(t *testing.T) {
+	dir := t.TempDir()
+	bundleDir := filepath.Join(dir, "bundle")
+	require.NoError(t, os.MkdirAll(bundleDir, 0o750))
+	// A leftover file is what a CI job re-running into its artifacts
+	// directory hits, and bundle.Write refuses it.
+	require.NoError(t, os.WriteFile(filepath.Join(bundleDir, "leftover.json"), []byte("{}"), 0o600))
+	junitPath := filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	err := handleReport(context.Background(), wc, cert,
+		reportTargets{junitFile: junitPath, resultsBundle: bundleDir}, nil, &bytes.Buffer{})
+	require.ErrorContains(t, err, "is not empty")
 	_, statErr := os.Stat(junitPath)
 	require.NoError(t, statErr, "JUnit file must still be written")
 }

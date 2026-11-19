@@ -1,0 +1,1 @@
+manifest.json disagrees with the bundle contents (present but unlisted: stowaway.json)

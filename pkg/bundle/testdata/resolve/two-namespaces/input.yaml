@@ -1,0 +1,20 @@
+# Two categories whose Workflows resolved different namespaces, which is what
+# happens whenever spec.namespace is left unset and the controller generates
+# one per Workflow.
+#
+# Resolving one namespace for the whole Certification would find no shards for
+# the second category and report it as an incomplete result set, pointing the
+# user at their cluster rather than at the bundle looking in the wrong place.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    workflowNamespace: nvcre-run-a
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'
+  - domain: diagnostics
+    variant: dcgm-level4
+    final: true
+    workflowNamespace: nvcre-run-b
+    rows:
+      - '{"node":"gpu-node-2","componentID":"GPU-beef","index":0,"name":"eccErrors","value":0,"unit":"count","sample":0}'
