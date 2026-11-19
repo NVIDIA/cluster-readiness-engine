@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -49,6 +48,13 @@ type junitIssue struct {
 // category, plus a certification-level case when the categories alone do not
 // carry the certification's result (ADR-108).
 func WriteJUnit(path string, reports []*CertReport) error {
+	// Without this, an empty slice writes <testsuites></testsuites>, which a
+	// CI system reads as a clean run with nothing in it. That is the same
+	// "exit zero with no evidence" outcome the --wait guard exists to prevent,
+	// and WriteJSON already refuses it.
+	if len(reports) == 0 {
+		return fmt.Errorf("write JUnit report file %s: %w", path, errNoReports)
+	}
 	var output junitSuites
 	for _, r := range reports {
 		suite, err := junitSuiteFor(r)
@@ -63,10 +69,9 @@ func WriteJUnit(path string, reports []*CertReport) error {
 	}
 	data = append([]byte(xml.Header), data...)
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0644); err != nil { // #nosec G306 -- reports are output files meant to be readable
-		return fmt.Errorf("write JUnit report file: %w", err)
-	}
-	return nil
+	// Atomic for the same reason WriteJSON is: a CI system reading a
+	// half-written JUnit file sees a parse error, not a certification result.
+	return writeFileAtomic(path, data)
 }
 
 // junitSuiteFor maps one certification to a suite. A category's case reports

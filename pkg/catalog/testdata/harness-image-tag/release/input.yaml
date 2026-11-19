@@ -1,0 +1,3 @@
+# A release build. release.yml builds the binary and the harness image from
+# the same tag, so the version IS the tag of the image that shipped with it.
+buildVersion: v0.12.0

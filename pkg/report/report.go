@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -98,6 +97,20 @@ type NodeResultReport struct {
 	Status string `json:"status"` // "Passed" or "Failed"
 }
 
+// DegradedComponentRow is one component the report names as having dropped
+// below its floor.
+type DegradedComponentRow struct {
+	Node        string `json:"node"`
+	ComponentID string `json:"componentID"`
+	Index       int32  `json:"index"`
+	// Max is what the component reached, which is what the verdict compared.
+	Max string `json:"max,omitempty"`
+	// Min is what it fell to.
+	Min string `json:"min,omitempty"`
+	// BelowSamples is how many of its samples were under the floor.
+	BelowSamples int64 `json:"belowSamples,omitempty"`
+}
+
 // CategoryReport holds metrics for a single certification category.
 type CategoryReport struct {
 	Domain        string `json:"domain"`
@@ -118,6 +131,21 @@ type CategoryReport struct {
 	// that identity: one job of Nodes/Job runs and the rest of the target is
 	// deliberately untouched, which no other line in the box says.
 	Placement string `json:"placement,omitempty"`
+
+	// DegradedComponents names the components whose results dropped below the
+	// category's floor during the run, worst first.
+	//
+	// Reported even when the category PASSED, which is the only reason this
+	// field exists. The verdict is DCGM's and DCGM compares the maximum
+	// achieved value (ADR-091), so a GPU that peaks above the floor and decays
+	// through a soak passes. Without this, the report of that run says nothing
+	// about it and the evidence lives only in a result bundle nobody had to
+	// ask for.
+	DegradedComponents []DegradedComponentRow `json:"degradedComponents,omitempty"`
+
+	// DegradedComponentCount is the exact number of them, which can exceed the
+	// rows above: the list is capped and this is not.
+	DegradedComponentCount int `json:"degradedComponentCount,omitempty"`
 	// TargetNodes is the number of nodes the target matched, carried alongside
 	// Placement so the scope line can state both numbers rather than leaving the
 	// reader to find the fleet size elsewhere in the report.
@@ -848,6 +876,7 @@ func PopulateCategoryFromWorkflow(
 		populateCategoryScope(cat, orch)
 	}
 	cat.TestScale = detectTestScale(wf)
+	populateDegradedComponents(cat, wf)
 
 	failedNodes := FailedNodesFromRef(ctx, c, wf.Namespace, wf.Status.FailedNodesRef)
 	if wf.Spec.Orchestration.Topology != nil {
@@ -1891,7 +1920,73 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	// NCCL transport and aggregate bandwidth results.
 	printTransportAndBandwidth(w, cat.Transport, cat.Bandwidth)
 
+	// Per-component results that dropped below the floor, whether or not the
+	// category passed.
+	printDegradedComponents(w, cat.DegradedComponents, cat.DegradedComponentCount)
+
 	printCardBottom(w)
+}
+
+// populateDegradedComponents copies the Workflow's degradation summary onto
+// the category report.
+//
+// Straight from status, with no shard read: the Job tier derived it from rows
+// it already held and the Workflow aggregated it, precisely so the report of a
+// run can carry it without resolving a single ConfigMap. A reader who wants
+// every sample uses --results-bundle.
+func populateDegradedComponents(cat *CategoryReport, wf *nvcrev1alpha1.Workflow) {
+	cr := wf.Status.ComponentResults
+	if cr == nil || len(cr.DegradedComponents) == 0 {
+		return
+	}
+	cat.DegradedComponentCount = int(cr.DegradedComponentCount)
+	for _, d := range cr.DegradedComponents {
+		cat.DegradedComponents = append(cat.DegradedComponents, DegradedComponentRow{
+			Node:         d.Node,
+			ComponentID:  d.ComponentID,
+			Index:        d.Index,
+			Max:          d.MaxValue,
+			Min:          d.MinValue,
+			BelowSamples: d.BelowSamples,
+		})
+	}
+}
+
+// printDegradedComponents prints the components that dropped below the floor.
+//
+// Printed for a passing category as well as a failing one. That is the whole
+// point: DCGM's comparison is on the maximum achieved value, so a GPU that
+// peaks above the floor and decays through the soak passes, and this is the
+// only place in the report that says so.
+func printDegradedComponents(w io.Writer, rows []DegradedComponentRow, total int) {
+	if len(rows) == 0 {
+		return
+	}
+	printBoxLine(w, "")
+
+	header := fmt.Sprintf("Per-GPU results below floor: %d", total)
+	if total > len(rows) {
+		header += fmt.Sprintf(" (worst %d of them)", len(rows))
+	}
+	printBoxLine(w, header)
+	// Said explicitly, because a reader seeing this under a PASSED category
+	// will otherwise take the verdict for broken.
+	printBoxLine(w, "  not failures: the verdict is each GPU's best sample")
+
+	// Two lines per component, because a GPU UUID is 40 characters and will
+	// not share a 64-column card line with a node name and two values. The
+	// UUID is kept whole rather than shortened: it is the identifier an
+	// operator quotes to replace the card, so a truncated one is the one
+	// detail here that would be useless.
+	for _, r := range rows {
+		line := fmt.Sprintf("  %s idx %d: fell to %s, best %s",
+			r.Node, r.Index, r.Min, r.Max)
+		if r.BelowSamples > 0 {
+			line += fmt.Sprintf(", %d low", r.BelowSamples)
+		}
+		printBoxLine(w, line)
+		printBoxLine(w, "    "+r.ComponentID)
+	}
 }
 
 // printTransportAndBandwidth prints a category's NCCL transport line and
@@ -2641,9 +2736,18 @@ func humanSize(bytes int64) string {
 }
 
 // WriteJSON serializes the report as JSON and writes it to the given path.
-// Called when CRE_RESULTS_FILE is set, allowing programmatic consumers
-// (e.g. k8s-platform-validator) to read structured results without log parsing.
+// Driven by --results-file, so programmatic consumers can read structured
+// results without parsing logs.
+//
+// A single report is written as an object and several as an array, which is
+// the shape consumers already depend on (ADR-071) and so is kept.
+//
+// The write is atomic: a reader never sees a half-written results file. See
+// writeFileAtomic.
 func WriteJSON(path string, reports []*CertReport) error {
+	if len(reports) == 0 {
+		return fmt.Errorf("write report file %s: %w", path, errNoReports)
+	}
 	var v any = reports[0]
 	if len(reports) > 1 {
 		v = reports
@@ -2652,8 +2756,5 @@ func WriteJSON(path string, reports []*CertReport) error {
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil { // #nosec G306 -- reports are output files meant to be readable
-		return fmt.Errorf("write report file: %w", err)
-	}
-	return nil
+	return writeFileAtomic(path, data)
 }

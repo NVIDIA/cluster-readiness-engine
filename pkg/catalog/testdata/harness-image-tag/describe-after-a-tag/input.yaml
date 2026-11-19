@@ -1,0 +1,8 @@
+# A local build some commits past a tag, which is what the Makefile default
+# `git describe --tags --always --dirty` yields.
+#
+# This renders dev, NOT the tag it is past. Resolving it to v0.11.0 would hand
+# a build of this tree the harness image from a release built from a different
+# one, and once that release shipped every main build would start pulling its
+# harness against main's entry with nothing reporting the mismatch.
+buildVersion: v0.11.0-15-gfd0d5bc3

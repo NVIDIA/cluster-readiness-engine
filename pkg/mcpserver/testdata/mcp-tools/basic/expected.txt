@@ -22,6 +22,10 @@
       "variant": "nccl-loopback-nvswitch"
     },
     {
+      "domain": "compute",
+      "variant": "cutlass-gemm"
+    },
+    {
       "domain": "diagnostics",
       "variant": "dcgm-level4"
     },

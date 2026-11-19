@@ -1,0 +1,17 @@
+# Two shards of one Job declaring the same index.
+#
+# The index is what orders a Job's shards, and the concatenation order decides
+# the component file's bytes, which the manifest digest covers. Two shards at
+# one index make that order ambiguous, so the same cluster state could produce
+# two different digests, and the rows of whichever lost would be counted twice.
+#
+# Refused during the walk rather than at the count gate, because the count
+# would agree in the case this guards: a rebuild that writes the same number of
+# shards under a changed name leaves the old one in place at the same index.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    duplicateIndex: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

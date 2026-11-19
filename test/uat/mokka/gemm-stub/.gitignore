@@ -1,0 +1,5 @@
+# entrypoint.sh is the production harness, copied in by setup.sh immediately
+# before the build so the stub cannot drift from it. Committing a second copy
+# would let the two diverge silently, which is the one thing this stub must
+# not do: its whole value is that the harness it exercises is the real one.
+entrypoint.sh

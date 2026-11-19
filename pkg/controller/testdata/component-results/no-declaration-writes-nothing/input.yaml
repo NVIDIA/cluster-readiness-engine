@@ -1,0 +1,7 @@
+# Every Job in the repository today. A Job that declares no component results
+# writes no seal and no shard: the field stays absent rather than spending a
+# status write per Job to record that a feature none of them uses owes them
+# nothing. The group wait resolves this from the spec, not from a stored phase.
+producer: ""
+log: |
+  NVCRE_ROW {"componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:02:00Z","outcome":"pass"}

@@ -21,6 +21,7 @@ Each catalog entry is a YAML file at `pkg/catalog/entries/<domain>/<variant>.yam
 | `communication` | `nccl-alltoall` | All-to-all collective bandwidth |
 | `communication` | `nccl-loopback` | Loopback bandwidth (single-node NVLink/NVSwitch) |
 | `communication` | `nccl-loopback-nvswitch` | Loopback bandwidth via NVSwitch fabric |
+| `compute` | `cutlass-gemm` | Per-GPU GEMM burn-in, with a result row per GPU per sample |
 | `diagnostics` | `dcgm-level4` | DCGM level-4 diagnostics |
 | `training` | `nemotron5-8b` | End-to-end training throughput (NeMo, Nemotron 5 8B) |
 | `training` | `nemotron5-56b` | End-to-end training throughput (NeMo, Nemotron 5 56B) |

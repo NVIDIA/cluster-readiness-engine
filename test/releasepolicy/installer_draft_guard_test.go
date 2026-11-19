@@ -182,7 +182,7 @@ func TestInstallerDraftGuard(t *testing.T) {
 		{
 			name:        "gh reports no such release",
 			ghAvailable: boolTrue, ghExit: 1, ghStderr: "release not found\n",
-			state: "absent",
+			state: stateAbsent,
 		},
 		{
 			name:        "gh fails with an outage on every attempt",
@@ -209,7 +209,7 @@ func TestInstallerDraftGuard(t *testing.T) {
 		{
 			name:  "token path reports no such release",
 			token: "t", httpCode: "404", body: `{"message":"Not Found"}`,
-			state: "absent",
+			state: stateAbsent,
 		},
 		{
 			// A TLS-interception page, a WAF block or a CDN glitch can answer

@@ -111,6 +111,14 @@ type JobReconciler struct {
 	Clientset      *kubernetes.Clientset
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	Recorder       events.EventRecorder
+	// LogFetcher reads pod logs; if nil, a Clientset-backed one is used.
+	//
+	// The seam exists so component-result ingestion is testable: the
+	// integration harness injects a fake driven by input_logs_*.txt files,
+	// the same way it does for the two measurement controllers. Without it the
+	// whole write path could only be exercised against a live cluster.
+	LogFetcher podlogs.PodLogFetcher
+
 	// APIReader reads straight from the API server, bypassing the informer
 	// cache, so a workload missing from the cache is confirmed gone before
 	// anything acts on its absence.
@@ -266,6 +274,20 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	if err != nil {
 		recordReconcile(job.Namespace, job.Name, workflow, "error")
 		return result, err
+	}
+
+	// Produce and store this attempt's per-component result rows (ADR-090).
+	//
+	// After the workload reconcile, so the verdict is already persisted: this
+	// pass requeues a failed shard write without ever holding back the Job's
+	// terminal condition. It is a no-op until the Job is terminal, and seals a
+	// positive "nothing owed" for a Job that declares no component results.
+	if crResult, crErr := r.reconcileComponentResults(ctx, job); crErr != nil {
+		recordReconcile(job.Namespace, job.Name, workflow, "error")
+		return crResult, crErr
+	} else if crResult.RequeueAfter > 0 {
+		recordReconcile(job.Namespace, job.Name, workflow, "requeue")
+		return crResult, nil
 	}
 
 	// Check for hardware failures if monitoring is configured
