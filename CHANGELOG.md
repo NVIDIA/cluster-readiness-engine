@@ -15,6 +15,20 @@ followed them.
 
 ## [Unreleased]
 
+### Fixed
+
+- A run with more than one iteration (`repeatCount`, `--repeat-count` or
+  `orchestration.iterations`) whose group failed in an earlier iteration and passed
+  the last one no longer lists the same nodes as both succeeded and failed. On
+  failure, `succeededNodesRef` now holds the nodes of the final iteration's
+  succeeded groups minus every node in the failed-nodes list. The Job of a group
+  that failed is kept until the Workflow is deleted instead of being deleted when
+  the next iteration starts, and the final reason is chosen from it, so a threshold
+  miss in iteration 1 fails the Workflow with `JobValidationFailed` and the
+  `ValidationFailed` condition (and the WorkloadRun with `WorkflowValidationFailed`)
+  instead of `IterationsFailed`, and a hardware failure keeps `JobHardwareFailed`
+  ([ADR-062](docs/designs/062-node-detail-propagation.md) amendment, #470).
+
 ## [0.12.0] - 2026-11-16
 
 ### Added

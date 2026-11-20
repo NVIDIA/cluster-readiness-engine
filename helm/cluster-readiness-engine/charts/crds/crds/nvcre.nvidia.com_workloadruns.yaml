@@ -4931,7 +4931,8 @@ spec:
               succeededNodesRef:
                 description: |-
                   succeededNodesRef references the ConfigMap holding the underlying Workflow's
-                  succeeded-nodes list (comma-separated node names).
+                  succeeded-nodes list (comma-separated node names). A node is listed only
+                  if it passed every iteration.
                 properties:
                   apiGroup:
                     description: |-

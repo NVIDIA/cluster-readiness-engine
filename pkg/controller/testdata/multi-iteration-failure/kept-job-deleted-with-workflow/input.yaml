@@ -1,0 +1,8 @@
+# The Job kept from iteration 1 is removed when the Workflow is deleted,
+# together with the final iteration's Job.
+deleteWorkflow: true
+iterations:
+  - groups:
+      - {name: group-0, nodes: [n0], attempts: [{outcome: threshold}]}
+  - groups:
+      - {name: group-0, nodes: [n0], attempts: [{outcome: succeeded}]}

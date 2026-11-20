@@ -172,6 +172,8 @@ kubectl get certification <name> -o jsonpath='{.status.categoryStatuses[0].faile
 kubectl get configmap <ref-name> -o yaml
 ```
 
+The `succeededNodesRef` of a category lists a node only if it passed every iteration of that category. With `repeatCount` above 1, a node that failed in one iteration and passed in another is in the failed-nodes list only.
+
 ## Lifecycle
 
 1. Controller creates one `Workflow` per entry in `spec.categories`. The spec cannot be changed after creation — delete and recreate to modify it.

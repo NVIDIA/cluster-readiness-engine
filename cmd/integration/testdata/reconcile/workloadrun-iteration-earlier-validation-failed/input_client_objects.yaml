@@ -1,0 +1,174 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #470. A WorkloadRun with repeatCount 2 whose only group missed its
+# bandwidth threshold in iteration 1 and passed iteration 2. Iteration 1's Job
+# was kept at rollover (Succeeded=True plus ValidationFailed=True), and its
+# failed node was recorded in the failed-nodes ConfigMap. The Workflow is in
+# iteration 2 with that iteration's Job already Succeeded.
+#
+# The Workflow controller must fail the Workflow with JobValidationFailed and
+# set the ValidationFailed condition, read from the kept Job rather than the
+# generic IterationsFailed, and must not list gpu-node-01 as succeeded. The
+# WorkloadRun controller mirrors that as WorkflowValidationFailed with the
+# ValidationFailed condition, and no succeededNodesRef.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wr-iter-validation
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 2
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  failedNodesRef:
+    kind: ConfigMap
+    name: failed-nodes-iter1
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 2
+    completedIterations: 1
+    iterationHistory:
+      - iteration: 1
+        groups:
+          - name: group-0
+            phase: Failed
+            jobName: test-wr-iter-validation-group-0-iter-1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wr-iter-validation-group-0-iter-2
+          namespace: default
+---
+# The failed-nodes record iteration 1's Job left behind.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failed-nodes-iter1
+  namespace: default
+binaryData:
+  failed-nodes.json.gz: H4sIAAAAAAAC/02MywrCMBAAf2XZcyrpRWtAD730B8SL9RDJ0gTyIttUQfx3gyevM8zc3hh1IFS45NrFZKiTPQospDnFhi+2ENvkzdUlr1fXoMBAzHqhfw0zPiqPOpqnM6udxswzwvaLyCgIbVgLGeiHYbc/SCmAXrnF3JYKNu0rwfkERynxc/8C+NiaIZcAAAA=
+---
+# Iteration 1's Job, kept because its group failed.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wr-iter-validation-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wr-iter-validation
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: ValidationFailed
+      status: "True"
+      reason: ThresholdViolation
+      message: 'Threshold "busBandwidthGBps" violated: measured 188.6700, expression: value >= 900'
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  failedNodes:
+    - name: gpu-node-01
+      reason: ThresholdViolation
+      message: 'Threshold "busBandwidthGBps" violated: measured 188.6700, expression: value >= 900'
+---
+# Iteration 2's Job, which passed.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wr-iter-validation-group-0-iter-2
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wr-iter-validation
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:10:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:15:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: test-wr-iter-validation
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  image: test-image:latest
+  framework:
+    exec:
+      command:
+        - python
+        - train.py
+  numNodes: 1
+  repeatCount: 2
+  thresholds:
+    busBandwidthGBps: "value >= 900"
+status:
+  workflowRef:
+    name: test-wr-iter-validation
+    namespace: default

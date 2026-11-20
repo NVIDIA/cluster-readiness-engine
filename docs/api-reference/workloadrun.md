@@ -188,7 +188,7 @@ See [Workflow: accepted and conflicting overrides](workflow.md#accepted-and-conf
 | `detectedPlatform` | string | Auto-detected CSP platform (e.g., `aws`, `gcp`, `azure`) |
 | `resolvedGpusPerNode` | int32 | Final GPU count per node used for the workload |
 | `resolvedFabric` | string | The network fabric the Workflow was rendered for, recorded only when `spec.fabric` is set or the target is AWS GB300 |
-| `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
+| `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list, copied from the Workflow. A node is listed only if it passed every iteration; a node that failed any iteration of a failed run is in the failed-nodes list only |
 | `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |
 
 Bandwidth and goodput measurement results are on the `BandwidthMeasurement` and `GoodputMeasurement` child resources, which reference this WorkloadRun's underlying Job via `spec.jobRef`.

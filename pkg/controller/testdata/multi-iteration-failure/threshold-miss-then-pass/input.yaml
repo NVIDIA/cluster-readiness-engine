@@ -1,0 +1,12 @@
+# Issue #470: group-0 misses its bandwidth threshold in iteration 1 and passes
+# iteration 2. The Workflow fails with JobValidationFailed and the
+# ValidationFailed condition, read from iteration 1's kept Job, and neither of
+# group-0's nodes is listed as succeeded. group-1 passes both iterations, so its
+# nodes are, and its iteration-1 Job is deleted at rollover.
+iterations:
+  - groups:
+      - {name: group-0, nodes: [n0, n1], attempts: [{outcome: threshold}]}
+      - {name: group-1, nodes: [n2, n3], attempts: [{outcome: succeeded}]}
+  - groups:
+      - {name: group-0, nodes: [n0, n1], attempts: [{outcome: succeeded}]}
+      - {name: group-1, nodes: [n2, n3], attempts: [{outcome: succeeded}]}

@@ -1,0 +1,25 @@
+{
+  "terminal": "Failed",
+  "reason": "IterationsFailed",
+  "message": "1 groups failed across 2 iterations",
+  "validationFailedCondition": false,
+  "iterationHistory": [
+    {
+      "iteration": 1,
+      "groups": [
+        "group-0 Succeeded wf-group-0-iter-1",
+        "group-1 Succeeded wf-group-1-iter-1"
+      ]
+    }
+  ],
+  "succeededNodes": [
+    "n0"
+  ],
+  "failedNodes": [
+    "n1 WorkloadFailed"
+  ],
+  "jobs": [
+    "wf-group-0-iter-2",
+    "wf-group-1-iter-2"
+  ]
+}

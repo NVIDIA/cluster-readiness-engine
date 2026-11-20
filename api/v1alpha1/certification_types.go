@@ -105,6 +105,7 @@ type CertificationCategoryStatus struct {
 
 	// succeededNodesRef references the ConfigMap holding this category's
 	// succeeded-nodes list (comma-separated node names). Copied from the Workflow.
+	// A node is listed only if it passed every iteration of the category.
 	// +optional
 	SucceededNodesRef *corev1.TypedLocalObjectReference `json:"succeededNodesRef,omitempty"`
 

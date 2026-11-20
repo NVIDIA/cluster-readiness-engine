@@ -1,0 +1,18 @@
+{
+  "terminal": "Succeeded",
+  "reason": "JobCompleted",
+  "message": "All 1 iterations completed successfully",
+  "validationFailedCondition": false,
+  "iterationHistory": [],
+  "succeededNodes": [
+    "n0",
+    "n1"
+  ],
+  "failedNodes": [
+    "n0 WorkloadFailed"
+  ],
+  "jobs": [
+    "wf-group-0-iter-1",
+    "wf-group-0-iter-1-retry-1"
+  ]
+}
