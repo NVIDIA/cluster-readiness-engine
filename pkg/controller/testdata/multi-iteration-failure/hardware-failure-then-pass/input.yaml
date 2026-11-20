@@ -1,0 +1,8 @@
+# Issue #470: a hardware failure on n1 in iteration 1, then a pass. The
+# Workflow keeps JobHardwareFailed, read from iteration 1's kept Job, and only
+# the node the Job attributed the failure to is dropped from the succeeded list.
+iterations:
+  - groups:
+      - {name: group-0, nodes: [n0, n1], attempts: [{outcome: hardware, failedNodes: [n1]}]}
+  - groups:
+      - {name: group-0, nodes: [n0, n1], attempts: [{outcome: succeeded}]}

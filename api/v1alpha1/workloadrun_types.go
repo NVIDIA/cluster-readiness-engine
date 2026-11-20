@@ -468,7 +468,8 @@ type WorkloadRunStatus struct {
 	ResolvedFabric Fabric `json:"resolvedFabric,omitempty"`
 
 	// succeededNodesRef references the ConfigMap holding the underlying Workflow's
-	// succeeded-nodes list (comma-separated node names).
+	// succeeded-nodes list (comma-separated node names). A node is listed only
+	// if it passed every iteration.
 	// +optional
 	SucceededNodesRef *corev1.TypedLocalObjectReference `json:"succeededNodesRef,omitempty"`
 

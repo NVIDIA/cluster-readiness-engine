@@ -1,0 +1,10 @@
+# Unchanged behavior: the failure is in the last iteration. The Workflow fails
+# with the generic reason, as before, and the failed group's nodes are not
+# succeeded. Both iteration-1 Jobs passed, so both were deleted at rollover.
+iterations:
+  - groups:
+      - {name: group-0, nodes: [n0], attempts: [{outcome: succeeded}]}
+      - {name: group-1, nodes: [n1], attempts: [{outcome: succeeded}]}
+  - groups:
+      - {name: group-0, nodes: [n0], attempts: [{outcome: succeeded}]}
+      - {name: group-1, nodes: [n1], attempts: [{outcome: workload}]}

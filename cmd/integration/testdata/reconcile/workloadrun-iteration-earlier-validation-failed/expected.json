@@ -1,0 +1,260 @@
+{
+  "Job/test-wr-iter-validation-group-0-iter-1": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wr-iter-validation-group-0-iter-1",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-wr-iter-validation"
+      },
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkloadCompleted",
+          "message": "Workload has completed"
+        },
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "ThresholdViolation",
+          "message": "Threshold \"busBandwidthGBps\" violated: measured 188.6700, expression: value \u003e= 900"
+        }
+      ],
+      "failedNodes": [
+        {
+          "name": "gpu-node-01",
+          "reason": "ThresholdViolation",
+          "message": "Threshold \"busBandwidthGBps\" violated: measured 188.6700, expression: value \u003e= 900"
+        }
+      ]
+    }
+  },
+  "Workflow/test-wr-iter-validation": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wr-iter-validation",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 2
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobValidationFailed",
+          "message": "1 groups failed across 2 iterations"
+        },
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobValidationFailed",
+          "message": "One or more Jobs failed performance threshold validation"
+        }
+      ],
+      "failedNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "failed-nodes"
+      },
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 2,
+        "completedIterations": 2,
+        "iterationHistory": [
+          {
+            "iteration": 1,
+            "groups": [
+              {
+                "name": "group-0",
+                "phase": "Failed",
+                "jobName": "test-wr-iter-validation-group-0-iter-1"
+              }
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-wr-iter-validation-group-0-iter-2",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "WorkloadRun/test-wr-iter-validation": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wr-iter-validation",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true"
+        }
+      },
+      "image": "test-image:latest",
+      "framework": {
+        "exec": {
+          "command": [
+            "python",
+            "train.py"
+          ]
+        }
+      },
+      "numNodes": 1,
+      "thresholds": {
+        "busBandwidthGBps": "value \u003e= 900"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "ThresholdViolation",
+          "message": "One or more Jobs failed performance threshold validation"
+        },
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "1 groups failed across 2 iterations"
+        }
+      ],
+      "workflowRef": {
+        "name": "test-wr-iter-validation",
+        "namespace": "default"
+      },
+      "failedNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "failed-nodes"
+      }
+    }
+  }
+}

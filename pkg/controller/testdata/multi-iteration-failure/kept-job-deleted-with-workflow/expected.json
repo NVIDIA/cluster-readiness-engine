@@ -1,0 +1,23 @@
+{
+  "terminal": "Failed",
+  "reason": "JobValidationFailed",
+  "message": "1 groups failed across 2 iterations",
+  "validationFailedCondition": true,
+  "iterationHistory": [
+    {
+      "iteration": 1,
+      "groups": [
+        "group-0 Failed wf-group-0-iter-1"
+      ]
+    }
+  ],
+  "succeededNodes": [],
+  "failedNodes": [
+    "n0 ThresholdViolation"
+  ],
+  "jobs": [
+    "wf-group-0-iter-1",
+    "wf-group-0-iter-2"
+  ],
+  "jobsAfterWorkflowDeletion": []
+}

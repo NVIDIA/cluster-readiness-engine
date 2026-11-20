@@ -1,0 +1,10 @@
+# Pins today's behavior for the in-iteration retry case, which is tracked
+# separately from #470: group-0 fails its first attempt on n0 and passes the
+# retry. The Workflow succeeds, and n0 is in both the succeeded and the
+# failed-nodes lists.
+retryFailedGroups: 1
+iterations:
+  - groups:
+      - name: group-0
+        nodes: [n0, n1]
+        attempts: [{outcome: workload, failedNodes: [n0]}, {outcome: succeeded}]

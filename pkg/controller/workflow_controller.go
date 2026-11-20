@@ -2625,8 +2625,24 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 		// Delete completed Jobs BEFORE cleaning up iteration-scoped deps.
 		// Dependencies (ComputeDomain, ResourceClaimTemplate) provide DRA allocations
 		// that workloads need; deleting them first causes CUDA failure 719.
+		//
+		// A Failed group's Job is kept (issue #470). Its workload is already
+		// gone: completeTerminalGroup deleted it and held the group until its
+		// pods drained, so only the Job object stays, and the ordering above
+		// does not apply to it. The Job is the authoritative record of the
+		// group's cause (ADR-071): its conditions tell a threshold miss from a
+		// hardware failure, and its failedNodes and failureLog name the nodes
+		// even under Unpinned placement. setFinalStatus reads it by the jobName
+		// the snapshot above recorded. Job names carry the iteration, so a kept
+		// Job never collides with a later one, and handleDeletion removes it
+		// with the Workflow.
 		for _, g := range orch.Groups {
 			if g.JobRef == nil {
+				continue
+			}
+			if g.Phase == nvcrev1alpha1.GroupFailed {
+				log.Info("Keeping failed iteration Job for the final status and report",
+					"job", g.JobRef.Name, "iteration", orch.CompletedIterations)
 				continue
 			}
 			job := &nvcrev1alpha1.Job{}
@@ -3204,6 +3220,9 @@ func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *nvcrev1alpha1.W
 // when the Workflow is eventually deleted by the Certification controller. This preserves
 // GoodputMeasurement and BandwidthMeasurement resources (owned by Workflow via OwnerReference)
 // so the certification report can read metrics across all iterations before teardown.
+// The Jobs of groups that failed in an earlier iteration are kept for the same reason
+// (handleIterationComplete), and the failure reason is chosen from them as well as from
+// the final iteration's Jobs.
 func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	totalIter := effectiveIterations(workflow.Spec.Orchestration)
 
@@ -3226,7 +3245,14 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 			msg += "; hardware failures occurred on one or more nodes"
 		}
 
-		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+		// A node that failed in any iteration is not reported as passed
+		// (ADR-062, amended for issue #470): the final iteration's passing
+		// nodes, minus every node in the failed-nodes ConfigMap.
+		passed, err := r.succeededNodesExcludingFailed(ctx, workflow)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, passed),
 			"Failed to record succeeded nodes to ConfigMap"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -3298,19 +3324,44 @@ func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *
 }
 
 // anyFailedGroupJobHasCondition reports whether the Job behind any failed group
-// carries conditionType with status True.
+// carries conditionType with status True. It looks at the failed groups of
+// every earlier iteration, by the jobName recorded in IterationHistory, as well
+// as the current groups: handleIterationComplete keeps a Failed group's Job
+// for exactly this read (issue #470), so a threshold miss or hardware failure
+// in iteration 1 still decides the reason when a later iteration passes.
 //
 // Jobs that cannot be fetched are skipped rather than treated as a failure:
 // setFinalStatus uses this to pick a more specific failure reason, and a
 // transient read error should leave the generic reason in place rather than
-// assert a cause that was never observed.
+// assert a cause that was never observed. That includes the Job of an earlier
+// iteration that ran before Failed Jobs were kept, which is already gone.
 func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType string,
 ) bool {
-	if workflow.Status.Orchestration == nil {
+	orch := workflow.Status.Orchestration
+	if orch == nil {
 		return false
 	}
-	for _, g := range workflow.Status.Orchestration.Groups {
+	hasCondition := func(key client.ObjectKey) bool {
+		job := &nvcrev1alpha1.Job{}
+		if err := r.Get(ctx, key, job); err != nil {
+			return false
+		}
+		return CondIsTrue(job.Status.Conditions, conditionType)
+	}
+	for _, iter := range orch.IterationHistory {
+		for _, g := range iter.Groups {
+			if g.Phase != nvcrev1alpha1.GroupFailed || g.JobName == "" {
+				continue
+			}
+			// Group Jobs are created in the Workflow's namespace
+			// (createJobForGroup), and the snapshot records only the name.
+			if hasCondition(client.ObjectKey{Namespace: workflow.Namespace, Name: g.JobName}) {
+				return true
+			}
+		}
+	}
+	for _, g := range orch.Groups {
 		if g.Phase != nvcrev1alpha1.GroupFailed || g.JobRef == nil {
 			continue
 		}
@@ -3318,11 +3369,7 @@ func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
 		if ns == "" {
 			ns = workflow.Namespace
 		}
-		job := &nvcrev1alpha1.Job{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: g.JobRef.Name}, job); err != nil {
-			continue
-		}
-		if CondIsTrue(job.Status.Conditions, conditionType) {
+		if hasCondition(client.ObjectKey{Namespace: ns, Name: g.JobRef.Name}) {
 			return true
 		}
 	}

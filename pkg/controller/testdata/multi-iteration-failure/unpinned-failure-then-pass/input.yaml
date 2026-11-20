@@ -1,0 +1,10 @@
+# Issue #470 under Unpinned placement: iteration 1 ran on n0 and n1 and failed
+# its threshold, iteration 2 was placed on n2 and n3 and passed. The succeeded
+# list is iteration 2's nodes; n0 and n1 are failed only. The reason still comes
+# from iteration 1's kept Job, which is the only record naming its nodes.
+placement: Unpinned
+iterations:
+  - groups:
+      - {name: group-0, nodes: [n0, n1], attempts: [{outcome: threshold}]}
+  - groups:
+      - {name: group-0, nodes: [n2, n3], attempts: [{outcome: succeeded}]}

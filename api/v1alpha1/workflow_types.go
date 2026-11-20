@@ -467,7 +467,10 @@ type GroupIterationResult struct {
 	// phase is the terminal phase (Succeeded or Failed).
 	Phase GroupPhase `json:"phase"`
 	// jobName is the Job that ran for this group in this iteration.
-	// Empty if the Job was deleted before the snapshot.
+	// Empty if the Job was deleted before the snapshot. The Job of a Failed
+	// group is kept until the Workflow is deleted, so its conditions,
+	// failedNodes and failureLog stay readable; the Job of a Succeeded group
+	// is deleted when the next iteration starts.
 	// +optional
 	JobName string `json:"jobName,omitempty"`
 	// startTime when the group's job started.
@@ -1097,7 +1100,11 @@ type WorkflowStatus struct {
 
 	// succeededNodesRef references the ConfigMap holding this Workflow's
 	// succeeded-nodes list (comma-separated node names). It is written on terminal
-	// success and on terminal failure (capturing the nodes that passed).
+	// success and on terminal failure. A node is listed only if it passed every
+	// iteration: on terminal failure the list is the nodes of groups that
+	// succeeded in the final iteration, minus every node in the failed-nodes
+	// list, so a node that failed an earlier iteration is never listed as
+	// succeeded.
 	// +optional
 	SucceededNodesRef *corev1.TypedLocalObjectReference `json:"succeededNodesRef,omitempty"`
 

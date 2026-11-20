@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -24,8 +25,11 @@ const (
 	failedNodesPrefix    = "failed-nodes-"
 )
 
-// succeededNodesForWorkflow returns the full set of nodes that passed for a Workflow
-// that has reached terminal success.
+// succeededNodesForWorkflow returns the nodes of the groups that are Succeeded in
+// the final iteration (or, in diagnose mode, the healthy nodes accumulated across
+// rounds). On terminal success that is every node that passed. On terminal
+// failure setFinalStatus goes through succeededNodesExcludingFailed instead,
+// because a node can pass the final iteration after failing an earlier one.
 func succeededNodesForWorkflow(workflow *nvcrev1alpha1.Workflow) []string {
 	orch := workflow.Status.Orchestration
 	if orch == nil {
@@ -43,6 +47,58 @@ func succeededNodesForWorkflow(workflow *nvcrev1alpha1.Workflow) []string {
 		}
 	}
 	return nodes
+}
+
+// succeededNodesExcludingFailed returns the passed set for a Workflow that has
+// reached terminal failure: the nodes succeededNodesForWorkflow takes from the
+// final iteration, minus every node in the Workflow's failed-nodes ConfigMap.
+//
+// The ConfigMap merges the failed nodes of every group, iteration and attempt,
+// so a node that failed in an earlier iteration and passed the last one is not
+// reported as passed. ADR-062 set that contract ("partial passes from a
+// category that ultimately failed are never reported as succeeded"); without
+// the subtraction a multi-iteration run listed the same node in both refs
+// (issue #470).
+//
+// The ConfigMap is located by FailedNodesRef, or by its deterministic name
+// when the ref has not been set on this copy. A missing ConfigMap means no
+// node failed with attribution, so nothing is subtracted. Any other read
+// error is returned: the terminal status is written only once, and writing a
+// passed set that may include failed nodes would publish the contract break
+// this guards against.
+func (r *WorkflowReconciler) succeededNodesExcludingFailed(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+) ([]string, error) {
+	nodes := succeededNodesForWorkflow(workflow)
+	if len(nodes) == 0 {
+		return nodes, nil
+	}
+	name := nodeResultsCMName(failedNodesPrefix, string(workflow.UID))
+	if ref := workflow.Status.FailedNodesRef; ref != nil && ref.Name != "" {
+		name = ref.Name
+	}
+	cm := &corev1.ConfigMap{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: workflow.Namespace, Name: name}, cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nodes, nil
+		}
+		return nil, fmt.Errorf("failed to read failed-nodes ConfigMap %s: %w", name, err)
+	}
+	failed, err := noderesults.DecodeFailedNodesFromConfigMap(cm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode failed-nodes ConfigMap %s: %w", name, err)
+	}
+	exclude := make(map[string]struct{}, len(failed))
+	for _, fn := range failed {
+		exclude[fn.Name] = struct{}{}
+	}
+	passed := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if _, ok := exclude[n]; !ok {
+			passed = append(passed, n)
+		}
+	}
+	return passed, nil
 }
 
 // sortMergedFailedNodes merges incoming FailedNode entries into existing,
