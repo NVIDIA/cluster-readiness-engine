@@ -824,11 +824,17 @@ jobs:
           ARM64: ${{ needs.build-image.outputs.arm64_digest }}
           CHART: ${{ needs.helm-publish.outputs.chart_digest }}
           CRDS_CHART: ${{ needs.helm-publish.outputs.crds_chart_digest }}
+          GEMM_INDEX: ${{ needs.gemm-build-image.outputs.index_digest }}
+          GEMM_AMD64: ${{ needs.gemm-build-image.outputs.amd64_digest }}
+          GEMM_ARM64: ${{ needs.gemm-build-image.outputs.arm64_digest }}
         run: |
           set -euo pipefail
           for pair in "image index:${INDEX}" "image amd64:${AMD64}" \
                       "image arm64:${ARM64}" "helm chart:${CHART}" \
-                      "CRDs helm chart:${CRDS_CHART}"; do
+                      "CRDs helm chart:${CRDS_CHART}" \
+                      "GEMM image index:${GEMM_INDEX}" \
+                      "GEMM image amd64:${GEMM_AMD64}" \
+                      "GEMM image arm64:${GEMM_ARM64}"; do
             name="${pair%%:*}"; value="${pair#*:}"
             if [[ ! "${value}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "::error::the ${name} digest is missing or malformed: '${value}'"
