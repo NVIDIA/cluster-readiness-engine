@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Six nodes, five in rack-1 and one in rack-2, with nodesPerJob 4. One full
+# group leaves an untested node in each rack, which takes two overflow groups.
+# The second one must still borrow tested nodes to reach 4, even though the
+# first overflow group already borrowed from the same rack.
+nodesPerJob: 4
+topologyKey: "topology.kubernetes.io/rack"
+nodes:
+  - name: node-r1-0
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-1
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-2
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-3
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-4
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r2-0
+    labels:
+      topology.kubernetes.io/rack: rack-2
