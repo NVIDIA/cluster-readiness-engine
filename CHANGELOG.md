@@ -15,6 +15,14 @@ followed them.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Certification is no longer marked `Failed` while its Workflow keeps
+  running when Workflow creation for a category runs again after a lost
+  status write. A Workflow the Certification already controls is now adopted
+  before node discovery, the capacity checks and OCI RDMA network detection
+  run again, so a cluster change in between can no longer fail it (#566).
+
 ## [0.12.0] - 2026-11-16
 
 ### Added
