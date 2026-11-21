@@ -400,6 +400,7 @@ kubectl get goodputmeasurement -l nvcre.nvidia.com/job=<name> \
 - `stallMultiplier` is not set — stall detection is opt-in. Add `stallMultiplier` to the Job spec (e.g., `10` means stalled if no step for 10x average step time).
 - No GoodputMeasurement exists — stall detection requires a GoodputMeasurement to provide `avgStepTimeSec` and `lastStepTimestamp`. Configure `goodputMeasurement` on the Job.
 - Not enough training steps — the controller needs at least two non-warmup steps to compute `avgStepTimeSec`. Wait for the workload to produce more log output.
+- Every worker pod has exited 0 (`kubectl get pods -l nvcre.nvidia.com/job=<name>` shows them all `Completed`). The workload has finished and has yet to report it, so the Job waits for the TrainJob's own verdict instead of failing as `WorkloadStalled`. `timeoutPerJob` still bounds the wait.
 
 ## BandwidthMeasurement not reporting results
 

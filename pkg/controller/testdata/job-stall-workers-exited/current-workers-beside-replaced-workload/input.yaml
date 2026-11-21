@@ -1,0 +1,21 @@
+# Both workers of the current workload exited 0. Two pods of the workload a
+# checkpoint restart replaced are still listed under the same job label, one
+# of them Failed. They predate the current workload and are skipped, so they
+# cannot veto the current run's clean exit: the stall is suppressed. A rule
+# that let a replaced workload's pod decide, or that required every listed pod
+# to have succeeded, would fail the Job here.
+pods:
+  - name: old-worker-0
+    phase: Failed
+    beforeWorkload: true
+    index: 0
+  - name: old-worker-1
+    phase: Succeeded
+    beforeWorkload: true
+    index: 1
+  - name: worker-0
+    phase: Succeeded
+    index: 0
+  - name: worker-1
+    phase: Succeeded
+    index: 1

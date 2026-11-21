@@ -1,0 +1,9 @@
+# Same as all-workers-succeeded, with a checkpoint restart budget and a saved
+# checkpoint. A finished run must not be restarted either: the workload
+# survives and no restart is spent.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Succeeded
+maxRestarts: 1
