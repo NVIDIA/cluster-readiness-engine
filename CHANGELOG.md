@@ -39,7 +39,7 @@ followed them.
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
 
-  - Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
+- Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
   A workload can now report a measurement per GPU, or per any component it names,
   rather than one figure per node or per job. A node-level average passes when seven
   GPUs are healthy and the eighth is throttled, which is the failure a burn-in exists
