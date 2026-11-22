@@ -1,0 +1,31 @@
+{
+  "requeued": false,
+  "sealPhase": "Complete",
+  "sealShardCount": 1,
+  "sealRowCount": 1,
+  "sealedAtSet": true,
+  "shardObjects": [
+    {
+      "name": "shard-01234567-wf-group-0-iter-1-0000",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/job": "wf-group-0-iter-1",
+        "nvcre.nvidia.com/shard-kind": "rows",
+        "nvcre.nvidia.com/workflow-uid": "0123456789abcdef-fixed-for-the-golden"
+      },
+      "ownedBy": "Workflow/wf",
+      "dataKeys": [
+        "formatVersion",
+        "rowCount",
+        "sha256",
+        "shardIndex"
+      ],
+      "binaryKeys": [
+        "rows.ndjson.gz"
+      ],
+      "rows": [
+        "gpu-node-1 GPU-cafe idx=0 achievedTFLOPS sample=0 value=1460 unit=TFLOPS outcome=pass ts=2026-01-22T10:02:00Z"
+      ]
+    }
+  ]
+}

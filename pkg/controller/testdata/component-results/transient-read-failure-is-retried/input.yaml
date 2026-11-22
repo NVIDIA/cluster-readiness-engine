@@ -1,0 +1,12 @@
+# A log read that fails with an ordinary error rather than a pagination
+# failure: the API server is briefly unavailable, or the pod is terminating and
+# its logs are not servable for a moment.
+#
+# Nothing is sealed and the pass requeues. Sealing on the first such error made
+# every transient failure permanent at the one moment a retry was most likely
+# to succeed, and the terminal phase then blocked any later read.
+producer: structured-rows
+containerName: node
+logReadFails: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

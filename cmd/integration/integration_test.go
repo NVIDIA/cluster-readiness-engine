@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -489,6 +490,23 @@ func startManager(
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
+		// Strictly shorter than the harness's own wait for the manager to
+		// stop, which is the point.
+		//
+		// controller-runtime defaults this to 30s and the wait below is also
+		// 30s, so the two raced: under full-suite load a drain that would have
+		// finished was reported by the harness as "manager did not stop within
+		// 30s" at the same instant the manager was still inside its own grace
+		// period. The case that hit it reconciles a GoodputMeasurement on a 1s
+		// sampleInterval, so its queue is never empty at teardown.
+		//
+		// Short, not long. A test manager has nothing to drain that matters,
+		// and a generous grace would hide a reconcile that genuinely ignores
+		// context cancellation, which is a real bug worth failing on. At 10s
+		// against a 30s wait, a hung runnable now surfaces as the manager's own
+		// timeout error, which names the runnable, instead of the harness's
+		// generic one, which names nothing.
+		GracefulShutdownTimeout: ptr.To(10 * time.Second),
 		Metrics: metricsserver.Options{
 			BindAddress: "0", // Disable metrics server — tests read from the global registry directly.
 		},
@@ -535,12 +553,16 @@ func startManager(
 	}
 	err = (&controller.JobReconciler{
 		Client:                   jobClient,
+		APIReader:                mgr.GetAPIReader(),
 		Scheme:                   mgr.GetScheme(),
 		Recorder:                 jobRecorder,
 		WorkloadRequeueInterval:  1 * time.Second,
 		MeasurementTimeout:       3 * time.Second,
 		WorkloadCreationDeadline: time.Duration(caseCfg.WorkloadCreationDeadlineSeconds) * time.Second,
 		AccessReviewer:           accessReviewer,
+		// Component-result rows are read from pod logs, so the Job tier needs
+		// the same injected fetcher the two measurement controllers get.
+		LogFetcher: fetcher,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
@@ -685,12 +707,19 @@ type conditionWait struct {
 	// actually landed, on a later reconcile than the one that set the
 	// condition; a step that must observe the recorded placement before it
 	// changes the cluster waits on this rather than on the condition alone.
-	GroupNodesRecorded bool   `json:"groupNodesRecorded,omitempty"`
-	Kind               string `json:"kind"`
-	Name               string `json:"name"`
-	Namespace          string `json:"namespace"`
-	Condition          string `json:"condition"`
-	Reason             string `json:"reason,omitempty"` // optional: wait for specific reason
+	GroupNodesRecorded bool `json:"groupNodesRecorded,omitempty"`
+	// ComponentResultsSealed additionally requires a Job's per-component
+	// result seal to have reached a terminal phase, or a Workflow's totals to
+	// be published. Both are written on a later reconcile than the one that
+	// set the condition — the Job tier produces rows in its own pass after the
+	// verdict, and the Workflow sums them when it observes that seal — so a
+	// wait on the condition alone races them (ADR-090).
+	ComponentResultsSealed bool   `json:"componentResultsSealed,omitempty"`
+	Kind                   string `json:"kind"`
+	Name                   string `json:"name"`
+	Namespace              string `json:"namespace"`
+	Condition              string `json:"condition"`
+	Reason                 string `json:"reason,omitempty"` // optional: wait for specific reason
 }
 
 type eventTestStep struct {
@@ -1189,9 +1218,15 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 			if cfg.WaitFor.FailedNodeCount > 0 && len(o.Status.FailedNodes) != cfg.WaitFor.FailedNodeCount {
 				return false
 			}
+			if cfg.WaitFor.ComponentResultsSealed && !jobComponentResultsSealed(o) {
+				return false
+			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Workflow:
 			if cfg.WaitFor.GroupNodesRecorded && !allGroupNodesRecorded(o) {
+				return false
+			}
+			if cfg.WaitFor.ComponentResultsSealed && o.Status.ComponentResults == nil {
 				return false
 			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
@@ -1207,6 +1242,26 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 		return false
 	}, timeout, interval, "timed out waiting for condition %s on %s/%s",
 		cfg.WaitFor.Condition, cfg.WaitFor.Kind, cfg.WaitFor.Name)
+}
+
+// jobComponentResultsSealed reports whether a Job's component-result seal has
+// reached a phase the Job tier will not move off. Writing is excluded on
+// purpose: a Job sitting there has produced its rows but not finished writing
+// the shards, and a golden captured then records counts whose objects may not
+// all exist. See conditionWait.ComponentResultsSealed.
+func jobComponentResultsSealed(j *nvcrev1alpha1.Job) bool {
+	seal := j.Status.ComponentResults
+	if seal == nil {
+		return false
+	}
+	switch seal.Phase {
+	case nvcrev1alpha1.ComponentResultsNone,
+		nvcrev1alpha1.ComponentResultsComplete,
+		nvcrev1alpha1.ComponentResultsPartial:
+		return true
+	default:
+		return false
+	}
 }
 
 // allGroupNodesRecorded reports whether every orchestration group on the
@@ -1807,11 +1862,23 @@ func sanitizeObject(obj client.Object) {
 		if o.Status.WorkloadCreationRejectedSince != nil {
 			o.Status.WorkloadCreationRejectedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}
+		// The component-result seal records when it was written. Normalized to
+		// the same placeholder, so a golden still pins that a seal exists and
+		// what it counted without pinning the clock.
+		if o.Status.ComponentResults != nil && o.Status.ComponentResults.SealedAt != nil {
+			o.Status.ComponentResults.SealedAt = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are
 		// non-deterministic; normalize the refs to stable placeholders.
 		sanitizeNodeResultsRef(o.Status.SucceededNodesRef, o.Status.FailedNodesRef)
+		// The component-result selector embeds the Workflow's UID, which
+		// changes every envtest run. Normalized to the label key alone, so a
+		// golden pins that a selector is published and on which key.
+		if cr := o.Status.ComponentResults; cr != nil && cr.Selector != "" {
+			cr.Selector = "nvcre.nvidia.com/workflow-uid=workflow-uid"
+		}
 		// Clear time-dependent fields in group statuses.
 		if o.Status.Orchestration != nil {
 			for i := range o.Status.Orchestration.Groups {

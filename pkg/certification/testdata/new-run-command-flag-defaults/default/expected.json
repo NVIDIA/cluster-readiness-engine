@@ -88,6 +88,10 @@
     "default": "0"
   },
   {
+    "name": "results-bundle",
+    "default": ""
+  },
+  {
     "name": "results-file",
     "default": ""
   },

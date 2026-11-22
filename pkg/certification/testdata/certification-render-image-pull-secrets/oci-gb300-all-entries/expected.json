@@ -19,6 +19,18 @@
       ]
     },
     {
+      "workflow": "oci-gb300-pull-secrets-ce-619e0",
+      "category": "compute/cutlass-gemm",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "cert-pull-secret"
+          ]
+        }
+      ]
+    },
+    {
       "workflow": "oci-gb300-pull-secrets-ce-86357",
       "category": "training/nemotron5-8b",
       "replicatedJobs": [

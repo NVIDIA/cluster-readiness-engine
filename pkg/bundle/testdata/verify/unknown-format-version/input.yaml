@@ -1,0 +1,4 @@
+# A bundle from a newer writer. Refused rather than read on a best-effort
+# basis: the layout is what the version describes, and guessing at it is how a
+# reader ends up reporting a confidently wrong result.
+tamper: unknown-format-version

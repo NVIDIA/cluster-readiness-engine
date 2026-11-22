@@ -1,0 +1,12 @@
+# An unpageable log on a Job that has only just gone terminal, which is inside
+# the retry window.
+#
+# It is sealed anyway, and that is deliberate. A log that cannot be paged fails
+# the same way on every attempt, so retrying it would hold the group open for
+# the whole grace period and then record exactly what it records now. Only a
+# read that might succeed next time is worth waiting for.
+producer: structured-rows
+containerName: node
+truncated: true
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

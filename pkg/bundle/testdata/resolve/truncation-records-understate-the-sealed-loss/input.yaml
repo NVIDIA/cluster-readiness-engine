@@ -1,0 +1,24 @@
+# Two Jobs recorded losses and one Job's truncation sibling is gone.
+#
+# The reader never holds a per-Job view: resolveOne has the category total
+# summed over every Job and every retained round, which is why the shard
+# indices cannot be checked against a per-Job expectation either. So this is
+# that state as the walk sees it, a total that exceeds what the surviving
+# records account for.
+#
+# A presence check could not catch it, which is what this replaces: the
+# surviving Job's record satisfied "some record resolved" while the other Job's
+# identities and reasons were gone, and neither the shard count nor the row
+# count moved, because a dropped row was never in a shard.
+#
+# The bound is one-sided on purpose. The sum can legitimately exceed the total,
+# when a seal dropped past the retained-failure cap leaves its records behind,
+# and those cases already fail the shard counts.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    droppedRows: 2
+    sealTruncated: 5
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

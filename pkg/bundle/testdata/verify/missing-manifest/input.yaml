@@ -1,0 +1,4 @@
+# Rule 1. The manifest is written last, so its absence means the write did not
+# finish. The reader refuses, with no directory-glob fallback: globbing would
+# read a partial bundle and report success.
+tamper: remove-manifest
