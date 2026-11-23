@@ -1,0 +1,5 @@
+# `git describe --always` on a repository with no tags yields a bare commit.
+# Splitting on the first "-" would make this "abc1234", which looks like a tag
+# and is not one, so the prefix is only taken when it is itself a release
+# version.
+buildVersion: abc1234-dirty

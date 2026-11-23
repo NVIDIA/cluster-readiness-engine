@@ -1,0 +1,4 @@
+# fileCount is stored rather than derived from the list, so a manifest that was
+# itself truncated mid-write, and still parses, is caught by the count
+# disagreeing with its own entries.
+tamper: wrong-file-count

@@ -1,0 +1,20 @@
+# A second re-drive, where the count has already fallen below the bound.
+#
+# This is the case the bound exists for and the one a count-sized probe gets
+# wrong. The prior seal here is what pass one leaves behind: a count of 2 for
+# the two shards that exist, and a bound of 3 for the index they once reached,
+# with 0000 and 0002 on the cluster and 0001 gone to a partial delete.
+#
+# Probing the count would look only at 0000 and 0001, find one shard, and seal
+# a count of 1 while two shards are still out there under a total that admits
+# one, which nvcrectl refuses. Probing max(count, bound) sees both and seals 2.
+# The bound itself never falls, so shard 0002 stays reachable either way.
+priorSealShards: 2
+priorSealIndexBound: 3
+priorShardIndices: [0, 2]
+terminalAge: 5m
+logReadFails: true
+producer: structured-rows
+containerName: node
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}

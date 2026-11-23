@@ -1,0 +1,5 @@
+# Rule 2, in the direction people forget. A file the manifest does not list is
+# as much a disagreement as one it lists and cannot find: it means the bundle
+# on disk is not the bundle that was certified, and a reader that walked the
+# directory would hand its consumer rows nothing vouches for.
+tamper: add-unlisted-file

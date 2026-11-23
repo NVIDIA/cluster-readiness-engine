@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A producer that emits more than the in-memory row budget.
+#
+# ADR-090 calls for spooling to a temporary file and sorting there. The
+# controller has no writable path, so rows are sorted in memory under a budget
+# instead, and a producer past it stops and says so rather than growing without
+# bound. The rows that did fit are still written: a run that lost some of its
+# evidence reports what it has and names what it lost.
+#
+# maxTotalRawBytes is lowered to 600 bytes, which holds a handful of rows.
+options:
+  maxTotalRawBytes: 600
+generate:
+  nodes: 1
+  components: 4
+  samples: 4

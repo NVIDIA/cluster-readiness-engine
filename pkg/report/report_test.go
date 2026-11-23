@@ -350,7 +350,7 @@ func TestPrintReport(t *testing.T) {
 				},
 			},
 		},
-		Result: "PASSED",
+		Result: resultPassed,
 	}
 
 	var buf bytes.Buffer
@@ -917,7 +917,7 @@ func TestPrintReportMinimal(t *testing.T) {
 		Categories: []CategoryReport{
 			{Domain: testDomainCommunication, Variant: "nccl-loopback", Status: statusSucceeded},
 		},
-		Result: "PASSED",
+		Result: resultPassed,
 	}
 
 	var buf bytes.Buffer

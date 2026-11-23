@@ -1,0 +1,2 @@
+# Both suffixes git describe can append, on a prerelease tag.
+buildVersion: v0.2.0-rc.3-5-gabc1234-dirty

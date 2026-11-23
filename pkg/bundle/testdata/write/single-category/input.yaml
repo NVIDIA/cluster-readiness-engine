@@ -1,0 +1,13 @@
+# The ordinary case: one certification, one category that produced rows.
+reports:
+  - name: gpu-cluster-cert
+    status: PASSED
+components:
+  - scope: gpu-cluster-cert
+    domain: compute
+    variant: cutlass-gemm
+    shardCount: 1
+    final: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460.00,"unit":"TFLOPS","sample":0}'
+      - '{"node":"gpu-node-1","componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0}'

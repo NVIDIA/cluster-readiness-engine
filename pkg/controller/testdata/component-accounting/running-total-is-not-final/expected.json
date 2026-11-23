@@ -1,0 +1,13 @@
+{
+  "published": {
+    "shardCount": 2,
+    "rowCount": 120,
+    "truncatedRowCount": 0,
+    "degradedComponentCount": 0,
+    "selector": "nvcre.nvidia.com/workflow-uid=0123456789abcdef-fixed-for-the-golden",
+    "final": false
+  },
+  "remainingSeals": [
+    "group-0 attempt=0 job=wf-group-0-iter-1 shards=2 rows=120 phase=Complete"
+  ]
+}

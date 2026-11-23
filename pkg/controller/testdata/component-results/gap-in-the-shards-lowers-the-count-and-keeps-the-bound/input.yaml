@@ -1,0 +1,22 @@
+# A seal claiming three shards of which 0 and 2 survive, re-driven onto the
+# read-failure branch so the counts are reconciled against the cluster.
+#
+# A gap is what a delete that failed partway leaves. The usual failure
+# truncates the tail, so the survivors are a prefix and one number describes
+# them; a partial delete leaves a hole, and then the number that exists and the
+# range a delete has to walk are different facts.
+#
+# shardIndexBound carries the second of those. It only ever rises, so it still
+# reaches shard 2 after the count has fallen to the two that exist, and every
+# delete path enumerates the bound rather than the count. Before the field
+# existed this case had to keep the count at 3 to stay reachable, which made
+# the published total overstate the cluster and nvcrectl refuse a run whose
+# shards were all perfectly reachable.
+priorSealShards: 3
+priorShardIndices: [0, 2]
+terminalAge: 5m
+logReadFails: true
+producer: structured-rows
+containerName: node
+log: |
+  NVCRE_ROW {"componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0,"timestamp":"2026-01-22T10:04:00Z","outcome":"pass"}
