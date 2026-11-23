@@ -61,7 +61,7 @@ See `pkg/catalog/gpu_defaults_test.go` as the canonical reference.
 make test
 
 # Single unit test
-go test ./pkg/workload/ -run TestAdapterForSpec -v
+go test ./pkg/workload/ -run TestForSpec -v
 
 # Single integration test case
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
