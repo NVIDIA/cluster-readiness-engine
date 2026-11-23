@@ -1,0 +1,11 @@
+# No Workflow exists yet and the target nodes are gone past
+# nodeDiscoveryTimeout: the Certification fails, as before.
+nodes: []
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+existingWorkflow: -1
