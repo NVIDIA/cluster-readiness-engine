@@ -15,6 +15,8 @@ followed them.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-23
+
 ### Fixed
 
 - A Certification is no longer marked `Failed` while its Workflow keeps
@@ -22,6 +24,12 @@ followed them.
   status write. A Workflow the Certification already controls is now adopted
   before node discovery, the capacity checks and OCI RDMA network detection
   run again, so a cluster change in between can no longer fail it (#566).
+- Topology-aware partitioning no longer puts every target node into one group
+  larger than `nodesPerJob` when the racks are uneven. The cap on racks per group
+  was `ceil(nodesPerJob / largest rack)`, which on racks of 2, 1, 1 and 1 with
+  `nodesPerJob: 4` allows fewer racks than any group can be filled from, so no
+  full group formed and all five nodes landed in one. The cap is now the smallest
+  number of the largest racks that together hold `nodesPerJob` (#598).
 
 ### Changed
 
@@ -29,6 +37,9 @@ followed them.
   it was asked for, as `workloadrun report` already did. It used to print a
   warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
   without `--wait`, which used to exit 0 having written nothing (#564).
+- The controller image's runtime base moves to
+  `nvcr.io/nvidia/distroless/static:v4.2.1` (from v4.2.0), and `nvcrectl` builds
+  against `golang.org/x/text` v0.44.0, up from v0.43.0 (#619, #620).
 
 ## [0.12.0] - 2026-11-16
 
