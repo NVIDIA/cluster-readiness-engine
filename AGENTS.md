@@ -18,7 +18,7 @@ make helm-package         # Package the Helm chart
 
 Run a single unit test:
 ```bash
-go test ./pkg/workload/ -run TestAdapterForSpec -v
+go test ./pkg/workload/ -run TestForSpec -v
 ```
 
 Run a single integration test case:
