@@ -145,7 +145,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 
 **Running a single test**:
 ```bash
-go test ./pkg/workload/ -run TestAdapterForSpec -v
+go test ./pkg/workload/ -run TestForSpec -v
 ```
 
 **Running a single integration test**:

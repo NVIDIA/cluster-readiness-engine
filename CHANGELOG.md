@@ -23,6 +23,13 @@ followed them.
   before node discovery, the capacity checks and OCI RDMA network detection
   run again, so a cluster change in between can no longer fail it (#566).
 
+### Changed
+
+- `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
+  it was asked for, as `workloadrun report` already did. It used to print a
+  warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
+  without `--wait`, which used to exit 0 having written nothing (#564).
+
 ## [0.12.0] - 2026-11-16
 
 ### Added
@@ -39,7 +46,6 @@ followed them.
   is recorded as `resolvedFabric` in status, and `nvcrectl certification render` and
   `nvcrectl workloadrun render` take `--fabric`
   ([ADR-110](docs/designs/110-fabric-selection.md), #576).
-
 
 - Per-component result rows ([ADR-090](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/090-component-result-sharding.md)).
   A workload can now report a measurement per GPU, or per any component it names,
