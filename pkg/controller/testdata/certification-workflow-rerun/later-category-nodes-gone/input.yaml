@@ -1,0 +1,22 @@
+# As first-category-nodes-gone, for a later category: the first category has
+# succeeded and the second's Workflow exists, but its category is still
+# Pending. It is adopted rather than failed.
+nodes: []
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  categoryStatuses:
+    - domain: diagnostics
+      variant: dcgm-level4
+      status: Succeeded
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Pending
+existingWorkflow: 1

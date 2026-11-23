@@ -1,9 +1,10 @@
-# The adopt branch under the same cache lag issue #384 is about. Category 0
-# finishes, so pass 1 moves on and creates category 1's Workflow, and Create
-# reports the name already taken. AlreadyExists proves the holder is on the API
-# server, so the cache returning NotFound for it is lag by definition. Confirm
-# the holder live; reading the cache again would fail the whole Certification
-# over a Workflow this Certification already owns.
+# Category 0 finishes, so pass 1 moves on to category 1, whose Workflow this
+# Certification already owns on the API server but the cache does not show
+# yet (the lag issue #384 is about). The adoption read is live, so it finds
+# the holder before any check or Create runs again (issue #566), and the
+# category records it. Reading the cache instead would miss it.
+# adopt-race-holder-confirmed-live covers the AlreadyExists handler, which a
+# holder created after the adoption read still reaches.
 inCache: true
 inAPI: true
 succeeded: true
