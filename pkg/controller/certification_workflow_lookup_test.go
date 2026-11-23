@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -101,6 +102,25 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 			// StatusWriteFailures fails that many leading status writes with a
 			// conflict, modelling a write lost to a lagging cache.
 			StatusWriteFailures int `yaml:"statusWriteFailures"`
+			// StaleFirstRead returns the Certification without its category
+			// statuses on the first read only, which is the lagging informer
+			// cache: Reconcile takes initializeCategoryStatuses even though an
+			// earlier pass already seeded the list. The conflict refetch that
+			// StatusWriteFailures forces then sees the real state.
+			StaleFirstRead bool `yaml:"staleFirstRead"`
+			// Fabric sets spec.fabric, which is what makes the resolved fabric
+			// surface on the category status (ADR-110), and records it on the
+			// first category as the pass that created its Workflow would have.
+			// The target node also gets vpc.amazonaws.com/efa allocatable, so
+			// that a case reaching resolveFabric with "efa" validates rather
+			// than failing the Certification. A case that adopts never gets
+			// there, so it does not read the allocatable at all.
+			Fabric string `yaml:"fabric"`
+			// AdoptFirst places the first category's Workflow, at its generated
+			// name and owned by this Certification, on the API server. The adopt
+			// path then runs on the first pass, which is what a create whose
+			// status write was lost leaves behind (issue #566).
+			AdoptFirst bool `yaml:"adoptFirst"`
 			// Reconciles is how many passes to drive.
 			Reconciles int `yaml:"reconciles"`
 		}
@@ -142,6 +162,10 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 				},
 			},
 		}
+		if input.Fabric != "" {
+			certification.Spec.Fabric = nvcrev1alpha1.Fabric(input.Fabric)
+			certification.Status.CategoryStatuses[0].ResolvedFabric = nvcrev1alpha1.Fabric(input.Fabric)
+		}
 		node := &corev1.Node{
 			Name: testNodeA,
 			Labels: map[string]string{
@@ -149,6 +173,11 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 				testGPUProductLabel: testGPUProductH100,
 			},
 			Spec: corev1.NodeSpec{ProviderID: testProviderIDAWS},
+		}
+		if input.Fabric != "" {
+			node.Status.Allocatable = corev1.ResourceList{
+				efaResourceName: resource.MustParse("1"),
+			}
 		}
 		newWorkflow := func() *nvcrev1alpha1.Workflow {
 			wf := &nvcrev1alpha1.Workflow{Name: firstWorkflowName, Namespace: testNS}
@@ -192,10 +221,12 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 			cacheObjects = append(cacheObjects, newHolder())
 		}
 		statusWrites := 0
+		certReads := 0
 		cache := fake.NewClientBuilder().WithScheme(scheme).
 			WithObjects(cacheObjects...).
 			WithStatusSubresource(&nvcrev1alpha1.Certification{}, &nvcrev1alpha1.Workflow{}).
 			WithInterceptorFuncs(interceptor.Funcs{
+				Get: staleCategoriesGet(input.StaleFirstRead, &certReads),
 				Create: func(ctx context.Context, cl client.WithWatch, obj client.Object,
 					opts ...client.CreateOption,
 				) error {
@@ -258,6 +289,14 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 		if input.InAPI {
 			apiObjects = append(apiObjects, newWorkflow())
 		}
+		if input.AdoptFirst {
+			// At the generated name, which is the only one adoptExistingWorkflow
+			// looks for. firstWorkflowName is the one a seeded category status
+			// already points at, and says nothing about what the adopt path finds.
+			holder := newHolder()
+			holder.Name = (&CertificationReconciler{}).getWorkflowName(certification, categories[0])
+			apiObjects = append(apiObjects, holder)
+		}
 		if input.AdoptHolder != "" {
 			apiObjects = append(apiObjects, newHolder())
 		}
@@ -275,6 +314,9 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 		type category struct {
 			Status      string `json:"status"`
 			WorkflowRef string `json:"workflowRef"`
+			// Omitted where the fabric did not choose the render, so the cases
+			// that set no spec.fabric keep the output they had.
+			ResolvedFabric string `json:"resolvedFabric,omitempty"`
 		}
 		type pass struct {
 			RequeueAfter string     `json:"requeueAfter"`
@@ -302,7 +344,11 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 				p.Error = reconcileErr.Error()
 			}
 			for _, cs := range current.Status.CategoryStatuses {
-				row := category{Status: cs.Status, WorkflowRef: testNilRef}
+				row := category{
+					Status:         cs.Status,
+					WorkflowRef:    testNilRef,
+					ResolvedFabric: string(cs.ResolvedFabric),
+				}
 				if cs.WorkflowRef != nil {
 					row.WorkflowRef = cs.WorkflowRef.Name
 				}
@@ -334,6 +380,63 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+// staleCategoriesGet returns a Get that withholds the category statuses from
+// the first read of a Certification, which is an informer cache that has not
+// caught up with an earlier pass's status write. Everything else about the
+// object has arrived, so only that field is withheld, and only once: the
+// conflict refetch and the test's own reads see the stored state.
+//
+// It delegates first and edits the result, which the fake client hands back as
+// a deep copy, so the store itself keeps the categories.
+func staleCategoriesGet(stale bool, reads *int) func(context.Context, client.WithWatch,
+	client.ObjectKey, client.Object, ...client.GetOption) error {
+	return func(ctx context.Context, cl client.WithWatch, key client.ObjectKey,
+		obj client.Object, opts ...client.GetOption,
+	) error {
+		if err := cl.Get(ctx, key, obj, opts...); err != nil {
+			return err
+		}
+		cert, ok := obj.(*nvcrev1alpha1.Certification)
+		if !ok || !stale {
+			return nil
+		}
+		*reads++
+		if *reads == 1 {
+			cert.Status.CategoryStatuses = nil
+		}
+		return nil
+	}
+}
+
+// TestRecordedFabric pins the one decision both category status writes share:
+// a pass that adopted a Workflow resolved no fabric and must keep what is
+// recorded, and a pass that created one must store what it resolved, including
+// the empty that means the fabric did not choose the render (ADR-110).
+//
+// A table rather than a golden file: the function takes three values and
+// returns one, and the integration-level behaviour is pinned by the
+// adopt-first-keeps-resolved-fabric case.
+func TestRecordedFabric(t *testing.T) {
+	const efa, roce = nvcrev1alpha1.Fabric("efa"), nvcrev1alpha1.Fabric("roce")
+	for _, tc := range []struct {
+		name     string
+		adopted  bool
+		resolved nvcrev1alpha1.Fabric
+		current  nvcrev1alpha1.Fabric
+		want     nvcrev1alpha1.Fabric
+	}{
+		{"adopted keeps the recorded fabric", true, "", efa, efa},
+		{"adopted keeps nothing when nothing is recorded", true, "", "", ""},
+		{"created stores what it resolved", false, efa, "", efa},
+		{"created stores the empty that does not surface", false, "", efa, ""},
+		{"created wins over a stale recorded value", false, roce, efa, roce},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, recordedFabric(tc.adopted, tc.resolved, tc.current))
+		})
+	}
 }
 
 // twoCatalogCategories returns two distinct real catalog entries, so the first
