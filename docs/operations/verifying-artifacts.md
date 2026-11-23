@@ -25,7 +25,7 @@ newest *stable* release, never a pre-release.
 To know what you are about to run, check it first:
 
 ```bash
-TAG=v0.12.0
+TAG=v0.13.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -134,7 +134,7 @@ not describe, so each platform gets its own.
 Signature and provenance, against the tag:
 
 ```bash
-TAG=v0.12.0
+TAG=v0.13.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -162,6 +162,48 @@ cosign verify-attestation --type cyclonedx \
   --certificate-oidc-issuer "${ISSUER}" \
   "${IMAGE}@${AMD64}"
 ```
+
+### The GEMM harness image
+
+A release publishes two images, not one. Besides the controller image above,
+`compute/cutlass-gemm` runs a CUTLASS harness image that the catalog resolves from the
+release's own version, so a certification pulls it without anything being pinned by hand.
+It is signed and attested by the same workflow under the same identity, so the same three
+checks apply: the signature and the SLSA provenance on the index, and the CycloneDX SBOM
+on a platform digest.
+
+It reuses `ID`, `ISSUER` and `TAG` from above, and binds its own `HARNESS` and
+`HARNESS_AMD64` rather than reassigning `IMAGE` or `AMD64`. The blocks on this page are
+meant to be read and run in order, and the later ones still verify the controller image
+through those names:
+
+```bash
+HARNESS=ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm
+
+cosign verify \
+  --certificate-identity "${ID}" \
+  --certificate-oidc-issuer "${ISSUER}" \
+  "${HARNESS}:${TAG}"
+
+cosign verify-attestation --type slsaprovenance1 \
+  --certificate-identity "${ID}" \
+  --certificate-oidc-issuer "${ISSUER}" \
+  "${HARNESS}:${TAG}"
+
+HARNESS_AMD64="$(crane digest --platform linux/amd64 "${HARNESS}:${TAG}")"
+echo "linux/amd64 -> ${HARNESS_AMD64}"
+
+cosign verify-attestation --type cyclonedx \
+  --certificate-identity "${ID}" \
+  --certificate-oidc-issuer "${ISSUER}" \
+  "${HARNESS}@${HARNESS_AMD64}"
+```
+
+A signature checked by tag covers the image a certification actually runs only while the
+tag still resolves to the digest that was signed. The catalog pulls the harness by tag,
+`cutlass-gemm:{{ .HarnessImageTag }}`, so pin the digest in an environment where that
+matters. Mirroring a registry or running air-gapped means mirroring both images.
+
 
 ## What the provenance actually proves
 
@@ -482,7 +524,7 @@ This environment may not have Docker or Kind. On a machine that does, the intend
 is server-side dry-run so the admission webhook actually runs:
 
 ```shell
-TAG=v0.12.0
+TAG=v0.13.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
