@@ -206,8 +206,11 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	// means an earlier pass got past every check below and its status write
 	// was lost (issue #566). Adopt it before running them again.
 	workflowName, err := r.adoptExistingWorkflow(ctx, certification, firstCategory)
+	// Which of the two empty resolved fabrics the status write below gets, and
+	// so whether it may store it: see recordedFabric.
+	adopted := err == nil && workflowName != ""
 	var resolvedFabric nvcrev1alpha1.Fabric
-	if err == nil && workflowName == "" {
+	if err == nil && !adopted {
 		// Detect the OCI RDMA network for every category before the first
 		// Workflow exists (ADR-103). Each category's creation detects again,
 		// to catch a NAD that changes during the run. Other errors are left
@@ -307,7 +310,14 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			Name:      workflowName,
 			Namespace: c.Namespace,
 		}
-		statuses[0].ResolvedFabric = resolvedFabric
+		// This rebuild would otherwise erase the fabric the pass that created
+		// the Workflow recorded. The spec is immutable and the earlier list was
+		// built from it in the same order, so index 0 is the same category.
+		var recorded nvcrev1alpha1.Fabric
+		if len(c.Status.CategoryStatuses) > 0 {
+			recorded = c.Status.CategoryStatuses[0].ResolvedFabric
+		}
+		statuses[0].ResolvedFabric = recordedFabric(adopted, resolvedFabric, recorded)
 		if apiequality.Semantic.DeepEqual(c.Status.CategoryStatuses, statuses) {
 			return false
 		}
@@ -359,8 +369,9 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 	// As for the first category: adopt a Workflow an earlier pass created
 	// before its checks run again (issue #566).
 	workflowName, err := r.adoptExistingWorkflow(ctx, certification, category)
+	adopted := err == nil && workflowName != ""
 	var resolvedFabric nvcrev1alpha1.Fabric
-	if err == nil && workflowName == "" {
+	if err == nil && !adopted {
 		workflowName, resolvedFabric, err = r.createWorkflowForCategory(ctx, certification, category)
 	}
 	if err != nil {
@@ -429,7 +440,7 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 			Name:      workflowName,
 			Namespace: certification.Namespace,
 		}
-		cs.ResolvedFabric = resolvedFabric
+		cs.ResolvedFabric = recordedFabric(adopted, resolvedFabric, cs.ResolvedFabric)
 	})
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowCreated,
 		fmt.Sprintf("Created Workflow for category %s/%s (%d of %d)", category.Domain, category.Variant,
@@ -1470,6 +1481,28 @@ func derefBool(p *bool) bool {
 // setCertificationInProgress sets the Certification to InProgress state.
 func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string, extra ...func(*nvcrev1alpha1.Certification) bool) error {
 	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationInProgress, reason, message, extra...)
+}
+
+// recordedFabric returns the fabric a category status should carry: the one
+// this pass resolved, or the one already recorded when this pass adopted a
+// Workflow and so resolved none (ADR-110).
+//
+// Only the pass that creates a category's Workflow resolves the fabric.
+// Adopting one an earlier pass created (issue #566) returns the name alone, so
+// its resolved value is empty for want of looking, which is not the empty a
+// category whose fabric did not choose the render gets. Writing the first over
+// a recorded value erases it for good: once the category list exists Reconcile
+// takes processNextCategory, and once a category is InProgress that function
+// checks its Workflow instead of starting one, so neither write runs again.
+//
+// Both write sites share this so there is one decision rather than two that can
+// drift. It cannot recover a fabric that was never recorded, which is what a
+// status write lost outright rather than to a lagging cache leaves behind.
+func recordedFabric(adopted bool, resolved, current nvcrev1alpha1.Fabric) nvcrev1alpha1.Fabric {
+	if adopted {
+		return current
+	}
+	return resolved
 }
 
 // categoryMutation adapts a per-category edit into a status-write callback.

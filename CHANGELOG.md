@@ -15,6 +15,19 @@ followed them.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Certification keeps the fabric recorded in
+  `status.categoryStatuses[].resolvedFabric` when a later pass adopts a
+  Workflow an earlier one created (#566). Adopting resolves no fabric, and both
+  category status writes stored that empty value over the recorded one; nothing
+  put it back, because once the category list exists, and once a category is
+  InProgress, neither write runs again. The field read as "the fabric did not
+  choose the render" on a Certification that had rendered for one, and it
+  reached CI as a flake in the AWS GB300 integration cases. A status write lost
+  outright rather than to a lagging cache still leaves nothing to keep, so that
+  case records no fabric as before (#624).
+
 ## [0.13.0] - 2026-11-23
 
 ### Fixed
