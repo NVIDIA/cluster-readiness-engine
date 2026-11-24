@@ -1,5 +1,5 @@
 {
-  "containersScanned": 426,
+  "containersScanned": 434,
   "sshdWorkers": 6,
   "containers": [
     {
@@ -544,6 +544,16 @@
       ]
     },
     {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"b300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
       "source": "training/nemotron5-8b@NVIDIA-GB300 override {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
       "fragment": true,
       "replicatedJob": "node",
@@ -634,6 +644,16 @@
     },
     {
       "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"a100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override {\"gpuArchitecture\":{\"equals\":\"b300\"},\"platform\":{\"equals\":\"aws\"}}",
       "fragment": true,
       "replicatedJob": "node",
       "container": "node",

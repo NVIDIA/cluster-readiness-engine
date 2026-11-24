@@ -502,9 +502,10 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
    RUN git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /opt/megatron-lm
    ```
 
-   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. Then either point the categories at the extended image with `categories[].options.image`, which also replaces the `megatron-clone` init container's image, or serve it under the reference the entries render on your platform: pre-load it on the nodes or publish it through your registry mirror under that name. The default reference is `nvcr.io/nvidia/pytorch:25.08-py3`, with two exceptions:
+   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. Then either point the categories at the extended image with `categories[].options.image`, which also replaces the `megatron-clone` init container's image, or serve it under the reference the entries render on your platform: pre-load it on the nodes or publish it through your registry mirror under that name. The default reference is `nvcr.io/nvidia/pytorch:25.08-py3`, with three exceptions:
 
    - **AWS RTX PRO 6000, Nemotron 5 8B:** The unmodified PyTorch image uses `nvcr.io/nvidia/pytorch:26.03-py3@sha256:3c90e38f5ec51e51d1c73bd7eb3d83674a254f451147c5cadc4344314258a112`. A Megatron-LM-extended image has a different digest: set `categories[].options.image` to its own reference and pre-load or mirror that reference. The override also updates `megatron-clone` and `megatron-ddp-stream-order`, so neither init container needs a separate image. See [AWS RTX PRO 6000](../concepts/platform-detection.md#aws-rtx-pro-6000).
+   - **AWS B300, Nemotron 5 8B:** The unmodified PyTorch image uses `nvcr.io/nvidia/pytorch:26.04-py3@sha256:be06a21bd95a46bce1a5cfc0576051a40209f328440edaa2ba5cd35abf85ca1a`. As on AWS RTX PRO 6000, a Megatron-LM-extended image needs its own reference in `categories[].options.image`, and the override also updates `megatron-clone` and `megatron-ddp-stream-order`. See [Architecture-specific resources](../concepts/platform-detection.md#architecture-specific-resources).
    - **GCP H100:** the training image follows the TCPXO plugin version detected on the nodes (`pytorch:25.06-py3` for plugin v1.0.15 and v1.0.16, and when detection finds no release); see [GCP H100 clusters](../concepts/platform-detection.md#gcp-h100-clusters).
 
    `nvcrectl certification render --dry-run` prints the reference it picked.
@@ -518,7 +519,7 @@ The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megat
      sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
    ```
 
-For AWS RTX PRO 6000, the 8B category runs `megatron-ddp-stream-order` after
+For AWS RTX PRO 6000 and AWS B300, the 8B category runs `megatron-ddp-stream-order` after
 source resolution, including for `sourceRepo`, in-image and pre-seeded sources.
 It applies the DDP stream-ordering backport only to the inspected
 `core_v0.15.2` training.py hash. An already-patched source is left unchanged;

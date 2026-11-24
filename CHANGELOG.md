@@ -15,6 +15,14 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- AWS B300 (`p6-b300.48xlarge`) override for `training/nemotron5-8b`: 16
+  `vpc.amazonaws.com/efa` devices per worker, the H100 EFA transport env plus
+  `NCCL_NET_PLUGIN=ofi`, and NGC PyTorch `26.04-py3` pinned by digest on the trainer
+  and both init containers, with the Megatron DDP stream-order guard from the AWS RTX
+  PRO 6000 arm (#628).
+
 ### Fixed
 
 - A Certification keeps the fabric recorded in

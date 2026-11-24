@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS B300 (p6-b300.48xlarge) training resources: 8 GPUs and 16 EFA devices,
+# the count deps/aws-b300-efa-runtime-patch-comm.yaml requests for the comm
+# entries. CPU and memory are the deps/aws-h100-efa-resources-training.yaml
+# values.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      numNodes: {{ .NodesPerJob }}
+      torch:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: 16
+                        memory: 1800Gi
+                        cpu: "192"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: 16
+                        memory: 1200Gi
+                        cpu: "128"
