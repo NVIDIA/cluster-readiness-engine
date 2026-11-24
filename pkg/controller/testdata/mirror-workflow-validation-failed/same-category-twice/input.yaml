@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A category already listed (the same Workflow mirrored again) is not added
+# again and reports no change, so nothing is written.
+index: 0
+workflow:
+  metadata:
+    name: w
+  status:
+    conditions:
+      - type: Failed
+        status: "True"
+        reason: JobValidationFailed
+        message: 1 groups failed across 1 iterations
+        lastTransitionTime: "2026-01-22T10:05:00Z"
+      - type: ValidationFailed
+        status: "True"
+        reason: JobValidationFailed
+        message: One or more Jobs failed performance threshold validation
+        lastTransitionTime: "2026-01-22T10:05:00Z"
+certification:
+  metadata:
+    name: c
+  spec:
+    target:
+      nodeNames:
+        - node-a
+    categories:
+      - domain: communication
+        variant: nccl-all-reduce
+      - domain: communication
+        variant: nccl-all-gather
+  status:
+    categoryStatuses:
+      - domain: communication
+        variant: nccl-all-reduce
+        status: Failed
+      - domain: communication
+        variant: nccl-all-gather
+        status: Failed
+    conditions:
+      - type: InProgress
+        status: "True"
+        reason: WorkflowRunning
+        message: "Workflow for category communication/nccl-all-reduce failed, advancing to next category"
+        lastTransitionTime: "2026-01-22T10:00:00Z"
+      - type: ValidationFailed
+        status: "True"
+        reason: ThresholdViolation
+        message: "Performance thresholds not met in categories: communication/nccl-all-reduce, communication/nccl-all-gather"
+        lastTransitionTime: "2026-01-22T10:00:00Z"

@@ -160,7 +160,7 @@ The entire `spec` is **immutable** after the Certification is created (a `self =
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (reason `ThresholdViolation`) — set when a category's Workflow violated a performance threshold; its message names every such category. `Failed` keeps reason `WorkflowFailed`, so `ValidationFailed` is what tells a threshold miss apart from an execution failure |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (reason `ThresholdViolation`) — set when a category's Workflow violated a performance threshold; its message names every such category as `domain/variant`, plus the suffix the controller derives from the category's options to name their Workflows apart (for example `communication/nccl-all-reduce-n2` for `nodesPerJob: 2`), so duplicate entries that run as separate Workflows are listed separately. `Failed` keeps reason `WorkflowFailed`, so `ValidationFailed` is what tells a threshold miss apart from an execution failure |
 | `categoryStatuses` | []CertificationCategoryStatus | Per-category status including `domain`, `variant`, `status`, `workflowRef`, `succeededNodesRef`, `failedNodesRef`, and `resolvedFabric` (the fabric the category was rendered for, recorded only when `spec.fabric` is set or the target is AWS GB300; see `fabric`) |
 
 Each `categoryStatuses` entry includes a `failedNodesRef` — a `TypedLocalObjectReference` pointing to a ConfigMap that stores the failed-node list (name, reason, message) for that category. To read the failed nodes:

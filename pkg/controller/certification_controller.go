@@ -520,7 +520,7 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
 			fmt.Sprintf("Workflow for category %s/%s failed, advancing to next category", catStatus.Domain, catStatus.Variant),
 			writeCategory(categoryStatusFailed),
-			mirrorWorkflowValidationFailed(workflow, catStatus.Domain+"/"+catStatus.Variant)); err != nil {
+			mirrorWorkflowValidationFailed(workflow, validationFailedCategoryName(certification, idx))); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1532,8 +1532,37 @@ func categoryMutation(idx int, apply func(*nvcrev1alpha1.CertificationCategorySt
 
 // validationFailedCategoriesPrefix starts the message of the Certification's
 // ValidationFailed condition, which lists every category whose Workflow missed
-// its performance thresholds.
+// its performance thresholds, separated by ", ".
 const validationFailedCategoriesPrefix = "Performance thresholds not met in categories: "
+
+// validationFailedCategoryName names the category at idx in the message of
+// the Certification's ValidationFailed condition: "domain/variant" plus the
+// suffix categoryOptionsSuffix derives from its options, the one WorkflowName
+// appends before truncating, so duplicate domain/variant entries that run as
+// separate Workflows get separate names. Duplicate entries whose options yield
+// the same suffix, or none, share a Workflow name, and then a name, as well.
+// The name is built from the same spec category WorkflowName receives
+// (Spec.Categories and Status.CategoryStatuses share their order, and the spec
+// is immutable); an index past the spec, which only a hand-edited status could
+// produce, falls back to the status entry.
+//
+// The list is split back on ", ", which no name contains: domain and variant
+// are catalog entry names, and every suffix token is a number, a fixed word,
+// an enum value or a hex hash. A token read from a free-form option would
+// break the split, so one must not be added without changing how the list is
+// stored.
+func validationFailedCategoryName(certification *nvcrev1alpha1.Certification, idx int) string {
+	if idx >= len(certification.Spec.Categories) {
+		catStatus := certification.Status.CategoryStatuses[idx]
+		return catStatus.Domain + "/" + catStatus.Variant
+	}
+	category := certification.Spec.Categories[idx]
+	name := category.Domain + "/" + category.Variant
+	if category.Options != nil {
+		name += categoryOptionsSuffix(category.Options)
+	}
+	return name
+}
 
 // mirrorWorkflowValidationFailed returns an extra func for the Certification
 // status writers that sets the Certification's ValidationFailed condition when
@@ -1542,8 +1571,15 @@ const validationFailedCategoriesPrefix = "Performance thresholds not met in cate
 // trio: it tells "the workload ran but missed its thresholds" apart from "the
 // workload broke", which the Failed reason alone (WorkflowFailed) does not.
 // The condition stays once set, as on the Workflow. A later category adds its
-// name to the message rather than replacing the earlier ones. Returns nil when
-// the Workflow met its thresholds.
+// name (validationFailedCategoryName) to the message rather than replacing the
+// earlier ones. A name already listed is not added again, so mirroring the
+// same category twice (a later pass over the same Workflow before the cache
+// shows the first write, or the category failing again after
+// recoverIfWorkflowStillRunning reopened it) leaves the condition unchanged:
+// the mutation reports no change. The message is where the list lives: an
+// existing condition whose message does not start with
+// validationFailedCategoriesPrefix starts the list over.
+// Returns nil when the Workflow met its thresholds.
 func mirrorWorkflowValidationFailed(workflow *nvcrev1alpha1.Workflow, category string) func(*nvcrev1alpha1.Certification) bool {
 	if !condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed) {
 		return nil
