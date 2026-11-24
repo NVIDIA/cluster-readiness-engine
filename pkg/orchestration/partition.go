@@ -5,6 +5,7 @@ package orchestration
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -403,8 +404,11 @@ func buildOverflowGroups(
 
 			take := min(npj-len(groupNodes), len(rackPools[i].nodes))
 			taken := rackPools[i].nodes[:take]
-			rackPools[i].nodes = rackPools[i].nodes[take:]
 			groupNodes = append(groupNodes, taken...)
+			// Move the taken nodes to the back of the pool instead of
+			// dropping them. They are tested once this group runs, so a
+			// later overflow group can still borrow them to fill to npj.
+			rackPools[i].nodes = slices.Concat(rackPools[i].nodes[take:], taken)
 			groupDomains = append(groupDomains, rackPools[i].domain)
 		}
 

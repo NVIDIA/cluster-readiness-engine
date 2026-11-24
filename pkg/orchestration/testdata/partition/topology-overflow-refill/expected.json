@@ -1,0 +1,41 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-1",
+      "node-r1-2",
+      "node-r1-3"
+    ],
+    "domains": [
+      "rack-1"
+    ]
+  },
+  {
+    "name": "group-1-overflow",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-1",
+      "node-r1-2",
+      "node-r1-4"
+    ],
+    "domains": [
+      "rack-1"
+    ],
+    "overflow": true
+  },
+  {
+    "name": "group-2-overflow",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-3",
+      "node-r1-4",
+      "node-r2-0"
+    ],
+    "domains": [
+      "rack-1",
+      "rack-2"
+    ],
+    "overflow": true
+  }
+]
