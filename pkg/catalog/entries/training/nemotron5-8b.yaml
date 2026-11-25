@@ -686,8 +686,6 @@ overrides:
             env:
 {{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
 # --- AWS + B300 (p6-b300.48xlarge EFA; dedicated training image) ---
-# Appended last so that adding it shifts no existing override's index in the
-# applied-overrides record.
 - when:
     platform:
       equals: aws
@@ -706,7 +704,5 @@ overrides:
 {{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
             - name: NCCL_NET_PLUGIN
               value: ofi
-            # Same as AWS H100: let Transformer Engine choose the attention
-            # backend per shape.
             - name: ATTENTION_BACKEND
               value: auto

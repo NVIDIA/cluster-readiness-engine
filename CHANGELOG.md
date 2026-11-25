@@ -21,7 +21,8 @@ followed them.
   `vpc.amazonaws.com/efa` devices per worker, the H100 EFA transport env plus
   `NCCL_NET_PLUGIN=ofi`, and NGC PyTorch `26.04-py3` pinned by digest on the trainer
   and both init containers, with the Megatron DDP stream-order guard from the AWS RTX
-  PRO 6000 arm (#628).
+  PRO 6000 arm. `ATTENTION_BACKEND` for this entry on AWS B300 changes from `flash`
+  to `auto`, as on AWS H100 (#628).
 
 ### Fixed
 

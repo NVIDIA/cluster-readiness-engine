@@ -67,23 +67,28 @@ func TestAWSB300TrainingImagePinnedOnEveryContainer(t *testing.T) {
 	require.Equal(t, map[string]bool{"node": true, "megatron-clone": true, awsB300DDPGuardContainer: true}, names)
 }
 
-// The B300 fragment carries its own copy of the Megatron DDP stream-order
-// guard. TestAWSRTXDDPGuard and TestAWSRTXDDPGuardSharedWorkspace exercise the
-// AWS RTX PRO 6000 copy; this test fails when the two scripts differ in
-// anything but the platform name in their messages.
-func TestAWSB300DDPGuardMatchesAWSRTX(t *testing.T) {
-	podSpec := renderAWSB300TrainingRuntime(t, "deps/aws-b300-training-image.yaml")
-	initContainers, found, err := unstructured.NestedSlice(podSpec, "initContainers")
+func awsB300GuardContainer(t *testing.T, file string) map[string]any {
+	t.Helper()
+	initContainers, found, err := unstructured.NestedSlice(renderAWSB300TrainingRuntime(t, file), "initContainers")
 	require.NoError(t, err)
 	require.True(t, found)
-	var script string
 	for _, raw := range initContainers {
 		container := raw.(map[string]any)
 		if container["name"] == awsB300DDPGuardContainer {
-			script = container["args"].([]any)[0].(string)
+			delete(container, "image")
+			return container
 		}
 	}
-	require.NotEmpty(t, script)
+	require.FailNow(t, "no "+awsB300DDPGuardContainer+" init container in "+file)
+	return nil
+}
+
+func TestAWSB300DDPGuardMatchesAWSRTX(t *testing.T) {
+	b300 := awsB300GuardContainer(t, "deps/aws-b300-training-image.yaml")
+	rtx := awsB300GuardContainer(t, "deps/aws-rtxpro6000-training-image.yaml")
+	args := b300["args"].([]any)
+	script := args[0].(string)
 	require.Contains(t, script, "AWS B300")
-	require.Equal(t, awsRTXDDPGuardScript(t), strings.ReplaceAll(script, "AWS B300", "AWS RTX"))
+	args[0] = strings.ReplaceAll(script, "AWS B300", "AWS RTX")
+	require.Equal(t, rtx, b300)
 }
