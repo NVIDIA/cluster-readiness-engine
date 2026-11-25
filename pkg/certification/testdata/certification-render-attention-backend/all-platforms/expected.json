@@ -817,11 +817,11 @@
   },
   {
     "target": "nemotron5-8b/aws/b300/n1",
-    "backend": "flash"
+    "backend": "auto"
   },
   {
     "target": "nemotron5-8b/aws/b300/n8",
-    "backend": "flash"
+    "backend": "auto"
   },
   {
     "target": "nemotron5-8b/aws/gb200/n1",

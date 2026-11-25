@@ -163,10 +163,14 @@ in `spec.env`. For example, NGC PyTorch `26.04-py3` installs the AWS plugin as
 can use sockets even with EFA devices allocated. Verify EFA provider selection
 and GDR data channels in the NCCL logs, not just successful workload completion.
 
-The training entries have no AWS B300 override yet. Their PyTorch 25.08
-image bundles EFA 1.38.1 / OFI NCCL 1.14.0, below those minimums. Nemotron 5 on
-AWS B300 renders the base entry with no EFA devices or plugin cleanup. This
-training path is not supported and has not been validated on B300 hardware.
+`training/nemotron5-8b` carries an AWS B300 override that requests 16 EFA
+devices, sets the H100 EFA transport env plus `NCCL_NET_PLUGIN=ofi` and
+`ATTENTION_BACKEND=auto` (the base entry sets `flash`), and pins NGC PyTorch
+`26.04-py3` by digest on the trainer and both init containers. It also runs the
+Megatron DDP stream-order guard described under
+[AWS RTX PRO 6000](#aws-rtx-pro-6000). The override ran 50 steps on two
+`p6-b300.48xlarge` nodes; all 16 ranks selected the `efa` provider, with NCCL
+2.29.7 and Libfabric 2.3 in the NCCL logs.
 
 RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
 is architecture-based, not machine-shape detection. On smaller G4 nodes, set

@@ -249,6 +249,16 @@ PyTorch reports an AccumulateGrad stream-mismatch warning with this dedicated
 DDP stream; it is not suppressed. CUDA graph capture is outside this validated
 configuration. NKX-18021 owns training qualification and thresholds.
 
+## Amendment: AWS B300 (2026-11-24)
+
+The `training/nemotron5-8b` AWS B300 override also runs the DDP stream-order
+guard, so the statements above that the backport applies "in the AWS RTX 8B
+runtime only" and that other clouds receive no source patch have one
+exception. The B300 fragment carries a copy of the script, and
+`TestAWSB300DDPGuardMatchesAWSRTX` fails when the copies differ. As on AWS
+RTX PRO 6000, a source without the inspected hash or function AST fails pod
+initialization.
+
 ## References
 
 - https://nvidia.atlassian.net/browse/NKX-18019

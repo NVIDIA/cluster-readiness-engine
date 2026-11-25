@@ -685,3 +685,24 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+# --- AWS + B300 (p6-b300.48xlarge EFA; dedicated training image) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  dependencies:
+{{ lib "deps/aws-b300-efa-resources-training.yaml" . | indent 2 }}
+{{ lib "deps/aws-b300-training-image.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: nvcr.io/nvidia/pytorch:26.04-py3@sha256:be06a21bd95a46bce1a5cfc0576051a40209f328440edaa2ba5cd35abf85ca1a
+            env:
+{{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
+            - name: NCCL_NET_PLUGIN
+              value: ofi
+            - name: ATTENTION_BACKEND
+              value: auto
