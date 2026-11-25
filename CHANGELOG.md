@@ -15,12 +15,44 @@ followed them.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Certification keeps the fabric recorded in
+  `status.categoryStatuses[].resolvedFabric` when a later pass adopts a
+  Workflow an earlier one created (#566). Adopting resolves no fabric, and both
+  category status writes stored that empty value over the recorded one; nothing
+  put it back, because once the category list exists, and once a category is
+  InProgress, neither write runs again. The field read as "the fabric did not
+  choose the render" on a Certification that had rendered for one, and it
+  reached CI as a flake in the AWS GB300 integration cases. A status write lost
+  outright rather than to a lagging cache still leaves nothing to keep, so that
+  case records no fabric as before (#624).
+
+## [0.13.0] - 2026-11-23
+
+### Fixed
+
+- A Certification is no longer marked `Failed` while its Workflow keeps
+  running when Workflow creation for a category runs again after a lost
+  status write. A Workflow the Certification already controls is now adopted
+  before node discovery, the capacity checks and OCI RDMA network detection
+  run again, so a cluster change in between can no longer fail it (#566).
+- Topology-aware partitioning no longer puts every target node into one group
+  larger than `nodesPerJob` when the racks are uneven. The cap on racks per group
+  was `ceil(nodesPerJob / largest rack)`, which on racks of 2, 1, 1 and 1 with
+  `nodesPerJob: 4` allows fewer racks than any group can be filled from, so no
+  full group formed and all five nodes landed in one. The cap is now the smallest
+  number of the largest racks that together hold `nodesPerJob` (#598).
+
 ### Changed
 
 - `nvcrectl workloadrun run --wait` fails when it cannot write the `--results-file`
   it was asked for, as `workloadrun report` already did. It used to print a
   warning and exit 0 with no file. `workloadrun run` also rejects `--results-file`
   without `--wait`, which used to exit 0 having written nothing (#564).
+- The controller image's runtime base moves to
+  `nvcr.io/nvidia/distroless/static:v4.2.1` (from v4.2.0), and `nvcrectl` builds
+  against `golang.org/x/text` v0.44.0, up from v0.43.0 (#619, #620).
 
 ### Fixed
 

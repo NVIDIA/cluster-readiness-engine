@@ -1,0 +1,23 @@
+{
+  "requeue": true,
+  "conditions": [
+    {
+      "message": "Created Workflow for category communication/nccl-all-reduce (2 of 2)",
+      "reason": "WorkflowCreated",
+      "type": "InProgress"
+    }
+  ],
+  "categories": [
+    {
+      "status": "Succeeded",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "status": "InProgress",
+      "workflowRef": "cert-communication-nccl-a-9db8e"
+    }
+  ],
+  "workflows": [
+    "cert-communication-nccl-a-9db8e"
+  ]
+}

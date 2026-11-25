@@ -1,0 +1,13 @@
+# The Workflow name is held by another Certification's Workflow. It is never
+# adopted, so this pass takes the path it always did: node discovery fails,
+# terminally, and the holder is not recorded.
+nodes: []
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+existingWorkflow: 0
+foreignHolder: true

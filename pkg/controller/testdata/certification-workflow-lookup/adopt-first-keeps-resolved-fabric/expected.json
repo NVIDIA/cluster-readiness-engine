@@ -1,0 +1,44 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "15s",
+      "categories": [
+        {
+          "status": "InProgress",
+          "workflowRef": "cert-communication-nccl-a-b72c5",
+          "resolvedFabric": "efa"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 0
+    }
+  ],
+  "apiReads": 1,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowCreated",
+      "message": "Created Workflow for category communication/nccl-all-gather (1 of 2)"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": []
+}
