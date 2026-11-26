@@ -1,0 +1,12 @@
+# Worker 0 of the current workload exited 0 and worker 1 has no pod yet. A
+# Succeeded worker 1 pod of the replaced workload is still listed. It predates
+# the current workload, so it does not count toward the two workers asked for,
+# and the stall verdict stands.
+pods:
+  - name: old-worker-1
+    phase: Succeeded
+    beforeWorkload: true
+    index: 1
+  - name: worker-0
+    phase: Succeeded
+    index: 0

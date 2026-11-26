@@ -1,0 +1,7 @@
+# One worker exited 0 and the other is still running without logging a step.
+# That is a stall.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Running

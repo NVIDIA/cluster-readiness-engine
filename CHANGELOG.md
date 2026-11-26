@@ -62,6 +62,15 @@ followed them.
   `nvcr.io/nvidia/distroless/static:v4.2.1` (from v4.2.0), and `nvcrectl` builds
   against `golang.org/x/text` v0.44.0, up from v0.43.0 (#619, #620).
 
+### Fixed
+
+- A training Job is no longer failed as `WorkloadStalled` after every worker pod has
+  exited successfully. Megatron stops logging steps once it reaches
+  `exitDurationMins`, then saves its exit checkpoint and exits, and the TrainJob
+  reports `Complete` some seconds later. A stall budget that ran out in between
+  failed a finished run, or restarted it from its checkpoint. The Job now waits for
+  the workload's own verdict, still bounded by `timeoutPerJob` (#575).
+
 ## [0.12.0] - 2026-11-16
 
 ### Added
@@ -144,7 +153,6 @@ followed them.
   cancelled context before sending it. So a reconcile still running when the manager
   shut down reported a status write that never reached the API server, and its caller
   logged the transition and emitted an Event for a change that was never stored (#588).
-
 - `nicResourceName` now sets the NIC resource requested by Certifications on Azure,
   Forge and TogetherAI and by WorkloadRuns on Azure and TogetherAI, so a cluster that
   advertises its RDMA NICs under another name, such as AKS with the NVIDIA Network

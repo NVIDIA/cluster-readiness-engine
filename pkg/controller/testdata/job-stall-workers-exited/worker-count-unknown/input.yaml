@@ -1,0 +1,9 @@
+# Both workers exited 0, but the TrainJob does not set numNodes, so the
+# adapter cannot say how many workers to expect. Without a count the pods are
+# not evidence that the run finished, and the stall verdict stands.
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Succeeded
+noNumNodes: true
