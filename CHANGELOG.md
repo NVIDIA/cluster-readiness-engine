@@ -17,6 +17,14 @@ followed them.
 
 ### Fixed
 
+- A Certification sets its `ValidationFailed` condition when a category's
+  Workflow misses its performance thresholds (#600). The condition was defined
+  but never set, so a threshold miss showed only as `Failed` with reason
+  `WorkflowFailed`, the same as a hardware failure or a workload that broke,
+  and telling the two apart meant reading each category's failed-nodes
+  ConfigMap. The condition has reason `ThresholdViolation`, and its message
+  names the categories that missed, with an options suffix that tells apart
+  duplicate entries running as separate Workflows.
 - A Certification keeps the fabric recorded in
   `status.categoryStatuses[].resolvedFabric` when a later pass adopts a
   Workflow an earlier one created (#566). Adopting resolves no fabric, and both

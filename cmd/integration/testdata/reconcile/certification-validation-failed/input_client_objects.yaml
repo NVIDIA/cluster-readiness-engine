@@ -1,0 +1,186 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert-validation-fail
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+status:
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      workflowRef:
+        name: test-cert-validation-fail-allreduce-wf
+        namespace: default
+      status: InProgress
+    - domain: communication
+      variant: nccl-all-gather
+      workflowRef:
+        name: test-cert-validation-fail-allgather-wf
+        namespace: default
+      status: InProgress
+    - domain: communication
+      variant: nccl-alltoall
+      workflowRef:
+        name: test-cert-validation-fail-alltoall-wf
+        namespace: default
+      status: InProgress
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-cert-validation-fail-allreduce-wf
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/certification: test-cert-validation-fail
+    nvcre.nvidia.com/category-domain: communication
+    nvcre.nvidia.com/category-variant: nccl-all-reduce
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: JobValidationFailed
+      message: "1 groups failed across 1 iterations"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: ValidationFailed
+      status: "True"
+      reason: JobValidationFailed
+      message: "One or more Jobs failed performance threshold validation"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-cert-validation-fail-allgather-wf
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/certification: test-cert-validation-fail
+    nvcre.nvidia.com/category-domain: communication
+    nvcre.nvidia.com/category-variant: nccl-all-gather
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: JobValidationFailed
+      message: "1 groups failed across 1 iterations"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: ValidationFailed
+      status: "True"
+      reason: JobValidationFailed
+      message: "One or more Jobs failed performance threshold validation"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-cert-validation-fail-alltoall-wf
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/certification: test-cert-validation-fail
+    nvcre.nvidia.com/category-domain: communication
+    nvcre.nvidia.com/category-variant: nccl-alltoall
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: JobFailed
+      message: "Job failed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
