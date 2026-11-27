@@ -1,0 +1,61 @@
+{
+  "manifest": {
+    "formatVersion": 1,
+    "fileCount": 5,
+    "files": [
+      {
+        "path": "components/cert-a-compute-cutlass-gemm.ndjson",
+        "sha256": "308c6c7ad0aab55059a352f8ce37100c1ac59c439d6a179cfc133f01afb33824",
+        "bytes": 109
+      },
+      {
+        "path": "components/cert-b-compute-cutlass-gemm.ndjson",
+        "sha256": "9f9a4cf6e054dccc58ef3f7397e57077a9799190d415f6ccbe2ad7f60c649eff",
+        "bytes": 218
+      },
+      {
+        "path": "results.json",
+        "sha256": "c30373e46eee9e92ac94b335739b05b05954b9cffdfd931e9cb9840d75a8107f",
+        "bytes": 321
+      },
+      {
+        "path": "schema/component-row.schema.json",
+        "sha256": "14909023c961f5c7dca7167003c5aedd10accc1d15cd59a3c836a284566f946d",
+        "bytes": 1689
+      },
+      {
+        "path": "truncation.json",
+        "sha256": "34c5e03f3b664051fd27259a2d27bfdf290c92422d8daa11fe745f338d42a103",
+        "bytes": 46
+      }
+    ],
+    "components": [
+      {
+        "scope": "cert-a",
+        "domain": "compute",
+        "variant": "cutlass-gemm",
+        "path": "components/cert-a-compute-cutlass-gemm.ndjson",
+        "shardCount": 1,
+        "rowCount": 1,
+        "final": true
+      },
+      {
+        "scope": "cert-b",
+        "domain": "compute",
+        "variant": "cutlass-gemm",
+        "path": "components/cert-b-compute-cutlass-gemm.ndjson",
+        "shardCount": 2,
+        "rowCount": 2,
+        "final": true
+      }
+    ]
+  },
+  "filesOnDisk": [
+    "components/cert-a-compute-cutlass-gemm.ndjson",
+    "components/cert-b-compute-cutlass-gemm.ndjson",
+    "results.json",
+    "schema/component-row.schema.json",
+    "truncation.json"
+  ],
+  "firstComponentRow": "{\"node\":\"node-a\",\"componentID\":\"GPU-0001\",\"index\":0,\"name\":\"achievedTFLOPS\",\"value\":1460.00,\"unit\":\"TFLOPS\"}"
+}

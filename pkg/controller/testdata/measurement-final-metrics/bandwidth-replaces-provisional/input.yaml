@@ -2,6 +2,7 @@
   "kind": "bandwidth",
   "reason": "JobSucceeded",
   "seedProvisional": true,
+  "replace": true,
   "results": [
     {
       "sizeBytes": 1024,

@@ -1,0 +1,5 @@
+# The manifest cannot certify its own digest, because the digest would have to
+# be computed before the file containing it exists. A manifest claiming to is
+# either confused or forged, and either way the self-entry is a claim no reader
+# can check.
+tamper: manifest-lists-itself

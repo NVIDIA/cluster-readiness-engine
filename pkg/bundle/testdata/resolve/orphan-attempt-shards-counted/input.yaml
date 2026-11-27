@@ -1,0 +1,21 @@
+# A superseded attempt whose shard delete failed, leaving its rows on the
+# cluster under the same selector.
+#
+# The walk reads them, because nothing in a shard's labels says which attempt
+# is current and the Workflow does not retain a Job name for rows it has
+# already folded into its retired totals. So the orphan is caught by the count
+# gate rather than by provenance: three rows resolve where the run sealed two,
+# and the bundle is refused.
+#
+# Refusing is the point. The orphan holds stale measurements of the same
+# components as the live attempt, so admitting it would double a component's
+# samples, and a reader averaging them would report a number no GPU produced.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'
+      - '{"node":"gpu-node-1","componentID":"GPU-f00d","index":1,"name":"achievedTFLOPS","value":1402.75,"unit":"TFLOPS","sample":0}'
+    orphanRows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":212,"unit":"TFLOPS","sample":0}'

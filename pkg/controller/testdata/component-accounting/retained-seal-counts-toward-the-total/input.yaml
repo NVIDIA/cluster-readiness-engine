@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A group carrying a superseded seal beside its live one, with no retirement
+# this pass, so the assertion is purely about the sum.
+#
+# Both seals' shards are on the cluster, so both have to be in the total. A
+# seal on a group and a shard set on the cluster are the same fact: retirement
+# drops a seal when its delete succeeds and keeps it when the delete fails, so
+# a superseded seal is present precisely because its shards are not gone.
+# Summing the live attempt alone left the total short of them, and nvcrectl
+# resolves by selector with no Job filter and refuses any inequality, so it
+# refused the category for a run whose evidence was intact.
+phase: Succeeded
+groups:
+  - name: group-0
+    retries: 1
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 2
+        rowCount: 120
+      - attempt: 1
+        jobName: wf-group-0-iter-1-retry-1
+        shardCount: 2
+        rowCount: 120

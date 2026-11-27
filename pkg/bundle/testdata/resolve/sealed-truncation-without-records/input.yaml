@@ -1,0 +1,16 @@
+# A sealed loss whose truncation sibling is gone.
+#
+# The shard and row counts still agree, because a dropped row was never in a
+# shard to begin with, so the completeness gate cannot see this. What it misses
+# is that the magnitude of the loss lives on the Workflow while the identities
+# and reasons live only in that one ConfigMap: without it the bundle records
+# three lost rows in its manifest beside a truncation.json holding the empty
+# list the format defines as nothing having been lost.
+categories:
+  - domain: compute
+    variant: cutlass-gemm
+    final: true
+    droppedRows: 3
+    truncationDeleted: true
+    rows:
+      - '{"node":"gpu-node-1","componentID":"GPU-cafe","index":0,"name":"achievedTFLOPS","value":1460,"unit":"TFLOPS","sample":0}'

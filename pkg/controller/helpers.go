@@ -218,6 +218,10 @@ const (
 	// access, by an admission policy or ResourceQuota. The Workflow goes on
 	// without the record, as before ADR-092, but no longer only in the log.
 	ReasonNodeResultsWriteRejected = "NodeResultsWriteRejected"
+	// ReasonComponentShardWriteRejected is a forbidden shard write. The
+	// write is retried, so this exists to name access as the cause of a
+	// seal that is not progressing.
+	ReasonComponentShardWriteRejected = "ComponentShardWriteRejected"
 
 	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
 	// is invalid after overrides. This includes workload metadata that fails

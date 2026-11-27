@@ -74,6 +74,17 @@
       ]
     },
     {
+      "entry": "compute/cutlass-gemm@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": [
+            "null"
+          ]
+        }
+      ]
+    },
+    {
       "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
       "replicatedJobs": [
         {

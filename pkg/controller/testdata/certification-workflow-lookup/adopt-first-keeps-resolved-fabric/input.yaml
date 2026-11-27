@@ -1,0 +1,17 @@
+# An earlier pass created the first category's Workflow and recorded the fabric
+# spec.fabric chose. This pass reads a cache that has not caught up, so it takes
+# initializeCategoryStatuses again, adopts that Workflow (issue #566) and
+# rebuilds the category list from the spec.
+#
+# Adopting resolves no fabric, so that rebuild must not seed an empty
+# resolvedFabric over the recorded one: nothing would put it back, since every
+# later pass sees the list and goes to processNextCategory (ADR-110).
+#
+# The status write conflicts once, which is what a write against a stale read
+# gets from the API server, and the refetch is where the recorded fabric is
+# still visible.
+fabric: efa
+staleFirstRead: true
+adoptFirst: true
+statusWriteFailures: 1
+reconciles: 1

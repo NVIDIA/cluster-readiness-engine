@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A group that gave up waiting while its Job's seal was still Writing.
+#
+# A Writing ShardCount is a claim, written before the first shard so that a Job
+# whose every write fails still records that it owed rows. Once the verdict wait
+# runs out that claim is all the group has, and publishing it puts the Workflow
+# total above what nvcrectl's selector walk resolves, so the category's bundle
+# is refused for a run whose evidence is whatever it is. Refusing to publish is
+# not available either, because the Workflow has to reach a verdict.
+#
+# So the Workflow asks the question the Job tier would have asked, by Getting
+# the derived shard names: it cannot list, and it does not need to, because the
+# stem is a pure function of the Workflow UID and the Job name on the seal. One
+# of the three claimed shards exists, so the total becomes one and the seal
+# becomes Partial, which is what it is: the attempt owed rows and nobody
+# confirmed what it stored.
+phase: Succeeded
+reconcileUnverified: true
+existingShards:
+  - shard-01234567-wf-group-0-iter-1-0000
+groups:
+  - name: group-0
+    seals:
+      - attempt: 0
+        jobName: wf-group-0-iter-1
+        shardCount: 3
+        rowCount: 180
+        phase: Writing
+#
+# rowCount comes back 0 because this harness seeds bare ConfigMaps and the
+# probe reads each shard's declared rowCount, which a real shard always
+# carries. The claim under test is the shard count and the phase.

@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Job that declares per-component result rows (ADR-090) produces them from
+# its workload's pod log after it reaches a terminal state, writes them as
+# gzipped NDJSON shards, and seals the counts on its status.
+#
+# The owning Workflow is terminal already, so the Workflow controller leaves
+# its orchestration alone and this case isolates the Job tier's produce →
+# shard → seal path. The owner reference is what makes the shards
+# Workflow-owned, which is why it is here rather than omitted: a Job-owned
+# shard would be collected by the iteration rollover that deletes its Job
+# while the sealed total still claimed it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cr-owner
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - gemm.py
+            numNodes: 1
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    iterations: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: "All groups succeeded"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cr-job
+  namespace: default
+  ownerReferences:
+    - apiVersion: nvcre.nvidia.com/v1alpha1
+      kind: Workflow
+      name: cr-owner
+      uid: 00000000-0000-0000-0000-000000000001
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - gemm.py
+        numNodes: 1
+  # No replicatedJobName: the rows come from worker pods, which carry the job
+  # label the manager's Pod cache selects on (ADR-102).
+  componentResults:
+    producer: structured-rows
+    containerName: node
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadSucceeded
+      message: "Workload succeeded"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cr-job-workload-worker-0
+  namespace: default
+  labels:
+    jobset.sigs.k8s.io/jobset-name: cr-job-workload
+    batch.kubernetes.io/job-completion-index: "0"
+    nvcre.nvidia.com/job: cr-job
+spec:
+  nodeName: gpu-node-1
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Succeeded

@@ -1,0 +1,1 @@
+parse manifest.json: invalid character 'n' looking for beginning of object key string

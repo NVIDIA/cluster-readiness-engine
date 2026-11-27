@@ -4,13 +4,11 @@
 package controller
 
 import (
-	"context"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
@@ -25,20 +23,9 @@ func cleanupMeasurementBandwidthMetrics(namespace, measurement string) {
 	}
 }
 
-func cleanupMeasurementGoodputMetrics(namespace, measurement string) {
-	labels := prometheus.Labels{labelNamespace: namespace, labelMeasurement: measurement}
-	for _, g := range []*prometheus.GaugeVec{
-		goodputRatioGauge, goodputAvgTFLOPSGauge, goodputAvgStepTimeGauge,
-		goodputRescheduleTimeGauge, goodputResumeTimeGauge, goodputCheckpointSaveTimeGauge,
-		goodputLostWorkTimeGauge, goodputTrainingTimeGauge, goodputWarmupTimeGauge,
-		goodputNonWarmupTimeGauge,
-	} {
-		g.DeletePartialMatch(labels)
-	}
-}
-
-// syncFinalBandwidthMetrics publishes only the frozen final read, never a
-// provisional fallback retained in status after a failed or missing Job.
+// syncFinalBandwidthMetrics publishes final results only after a successful
+// terminal read. Failed or unavailable reads can leave provisional status
+// behind, but those samples must not be retained as final measurements.
 func syncFinalBandwidthMetrics(m *nvcrev1alpha1.BandwidthMeasurement) {
 	cleanupMeasurementBandwidthMetrics(m.Namespace, m.Name)
 	complete := meta.FindStatusCondition(m.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
@@ -50,43 +37,4 @@ func syncFinalBandwidthMetrics(m *nvcrev1alpha1.BandwidthMeasurement) {
 			m.Labels[labelWorkflowTracking], m.Spec.TestType, strconv.FormatInt(result.SizeBytes, 10),
 			parseFloat(result.AlgBW), parseFloat(result.BusBW))
 	}
-}
-
-// syncFinalGoodputMetrics is called after the terminal write succeeds, including
-// conflict refresh, and on already-complete reconciles. It does not recompute
-// cumulative values or mutate the frozen status.
-func (r *GoodputMeasurementReconciler) syncFinalGoodputMetrics(ctx context.Context, m *nvcrev1alpha1.GoodputMeasurement) {
-	cleanupMeasurementGoodputMetrics(m.Namespace, m.Name)
-	complete := meta.FindStatusCondition(m.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete)
-	if complete == nil || complete.Status != metav1.ConditionTrue ||
-		(complete.Reason != "JobSucceeded" && complete.Reason != "JobFailed") {
-		return
-	}
-	workflow := m.Labels[labelWorkflowTracking]
-	if workflow == "" {
-		if owner := metav1.GetControllerOf(m); owner != nil && owner.Kind == "Workflow" && owner.APIVersion == nvcrev1alpha1.GroupVersion.String() {
-			workflow = owner.Name
-		}
-	}
-	if workflow == "" {
-		// Legacy standalone measurements may not carry a workflow label or owner.
-		// Missing Jobs do not prevent restoration of the persisted result itself.
-		job := &nvcrev1alpha1.Job{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: m.Namespace, Name: m.Spec.JobRef.Name}, job); err == nil {
-			workflow = job.Labels[labelWorkflowTracking]
-		}
-	}
-	s := m.Status
-	recordGoodputMetrics(m.Namespace, m.Name, m.Spec.JobRef.Name, workflow, goodputMetricValues{
-		GoodputRatio:       parseFloat(s.Result),
-		AvgTFLOPS:          parseFloat(s.AvgTFLOPSPerGPU),
-		AvgStepTime:        parseFloat(s.AvgStepTimeSec),
-		RescheduleTime:     parseFloat(s.RescheduleTimeSec),
-		ResumeTime:         parseFloat(s.ResumeTimeSec),
-		CheckpointSaveTime: parseFloat(s.CheckpointSaveTimeSec),
-		LostWorkTime:       parseFloat(s.LostWorkTimeSec),
-		TrainingTime:       parseFloat(s.TrainingTimeSec),
-		WarmupTime:         parseFloat(s.WarmupTimeSec),
-		NonWarmupTime:      parseFloat(s.NonWarmupTimeSec),
-	})
 }

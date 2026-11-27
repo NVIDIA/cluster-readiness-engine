@@ -14,6 +14,7 @@ on:
       - go.sum
       - Makefile
       - .github/workflows/container-build.yml
+      - images/cutlass-gemm/**
   workflow_dispatch:
 
 permissions:
@@ -24,6 +25,83 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether the CUTLASS GEMM harness image needs rebuilding on this branch.
+  #
+  # This gate exists because `paths:` is a trigger-level filter, not a per-job
+  # one: the list above already fires on every Go change, and it has to, for
+  # the manager image. Without a second decision inside the workflow, every
+  # Go-only pull request would pay a CUTLASS compile, which is hours rather
+  # than minutes. The manager image is cheap enough to rebuild unconditionally;
+  # this one is not.
+  #
+  # Fails open in the house style: every path that cannot answer the question
+  # answers "build it". A skipped job reads as a passing one on the pull
+  # request page, so skipping is only correct when the gate positively
+  # established that nothing relevant changed.
+  changed-files:
+    runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    outputs:
+      gemm: ${{ steps.changes.outputs.gemm }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Diffed against the merge base with main, not against the previous head
+      # of this branch. `github.event.before` describes one push, so a push that
+      # merges main reports no change even when the branch's own commits touched
+      # the harness, and the last run is the one the merge button reads.
+      - name: Check for GEMM harness changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git fetch --no-tags origin main; then
+            echo "could not fetch main; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(git merge-base FETCH_HEAD HEAD || true)"
+          if [ -z "${base}" ]; then
+            echo "no merge base with main; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "comparing against merge base ${base}"
+
+          # A failed diff is not "nothing changed".
+          if ! changed="$(git diff --name-only "${base}" HEAD)"; then
+            echo "could not diff against ${base}; building rather than guessing"
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Captured and matched with a here-string, not piped into grep.
+          # `grep -q` exits on its first match, which sends SIGPIPE to a still
+          # writing `git diff`; under `pipefail` the pipeline then reports 141
+          # even though the match succeeded, so a large diff that really does
+          # touch the harness reads as gemm=false and skips the build. A
+          # here-string is one command, so the status is grep's alone.
+          #
+          # Anchored at the repository root: a path that merely mentions the
+          # directory elsewhere is not a harness change.
+          if grep -qE '^(images/cutlass-gemm/|\.github/workflows/container-build\.yml$)' <<<"${changed}"; then
+            echo "gemm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gemm=false" >> "$GITHUB_OUTPUT"
+          fi
+
   docker-build:
     name: Docker Build
     runs-on: linux-amd64-cpu32
@@ -55,3 +133,88 @@ jobs:
         run: make docker-buildx BUILDX_PUSH=
         env:
           IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
+
+  gemm-image-build:
+    name: GEMM Harness Build
+    runs-on: linux-amd64-cpu32
+    needs: changed-files
+    # The repository guard is repeated rather than inherited: a skipped
+    # changed-files job yields an empty output, and an empty string is not
+    # 'false'.
+    if: |
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      needs.changed-files.outputs.gemm == 'true'
+    # A CUTLASS build compiles kernels for six architectures. The narrow
+    # CUTLASS_LIBRARY_KERNELS filter in the Dockerfile is what keeps this
+    # inside an hour rather than several.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config: /etc/buildkit/buildkitd.toml
+
+      - name: Compute image tag
+        id: tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          ref=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-80)
+          echo "value=${ref}-${SHA}" >> "$GITHUB_OUTPUT"
+
+      # The amd64 half. The arm64 half is its own job below, because nvcc
+      # compiles for the host: an amd64 build proves nothing about the arm64
+      # image, which is how an arm64 image full of x86-64 binaries got as far
+      # as a release-path build.
+      - name: Build GEMM harness image (no push)
+        run: make gemm-image-build
+        env:
+          GEMM_IMG: ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm:${{ steps.tag.outputs.value }}
+
+  gemm-image-build-arm64:
+    name: GEMM Harness Build (arm64)
+    # GitHub's hosted arm64 runner, available because this repository is
+    # public. It is the smallest thing that works rather than the right thing:
+    # four vCPUs compiling CUTLASS is slow, and its memory and disk are the
+    # tighter limits. A self-hosted arm64 label would be better when one
+    # exists.
+    runs-on: ubuntu-24.04-arm
+    needs: changed-files
+    # The same guard and the same gate as the amd64 job, so this runs on
+    # exactly the pull requests that already pay for a harness compile and on
+    # no others.
+    if: |
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      needs.changed-files.outputs.gemm == 'true'
+    # Longer than the amd64 job's 120. This leg compiles two GPU architecture
+    # families instead of six, but on a quarter of the cores.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No buildkitd-config: that file is pre-populated on the NVIDIA
+      # self-hosted runners and absent here, and setup-buildx fails on a path
+      # that does not exist.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # The point of this job is the hardware, so assert it rather than trust
+      # the label. On amd64 the build would succeed and prove nothing, which is
+      # the failure this job exists to make impossible.
+      - name: Confirm the runner is arm64
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_ARCH}" != "ARM64" ]]; then
+            echo "::error::this job must run on arm64 but the runner reports ${RUNNER_ARCH};" \
+                 "nvcc compiles for the host, so an amd64 run would validate the wrong image"
+            exit 1
+          fi
+
+      # Compiled and discarded. A pull request has nothing to publish, and
+      # type=cacheonly keeps a branch's image out of a registry path the
+      # release uses.
+      - name: Compile the GEMM harness for linux/arm64 (no push)
+        run: make gemm-image-compile
+        env:
+          PLATFORM: linux/arm64

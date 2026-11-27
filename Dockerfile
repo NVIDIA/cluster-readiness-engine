@@ -29,7 +29,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -ldflags "-s -w -X main.version=${VERSION}" -o manager ./cmd/manager/
 
-FROM nvcr.io/nvidia/distroless/static:v4.2.0@sha256:3c9e73daac7415cf7c719ca0f2a0cc4092537a281252dfff5b208f4c7971f397
+FROM nvcr.io/nvidia/distroless/static:v4.2.1@sha256:9024ee24148d8981cdfabdf8846fcfb2a30115071050d9a30473cf12d50a7ed0
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532

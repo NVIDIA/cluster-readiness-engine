@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mokka stub for nvidia-smi: answers the one query the harness makes,
+# `--query-gpu=uuid --format=csv,noheader`, with synthetic UUIDs.
+#
+# The GPU count comes from NVIDIA_VISIBLE_DEVICES when the device plugin set
+# it, so the stub reports as many GPUs as the pod was actually allocated and a
+# profile change needs no rebuild. It falls back to 8 when that is unset or
+# says "all", which is what a bare `docker run` of this image gets.
+set -uo pipefail
+
+count=8
+devs="${NVIDIA_VISIBLE_DEVICES:-}"
+if [[ -n "${devs}" && "${devs}" != "all" && "${devs}" != "void" && "${devs}" != "none" ]]; then
+  IFS=',' read -ra parsed <<<"${devs}"
+  (( ${#parsed[@]} > 0 )) && count=${#parsed[@]}
+fi
+
+# Shaped like a real UUID so nothing downstream has to special-case it, and
+# deterministic so a golden can name a device.
+for ((i = 0; i < count; i++)); do
+  printf 'GPU-%08d-0000-4000-8000-%012d\n' "${i}" "${i}"
+done

@@ -201,25 +201,36 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	if len(certification.Spec.Categories) == 0 {
 		return ctrl.Result{}, fmt.Errorf("certification has no categories")
 	}
-	// Detect the OCI RDMA network for every category before the first Workflow
-	// exists (ADR-103). Each category's creation detects again, to catch a NAD
-	// that changes during the run. Other errors are left to that creation.
-	if err := r.preflightOCISecondaryNetwork(ctx, certification); err != nil {
-		if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
-			if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
-				log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
-				return ctrl.Result{}, statusErr
-			}
-			return ctrl.Result{}, nil
-		}
-		if _, ok := errors.AsType[*retryableCreateError](err); ok {
-			log.Info("OCI RDMA network detection failed for a retryable reason, will retry", "cause", err.Error())
-			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
-		}
-		log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
-	}
 	firstCategory := certification.Spec.Categories[0]
-	workflowName, resolvedFabric, err := r.createWorkflowForCategory(ctx, certification, firstCategory)
+	// A Workflow this Certification already created for the first category
+	// means an earlier pass got past every check below and its status write
+	// was lost (issue #566). Adopt it before running them again.
+	workflowName, err := r.adoptExistingWorkflow(ctx, certification, firstCategory)
+	// Which of the two empty resolved fabrics the status write below gets, and
+	// so whether it may store it: see recordedFabric.
+	adopted := err == nil && workflowName != ""
+	var resolvedFabric nvcrev1alpha1.Fabric
+	if err == nil && !adopted {
+		// Detect the OCI RDMA network for every category before the first
+		// Workflow exists (ADR-103). Each category's creation detects again,
+		// to catch a NAD that changes during the run. Other errors are left
+		// to that creation.
+		if err := r.preflightOCISecondaryNetwork(ctx, certification); err != nil {
+			if snErr, ok := errors.AsType[*secondaryNetworkError](err); ok {
+				if statusErr := r.setCertificationFailed(ctx, certification, ReasonSecondaryNetworkDetectionFailed, snErr.Message); statusErr != nil {
+					log.Error(statusErr, "Failed to update Certification status after OCI RDMA network detection failure")
+					return ctrl.Result{}, statusErr
+				}
+				return ctrl.Result{}, nil
+			}
+			if _, ok := errors.AsType[*retryableCreateError](err); ok {
+				log.Info("OCI RDMA network detection failed for a retryable reason, will retry", "cause", err.Error())
+				return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+			}
+			log.Info("Skipping the up-front OCI RDMA network check", "cause", err.Error())
+		}
+		workflowName, resolvedFabric, err = r.createWorkflowForCategory(ctx, certification, firstCategory)
+	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
@@ -299,7 +310,14 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			Name:      workflowName,
 			Namespace: c.Namespace,
 		}
-		statuses[0].ResolvedFabric = resolvedFabric
+		// This rebuild would otherwise erase the fabric the pass that created
+		// the Workflow recorded. The spec is immutable and the earlier list was
+		// built from it in the same order, so index 0 is the same category.
+		var recorded nvcrev1alpha1.Fabric
+		if len(c.Status.CategoryStatuses) > 0 {
+			recorded = c.Status.CategoryStatuses[0].ResolvedFabric
+		}
+		statuses[0].ResolvedFabric = recordedFabric(adopted, resolvedFabric, recorded)
 		if apiequality.Semantic.DeepEqual(c.Status.CategoryStatuses, statuses) {
 			return false
 		}
@@ -348,7 +366,14 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 		return ctrl.Result{}, fmt.Errorf("category index %d out of range (spec has %d categories)", activeIdx, len(certification.Spec.Categories))
 	}
 	category := certification.Spec.Categories[activeIdx]
-	workflowName, resolvedFabric, err := r.createWorkflowForCategory(ctx, certification, category)
+	// As for the first category: adopt a Workflow an earlier pass created
+	// before its checks run again (issue #566).
+	workflowName, err := r.adoptExistingWorkflow(ctx, certification, category)
+	adopted := err == nil && workflowName != ""
+	var resolvedFabric nvcrev1alpha1.Fabric
+	if err == nil && !adopted {
+		workflowName, resolvedFabric, err = r.createWorkflowForCategory(ctx, certification, category)
+	}
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", category.Domain, "variant", category.Variant)
@@ -415,7 +440,7 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 			Name:      workflowName,
 			Namespace: certification.Namespace,
 		}
-		cs.ResolvedFabric = resolvedFabric
+		cs.ResolvedFabric = recordedFabric(adopted, resolvedFabric, cs.ResolvedFabric)
 	})
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowCreated,
 		fmt.Sprintf("Created Workflow for category %s/%s (%d of %d)", category.Domain, category.Variant,
@@ -448,6 +473,13 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 			}
 			if workflow.Status.FailedNodesRef != nil {
 				cs.FailedNodesRef = workflow.Status.FailedNodesRef.DeepCopy()
+			}
+			// Mirror the component-result totals, which are copied rather than
+			// summed because one category is one Workflow. The totals only, not
+			// the per-group seals: this object carries one entry per category,
+			// and a thousand-group fleet's seals would be megabytes here.
+			if workflow.Status.ComponentResults != nil {
+				cs.ComponentResults = workflow.Status.ComponentResults.DeepCopy()
 			}
 			if status != "" {
 				cs.Status = status
@@ -534,6 +566,46 @@ func (r *CertificationReconciler) finalizeCertification(ctx context.Context, cer
 }
 
 // DefaultEnableMNNVL is defined in helpers.go.
+
+// adoptExistingWorkflow returns the name of the category's Workflow when it
+// is already on the API server and this Certification controls it, and ""
+// when it is not.
+//
+// Workflow creation runs again for a category whose Workflow already exists
+// when the status write after its Create is lost: the write fails, the next
+// reconcile reads a cached Certification that predates it (the Create's own
+// Owns(Workflow) event requeues it, so this is routine), or the controller
+// restarts in between. createWorkflowForCategory adopts such a Workflow only
+// once its Create reports AlreadyExists, after node discovery, GPU
+// architecture detection, the capacity checks and OCI RDMA network
+// detection have all run again. Any of them can fail terminally if the
+// cluster changed in between, and the Certification was then marked Failed
+// while its Workflow kept running, with no workflowRef for
+// recoverIfWorkflowStillRunning to recover from (issue #566).
+//
+// The Workflow name is deterministic, so it is read here first, live: the
+// cache can lag the Create by exactly this window. The existing Workflow's
+// spec is not rebuilt or compared, as in the AlreadyExists branch. A holder
+// this Certification does not control is left to createWorkflowForCategory,
+// which reports it. A failed read is retryable.
+func (r *CertificationReconciler) adoptExistingWorkflow(ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) (string, error) {
+	workflowName := r.getWorkflowName(certification, category)
+	existing := &nvcrev1alpha1.Workflow{}
+	if err := r.workflowReader().Get(ctx, client.ObjectKey{Namespace: certification.Namespace, Name: workflowName}, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", &retryableCreateError{
+			err: fmt.Errorf("failed to check for an existing Workflow %s: %w", workflowName, err),
+		}
+	}
+	if !metav1.IsControlledBy(existing, certification) {
+		return "", nil
+	}
+	logf.FromContext(ctx).Info("Workflow already exists and is controlled by this Certification, adopting it",
+		"name", workflowName, "domain", category.Domain, "variant", category.Variant)
+	return workflowName, nil
+}
 
 // createWorkflowForCategory creates a single Workflow for the given category.
 // It performs full resolution: discovers nodes, detects platform/GPU, resolves
@@ -875,6 +947,7 @@ func (r *CertificationReconciler) prepareCategoryBuild(
 		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
 		MaxSteps:                   derefInt32(opts.MaxSteps),
 		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
+		GemmFloorTFLOPS:            derefInt32(opts.GemmFloorTFLOPS),
 		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
 		GPUArchitecture:            gpuArch,
 		SaveInterval:               derefInt32(opts.SaveInterval),
@@ -1136,6 +1209,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.ExitDurationMins != nil {
 		resolved.ExitDurationMins = override.ExitDurationMins
+	}
+	if override.GemmFloorTFLOPS != nil {
+		resolved.GemmFloorTFLOPS = override.GemmFloorTFLOPS
 	}
 	// A non-nil override wins, including a pointer to zero.
 	resolved.StartupStallTimeoutSeconds = cmp.Or(override.StartupStallTimeoutSeconds, resolved.StartupStallTimeoutSeconds)
@@ -1407,6 +1483,28 @@ func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context
 	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationInProgress, reason, message, extra...)
 }
 
+// recordedFabric returns the fabric a category status should carry: the one
+// this pass resolved, or the one already recorded when this pass adopted a
+// Workflow and so resolved none (ADR-110).
+//
+// Only the pass that creates a category's Workflow resolves the fabric.
+// Adopting one an earlier pass created (issue #566) returns the name alone, so
+// its resolved value is empty for want of looking, which is not the empty a
+// category whose fabric did not choose the render gets. Writing the first over
+// a recorded value erases it for good: once the category list exists Reconcile
+// takes processNextCategory, and once a category is InProgress that function
+// checks its Workflow instead of starting one, so neither write runs again.
+//
+// Both write sites share this so there is one decision rather than two that can
+// drift. It cannot recover a fabric that was never recorded, which is what a
+// status write lost outright rather than to a lagging cache leaves behind.
+func recordedFabric(adopted bool, resolved, current nvcrev1alpha1.Fabric) nvcrev1alpha1.Fabric {
+	if adopted {
+		return current
+	}
+	return resolved
+}
+
 // categoryMutation adapts a per-category edit into a status-write callback.
 //
 // The category is resolved by index against the object the callback is handed,
@@ -1572,6 +1670,11 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	}
 	if opts.GpusPerNode != nil {
 		parts = append(parts, fmt.Sprintf("g%d", *opts.GpusPerNode))
+	}
+	// "gf", not "g": g is already GpusPerNode above, and two tokens sharing a
+	// prefix would make g8 and gf8 collide on a truncating hash boundary.
+	if opts.GemmFloorTFLOPS != nil {
+		parts = append(parts, fmt.Sprintf("gf%d", *opts.GemmFloorTFLOPS))
 	}
 	// Two categories of one domain and variant differing only in
 	// rdmaDeviceAccess run genuinely different pods: one privileged with

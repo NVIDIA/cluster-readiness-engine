@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/bundle"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
@@ -872,6 +873,7 @@ func renderCertificationTo(
 			NumCycles:                  derefInt32Ptr(opts.NumCycles),
 			Thresholds:                 opts.Thresholds,
 			MaxConcurrent:              derefInt32Ptr(opts.MaxConcurrent),
+			GemmFloorTFLOPS:            derefInt32Ptr(opts.GemmFloorTFLOPS),
 			// These five were missing, so render previewed catalog defaults
 			// rather than the user's settings. certification_controller.go
 			// passes all of them, which is why an applied run was correct while
@@ -991,11 +993,18 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 	if err := validateCategoryNetworkAttachments(&cert.Spec.CategoryOptions); err != nil {
 		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
 	}
+	if err := validateGemmFloor(cert.Spec.GemmFloorTFLOPS); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
 	for _, cat := range cert.Spec.Categories {
 		if cat.Options == nil {
 			continue
 		}
 		if err := validateCategoryEnv(cat.Options.Env); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+		if err := validateGemmFloor(cat.Options.GemmFloorTFLOPS); err != nil {
 			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
@@ -1013,6 +1022,27 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
 	}
 	return &cert, nil
+}
+
+// validateGemmFloor mirrors the field's Minimum=1 marker, which binds only
+// server-side.
+//
+// Without this, `nvcrectl certification render` accepts a zero or negative
+// floor and renders a manifest that looks right: zero reads as "no floor", so
+// a run an operator believed was gated would silently pass every GPU, and a
+// negative value would reach the harness as a floor nothing can fall below.
+// The cluster rejects both on apply, which is exactly the gap between preview
+// and run that this duplication exists to close.
+func validateGemmFloor(floor *int32) error {
+	if floor == nil {
+		return nil
+	}
+	if *floor < 1 {
+		return fmt.Errorf(
+			"invalid gemmFloorTFLOPS %d: must be at least 1 TFLOPS; omit the field to use the "+
+				"catalog entry's per-architecture target instead", *floor)
+	}
+	return nil
 }
 
 // validateCategoryEnv rejects the env entries the CRD's CEL rule rejects, so
@@ -1136,6 +1166,7 @@ type certRunConfig struct {
 	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	resultsFile              string // --results-file: path to write JSON report
 	junitFile                string // --junit-file: path to write JUnit XML report
+	resultsBundle            string // --results-bundle: directory to write the verifiable bundle
 	timeout                  time.Duration
 	timeoutDerived           bool // timeout was derived from category timeouts, not passed via --timeout
 	configFlags              *kubeconfig.ConfigFlags
@@ -1170,7 +1201,7 @@ func newRunCommand(version string) *cobra.Command {
 	var controllerImage string
 	var controllerPullSecret string
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
-	var resultsFile, junitFile string
+	var resultsFile, junitFile, resultsBundle string
 	var timeout time.Duration
 	var networkAttachments, multusNetworks, extendedResources []string
 
@@ -1200,8 +1231,16 @@ Use --cleanup to teardown installed components after completion.`,
 				if resultsFile != "" {
 					return fmt.Errorf("--results-file requires --wait")
 				}
+				if resultsBundle != "" {
+					return fmt.Errorf("--results-bundle requires --wait")
+				}
 			}
 			if err := validateReportPaths(resultsFile, junitFile); err != nil {
+				return err
+			}
+			if err := bundle.ValidateExportPaths(resultsBundle,
+				bundle.ExportPath{Flag: "--results-file", Path: resultsFile},
+				bundle.ExportPath{Flag: "--junit-file", Path: junitFile}); err != nil {
 				return err
 			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
@@ -1275,6 +1314,7 @@ Use --cleanup to teardown installed components after completion.`,
 			cfg.version = version
 			cfg.resultsFile = resultsFile
 			cfg.junitFile = junitFile
+			cfg.resultsBundle = resultsBundle
 			cfg.grantRunAccess = grantRunAccess
 			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
 				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
@@ -1339,6 +1379,9 @@ Use --cleanup to teardown installed components after completion.`,
 		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m; on timeout, print a partial report and leave the certification running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
+	cmd.Flags().StringVar(&resultsBundle, "results-bundle", "",
+		"Write a verifiable result bundle to this directory, including per-component "+
+			"result rows as NDJSON (requires --wait)")
 	cmd.Flags().StringVar(&junitFile, "junit-file", "",
 		"Write certification report as JUnit XML to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
@@ -1764,7 +1807,11 @@ func finishCertificationWait(
 
 	var reportErr error
 	if finalCert != nil {
-		reportErr = handleReport(reportCtx, wc, finalCert, cfg.resultsFile, cfg.junitFile, waitErr, cfg.out)
+		reportErr = handleReport(reportCtx, wc, finalCert, reportTargets{
+			resultsFile:   cfg.resultsFile,
+			junitFile:     cfg.junitFile,
+			resultsBundle: cfg.resultsBundle,
+		}, waitErr, cfg.out)
 		if reportErr != nil && !timedOut {
 			return errors.Join(waitErr, reportErr)
 		}
@@ -1821,15 +1868,16 @@ func certificationIsTerminal(cert *nvcrev1alpha1.Certification) bool {
 }
 
 // handleReport builds and prints the certification report, optionally writing
-// JSON and JUnit files. Failing to write either file fails the command, as it
-// does for certification report, so a zero exit means every requested file is
-// there. A failed JSON write does not stop the JUnit write. Caller must pass a
-// non-nil cert.
+// a JSON file, a results bundle and a JUnit file. Failing to write any of them
+// fails the command, as it does for certification report, so a zero exit means
+// every requested artifact is there. No export failure stops the others.
+// Caller must pass a non-nil cert.
 func handleReport(
 	ctx context.Context, wc client.WithWatch,
-	cert *nvcrev1alpha1.Certification, resultsFile, junitFile string,
+	cert *nvcrev1alpha1.Certification, targets reportTargets,
 	waitErr error, out io.Writer,
 ) error {
+	resultsFile, junitFile := targets.resultsFile, targets.junitFile
 	if err := validateReportPaths(resultsFile, junitFile); err != nil {
 		return err
 	}
@@ -1848,16 +1896,27 @@ func handleReport(
 			_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
 		}
 	}
+	// A bundle failure is kept rather than returned, for the same reason the
+	// JSON failure above is. The JUnit file is what a CI system reads, and
+	// under --cleanup the deferred cleanup deletes the Certification whichever
+	// way the export went, so returning here left the pipeline with no result
+	// at all and the evidence to regenerate one from already gone. The
+	// commonest trigger is a --results-bundle directory that is not empty,
+	// which bundle.Write refuses, and that is only reachable after the run.
+	var bundleErr error
+	if targets.resultsBundle != "" {
+		bundleErr = writeResultsBundle(ctx, wc, cert, r, targets.resultsBundle, out)
+	}
 	if junitFile != "" {
 		if err := validateReportPaths(resultsFile, junitFile); err != nil {
-			return errors.Join(jsonErr, err)
+			return errors.Join(jsonErr, bundleErr, err)
 		}
 		if err := report.WriteJUnit(junitFile, []*report.CertReport{r}); err != nil {
-			return errors.Join(jsonErr, fmt.Errorf("write JUnit file: %w", err))
+			return errors.Join(jsonErr, bundleErr, fmt.Errorf("write JUnit file: %w", err))
 		}
 		_, _ = fmt.Fprintf(out, "JUnit results written to %s\n", junitFile)
 	}
-	return jsonErr
+	return errors.Join(jsonErr, bundleErr)
 }
 
 // validateReportPaths prevents JSON and JUnit output from overwriting the same path.
@@ -2223,7 +2282,7 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 
 // newReportCommand builds the command for printing and saving certification reports.
 func newReportCommand() *cobra.Command {
-	var resultsFile, junitFile string
+	var resultsFile, junitFile, resultsBundle string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
@@ -2238,12 +2297,24 @@ Multiple certification names can be provided to combine them into a single repor
 Each certification is shown in its own section with categories and summary.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReport(args, configFlags, resultsFile, junitFile)
+			if err := bundle.ValidateExportPaths(resultsBundle,
+				bundle.ExportPath{Flag: "--results-file", Path: resultsFile},
+				bundle.ExportPath{Flag: "--junit-file", Path: junitFile}); err != nil {
+				return err
+			}
+			return runReport(args, configFlags, reportTargets{
+				resultsFile:   resultsFile,
+				junitFile:     junitFile,
+				resultsBundle: resultsBundle,
+			})
 		},
 	}
 
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path")
+	cmd.Flags().StringVar(&resultsBundle, "results-bundle", "",
+		"Write a verifiable result bundle to this directory, including per-component "+
+			"result rows as NDJSON")
 	cmd.Flags().StringVar(&junitFile, "junit-file", "",
 		"Write certification report as JUnit XML to this file path")
 	configFlags.AddFlags(cmd.Flags())
@@ -2252,7 +2323,8 @@ Each certification is shown in its own section with categories and summary.`,
 }
 
 // runReport fetches certifications and writes their requested report artifacts.
-func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile, junitFile string) error {
+func runReport(names []string, configFlags *kubeconfig.ConfigFlags, targets reportTargets) error {
+	resultsFile, junitFile := targets.resultsFile, targets.junitFile
 	if err := validateReportPaths(resultsFile, junitFile); err != nil {
 		return err
 	}
@@ -2265,6 +2337,7 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile,
 	}
 
 	var reports []*report.CertReport
+	var comps []bundleComponents
 	var errs []string
 	for _, name := range names {
 		cert := &nvcrev1alpha1.Certification{}
@@ -2275,6 +2348,13 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile,
 			return fmt.Errorf("get certification %q: %w", name, err)
 		}
 		reports = append(reports, report.Build(ctx, c, cert))
+		if targets.resultsBundle != "" {
+			resolved, err := resolveBundleComponents(ctx, c, cert)
+			if err != nil {
+				return err
+			}
+			comps = append(comps, resolved...)
+		}
 
 		succeeded := apimeta.IsStatusConditionTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded)
 		failed := apimeta.IsStatusConditionTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed)
@@ -2292,6 +2372,11 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile,
 			return fmt.Errorf("write results file: %w", err)
 		}
 		_, _ = fmt.Fprintf(os.Stderr, "Results written to %s\n", resultsFile)
+	}
+	if targets.resultsBundle != "" {
+		if err := writeBundleDir(targets.resultsBundle, reports, comps, os.Stderr); err != nil {
+			return err
+		}
 	}
 	if junitFile != "" {
 		if err := validateReportPaths(resultsFile, junitFile); err != nil {

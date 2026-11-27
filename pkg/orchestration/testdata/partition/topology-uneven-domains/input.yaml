@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Five nodes in racks of 2, 1, 1 and 1, with nodesPerJob 4. The largest rack
+# holds 2 nodes, but two racks hold only 3, so a group has to span three.
+# There are enough nodes for a full group: the result must be groups of 4,
+# not one group holding all five nodes.
+nodesPerJob: 4
+topologyKey: "topology.kubernetes.io/rack"
+nodes:
+  - name: node-r1-0
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-1
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r2-0
+    labels:
+      topology.kubernetes.io/rack: rack-2
+  - name: node-r3-0
+    labels:
+      topology.kubernetes.io/rack: rack-3
+  - name: node-r4-0
+    labels:
+      topology.kubernetes.io/rack: rack-4

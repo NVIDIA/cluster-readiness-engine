@@ -138,6 +138,12 @@ func runResolve(t *testing.T, failTag string) (out string, failed bool, dir stri
 	out, failed = runShell(t, dir, resolveStep(t),
 		"PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"),
 		"IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager",
+		// The harness image is a second scan subject (ADR-091). The stubbed
+		// crane answers for any repository path, so it resolves like the
+		// controller's; what this adds to every case below is that the
+		// assertions now cover a multi-image target set rather than one whose
+		// image is implicit.
+		"GEMM_IMAGE=ghcr.io/nvidia/cluster-readiness-engine/cutlass-gemm",
 		"GITHUB_REPOSITORY=NVIDIA/cluster-readiness-engine",
 		"GH_TOKEN=stub",
 	)
@@ -238,11 +244,40 @@ func TestResolveEmitsEveryTarget(t *testing.T) {
 	if !strings.Contains(got, "value=") {
 		t.Fatalf("resolve published no target set:\n%s", got)
 	}
-	// Two targets, two platforms each. The step asserts this itself; this
-	// confirms the assertion is reachable and passes on a good run.
-	for _, want := range []string{"release-amd64", "release-arm64", "main-amd64", "main-arm64"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("target %q missing from the published set: %s", want, got)
+	// Every target, by its full name, and the count.
+	//
+	// The names are spelled out in full deliberately. They used to be checked
+	// as "release-amd64" and "main-amd64", which a prefixed name such as
+	// "manager-release-amd64" satisfies as a substring: when the harness image
+	// was added, this test went on passing without ever asserting that any of
+	// its targets were published. A test that is green for a reason unrelated
+	// to what it claims is worse than an absent one.
+	//
+	// The count is asserted too, because a containment check cannot notice an
+	// extra target or a duplicate.
+	want := []string{
+		"manager-release-amd64", "manager-release-arm64",
+		"manager-main-amd64", "manager-main-arm64",
+		// The harness image has a main target and no release target: every
+		// release published before it existed has no harness image and never
+		// will. See the scan_set comment in the workflow.
+		"gemm-main-amd64", "gemm-main-arm64",
+	}
+	for _, w := range want {
+		if !strings.Contains(got, `"name":"`+w+`"`) {
+			t.Errorf("target %q missing from the published set: %s", w, got)
+		}
+	}
+	if n := strings.Count(got, `"name":"`); n != len(want) {
+		t.Errorf("published %d targets, expected exactly %d (%v): %s", n, len(want), want, got)
+	}
+	// Each target must carry the image it belongs to, or the scan job cannot
+	// tell which repository a digest came from.
+	for _, img := range []string{
+		"cluster-readiness-engine/manager", "cluster-readiness-engine/cutlass-gemm",
+	} {
+		if !strings.Contains(got, img) {
+			t.Errorf("no target names the %s image: %s", img, got)
 		}
 	}
 }
