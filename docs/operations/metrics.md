@@ -115,7 +115,9 @@ Goodput metrics are cleaned up at specific lifecycle events to prevent stale dat
 | Job completes (succeeded or failed) | Operational metrics (every `nvcre_goodput_*` gauge except the ratio: TFLOPS, step time, training/warmup/non-warmup time, checkpoint, reschedule, resume, lost work) | `nvcre_goodput_ratio` (the outcome) |
 | Job restarts from checkpoint | Instantaneous metrics (TFLOPS, avg step time) | All cumulative metrics |
 | GoodputMeasurement deleted | All goodput metrics for that measurement | — |
-| BandwidthMeasurement completes or is deleted | All NCCL bandwidth metrics for that measurement | — |
+| BandwidthMeasurement completes with `JobSucceeded` | Provisional-only message sizes | Final per-size bandwidth gauges, until measurement deletion |
+| BandwidthMeasurement completes unsuccessfully or without results | All NCCL bandwidth metrics for that measurement | — |
+| BandwidthMeasurement deleted | All NCCL bandwidth metrics for that measurement | — |
 
 ## NCCL bandwidth metrics
 
@@ -130,9 +132,9 @@ All NCCL bandwidth metrics share the same label set: `namespace`, `measurement`,
 
 The `nccl_test` label identifies the collective operation (e.g., `all_reduce`, `all_gather`, `alltoall`). The `message_size_bytes` label tracks results per message size tested.
 
-NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
+On `JobSucceeded`, a successful final log read replaces provisional NCCL bandwidth metrics with final `status.results`, including runs too short to produce a provisional sample. Both canonical and deprecated names share this lifecycle. Final metrics remain until the BandwidthMeasurement is deleted; unsuccessful or empty terminal outcomes clear provisional metrics. Deletion also works after the referenced Job is gone.
 
-**Cardinality at scale:** NCCL metrics include a `message_size_bytes` label (typically 20-30 values per test). With 3 test types and 10 concurrent measurements, expect ~600-900 NCCL time series from the canonical `_gbs` names. During the deprecation window the `_gbps` aliases are dual-registered, which doubles that count. Goodput metrics produce 10 series per measurement. At 100+ concurrent Jobs, monitor your Prometheus memory and consider increasing `sampleInterval` or limiting concurrent Certifications.
+**Cardinality at scale:** NCCL metrics include a `message_size_bytes` label (typically 20-30 values per test). With 3 test types and 10 concurrent measurements, expect ~600-900 NCCL time series from the canonical `_gbs` names. During the deprecation window the `_gbps` aliases are dual-registered, which doubles that count. Goodput metrics produce 10 series per measurement with final data. Completed measurements also count toward this cardinality until deleted. Manage measurement/Certification retention and concurrent Certifications to bound series; increasing `sampleInterval` does not reduce retained series.
 
 ## Topology metrics
 

@@ -1,0 +1,103 @@
+{
+  "terminal": [
+    {
+      "name": "nvcre_nccl_algbw_gbps",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 80.5
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbps",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 90
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbs",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 80.5
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbs",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 90
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbps",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 71.38
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbps",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 79
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbs",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 71.38
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbs",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 79
+    }
+  ],
+  "recovered": [
+    {
+      "name": "nvcre_nccl_algbw_gbps",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 80.5
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbps",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 90
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbs",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 80.5
+    },
+    {
+      "name": "nvcre_nccl_algbw_gbs",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 90
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbps",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 71.38
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbps",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 79
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbs",
+      "workflow": "workflow",
+      "size": "1024",
+      "value": 71.38
+    },
+    {
+      "name": "nvcre_nccl_busbw_gbs",
+      "workflow": "workflow",
+      "size": "2048",
+      "value": 79
+    }
+  ],
+  "deleted": []
+}

@@ -184,8 +184,9 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 		return ctrl.Result{}, nil
 	}
 
-	// If already complete, nothing to do.
+	// Restore frozen metrics after a controller restart without recomputing status.
 	if cond := meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
+		syncFinalBandwidthMetrics(measurement)
 		return ctrl.Result{}, nil
 	}
 
@@ -612,7 +613,6 @@ type terminalOutcome struct {
 // Complete=True. It is a no-op on a measurement that is already Complete, so a
 // replay from a stale cache cannot overwrite the first terminal write.
 func (r *BandwidthMeasurementReconciler) finalizeTerminal(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, anchor time.Time, outcome terminalOutcome) (ctrl.Result, error) {
-	provisional := measurement.Status.Results
 	completion := metav1.NewTime(anchor)
 	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.BandwidthMeasurement) bool {
 		if meta.IsStatusConditionTrue(m.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
@@ -643,17 +643,14 @@ func (r *BandwidthMeasurementReconciler) finalizeTerminal(ctx context.Context, m
 		return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
 	}
 
-	// Clean up NCCL bandwidth gauges so stale values don't persist in
-	// Prometheus. Provisional samples can carry sizes the final read does not,
-	// so both sets are cleared.
-	sizes := make([]string, 0, len(provisional)+len(measurement.Status.Results))
-	for _, set := range [][]nvcrev1alpha1.BandwidthResult{provisional, measurement.Status.Results} {
-		for _, res := range set {
-			sizes = append(sizes, strconv.FormatInt(res.SizeBytes, 10))
-		}
+	// A cancelled reconcile must not publish candidate final metrics. The
+	// status retry helper can currently suppress context cancellation (#588).
+	if err := ctx.Err(); err != nil {
+		return ctrl.Result{}, err
 	}
-	cleanupNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name,
-		measurement.Labels["nvcre.nvidia.com/workflow"], measurement.Spec.TestType, sizes)
+
+	// Publish only the persisted terminal status, including a conflict winner.
+	syncFinalBandwidthMetrics(measurement)
 	r.forgetSampling(measurement.Namespace + "/" + measurement.Name)
 
 	return ctrl.Result{}, nil
@@ -702,14 +699,7 @@ func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, mea
 	log := logf.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(measurement, bandwidthMeasurementFinalizer) {
-		// Cleanup Prometheus metrics.
-		jobName := measurement.Spec.JobRef.Name
-		workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
-		sizes := make([]string, 0, len(measurement.Status.Results))
-		for _, r := range measurement.Status.Results {
-			sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
-		}
-		cleanupNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow, measurement.Spec.TestType, sizes)
+		cleanupMeasurementBandwidthMetrics(measurement.Namespace, measurement.Name)
 		r.forgetSampling(measurement.Namespace + "/" + measurement.Name)
 
 		controllerutil.RemoveFinalizer(measurement, bandwidthMeasurementFinalizer)
