@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two categories miss their performance thresholds and a third fails without
+# a threshold verdict: the Certification fails, and its ValidationFailed
+# condition names the two categories that missed, in order.
+waitFor:
+  kind: Certification
+  name: test-cert-validation-fail
+  namespace: default
+  condition: Failed
+collect:
+  - kind: Certification
+    name: test-cert-validation-fail
+    namespace: default

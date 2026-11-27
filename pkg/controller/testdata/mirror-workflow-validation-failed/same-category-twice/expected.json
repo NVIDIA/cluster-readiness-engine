@@ -1,0 +1,19 @@
+{
+  "changed": false,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowRunning",
+      "message": "Workflow for category communication/nccl-all-reduce failed, advancing to next category"
+    },
+    {
+      "type": "ValidationFailed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "ThresholdViolation",
+      "message": "Performance thresholds not met in categories: communication/nccl-all-reduce, communication/nccl-all-gather"
+    }
+  ]
+}

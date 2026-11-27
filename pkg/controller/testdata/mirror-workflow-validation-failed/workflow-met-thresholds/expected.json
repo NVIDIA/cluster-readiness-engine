@@ -1,0 +1,12 @@
+{
+  "changed": false,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowRunning",
+      "message": "Workflow for category communication/nccl-all-reduce failed, advancing to next category"
+    }
+  ]
+}

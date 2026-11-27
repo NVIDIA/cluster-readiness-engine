@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Workflow that failed without missing a threshold leaves the condition unset.
+index: 0
+workflow:
+  metadata:
+    name: w
+  status:
+    conditions:
+      - type: Failed
+        status: "True"
+        reason: JobFailed
+        message: Job failed
+        lastTransitionTime: "2026-01-22T10:05:00Z"
+certification:
+  metadata:
+    name: c
+  spec:
+    target:
+      nodeNames:
+        - node-a
+    categories:
+      - domain: communication
+        variant: nccl-all-reduce
+  status:
+    categoryStatuses:
+      - domain: communication
+        variant: nccl-all-reduce
+        status: Failed
+    conditions:
+      - type: InProgress
+        status: "True"
+        reason: WorkflowRunning
+        message: "Workflow for category communication/nccl-all-reduce failed, advancing to next category"
+        lastTransitionTime: "2026-01-22T10:00:00Z"
