@@ -1,0 +1,1 @@
+[2026-02-05 11:26:00.000000] iteration      250/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 1000.0 | throughput per GPU (TFLOP/s/GPU): 140.0 | lm loss: 1.200000E+01

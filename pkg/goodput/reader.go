@@ -92,6 +92,7 @@ func (r *LogReader) ReadMultiWorkerLogs(ctx context.Context, namespace, worker0P
 		LastStep:         lastWorkerRes.result.LastStep,
 		Steps:            lastWorkerRes.result.Steps,
 		LastLogTimestamp: lastWorkerRes.result.LastLogTimestamp,
+		LogInterval:      lastWorkerRes.result.LogInterval,
 	}
 
 	// If lastWorker did not have a last log timestamp, fall back to worker0.
